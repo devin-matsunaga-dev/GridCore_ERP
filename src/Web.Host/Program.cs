@@ -6,6 +6,7 @@ using GridCore.Modules.Inventory;
 using GridCore.Modules.Metering;
 using GridCore.Modules.Payments;
 using GridCore.Modules.WorkOrders;
+using GridCore.Platform;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Security;
 
@@ -24,6 +25,9 @@ builder.AddRabbitMQClient("rabbitmq");
 // OIDC bearer auth + permission-based authorization. Authority/audience come from the
 // Authentication section, which the AppHost points at the Keycloak realm.
 builder.Services.AddGridCoreSecurity(builder.Configuration);
+
+// Audit, approvals, notifications and the scheduler, over the platform schema.
+builder.Services.AddGridCorePlatform(builder.Configuration, builder.Environment);
 
 // RFC 7807 bodies for the framework's own 401/403/404 responses, per CONVENTIONS.md.
 builder.Services.AddProblemDetails();
@@ -49,7 +53,7 @@ app.UseAuthorization();
 // /health (aggregate) and /alive (liveness). Anonymous — Aspire probes them without a token.
 app.MapDefaultEndpoints();
 
-app.MapMeEndpoints();
+app.MapPlatformEndpoints();
 app.MapModules(modules);
 
 app.Run();

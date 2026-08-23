@@ -10,10 +10,23 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <!-- Design-time only: `dotnet ef migrations add` against this library. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Contracts/GridCore.Contracts.csproj" />
+  </ItemGroup>
+
+  <!-- The fast tier exercises the scheduler's failure isolation, which is not public API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="GridCore.Platform.UnitTests" />
   </ItemGroup>
 
 </Project>

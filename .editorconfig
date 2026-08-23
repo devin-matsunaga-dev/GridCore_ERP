@@ -45,3 +45,9 @@ dotnet_naming_style.underscore_camel.required_prefix = _
 # Quality
 dotnet_diagnostic.CA1062.severity = none
 dotnet_diagnostic.IDE0290.severity = suggestion
+
+# EF Core writes migrations itself (block namespaces, its own layout) and they are append-only —
+# never hand-edited — so the repo's code style is not enforced on them.
+[**/Data/Migrations/*.cs]
+generated_code = true
+dotnet_diagnostic.IDE0161.severity = none
