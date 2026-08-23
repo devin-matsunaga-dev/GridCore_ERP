@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Modules/Customers/GridCore.Modules.Customers.csproj" />
+  </ItemGroup>
+
+</Project>

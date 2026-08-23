@@ -4,8 +4,8 @@
 
 ## Current position
 - **Phase:** 0 — Foundation
-- **Current WP:** WP-0.1 (repo, solution skeleton, docs — targets net10.0)
-- **Current branch:** feat/wp-0.1-skeleton
+- **Current WP:** WP-0.2 (Aspire AppHost + infra)
+- **Current branch:** feat/wp-0.1-skeleton (WP-0.1 complete, awaiting squash-merge)
 - **Last tag:** —
 
 ## Platform versions (law — see ARCHITECTURE.md)
@@ -15,12 +15,17 @@
 FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integration (shared Testcontainer + Respawn) and E2E run at gates only. See CONVENTIONS.md ⚡ section.
 
 ## In flight / carry-over
-- (empty)
+- `docs/design/reference-dashboard.png` (canonical UI reference named by DESIGN.md) is **missing** — needed before WP-0.6.
+- `web/` React app not created yet — the fast loop's `npm --prefix web run test` line is inert until WP-0.6.
+- `src/AppHost/AppHost.cs` is the bare template (no resources composed) and `src/AppHost/aspire.config.json` sits next to the project — WP-0.2 owns both.
+- `Web.Host` maps no endpoints yet, so `/` returns 404. `/health` arrives in WP-0.2.
+- Aspire project templates were installed locally via `dotnet new install Aspire.ProjectTemplates` (13.5.2); CI must do the same or vendor the AppHost SDK — WP-0.7.
+- New unit-test projects must be added to `tests/UnitTests.slnf` or the fast loop silently skips them.
 
 ## Work packages
 
 ### Phase 0 — Foundation
-- [ ] WP-0.1 Skeleton + docs
+- [x] WP-0.1 Skeleton + docs
 - [ ] WP-0.2 Aspire + infra
 - [ ] WP-0.3 Auth + RBAC (8 roles)
 - [ ] WP-0.4 Audit + approvals

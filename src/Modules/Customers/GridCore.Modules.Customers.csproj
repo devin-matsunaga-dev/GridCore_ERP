@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GridCore.Modules.Customers</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Modules reference Platform and Contracts only. A module NEVER references another module. -->
+  <ItemGroup>
+    <ProjectReference Include="../../Platform/GridCore.Platform.csproj" />
+    <ProjectReference Include="../../Contracts/GridCore.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

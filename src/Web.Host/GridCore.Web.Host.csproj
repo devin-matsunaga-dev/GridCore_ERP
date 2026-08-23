@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>GridCore.Web.Host</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Platform/GridCore.Platform.csproj" />
+    <ProjectReference Include="../Contracts/GridCore.Contracts.csproj" />
+    <ProjectReference Include="../ServiceDefaults/GridCore.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <!-- The host is the only project that references every module. -->
+  <ItemGroup>
+    <ProjectReference Include="../Modules/Customers/GridCore.Modules.Customers.csproj" />
+    <ProjectReference Include="../Modules/Metering/GridCore.Modules.Metering.csproj" />
+    <ProjectReference Include="../Modules/Billing/GridCore.Modules.Billing.csproj" />
+    <ProjectReference Include="../Modules/Payments/GridCore.Modules.Payments.csproj" />
+    <ProjectReference Include="../Modules/Assets/GridCore.Modules.Assets.csproj" />
+    <ProjectReference Include="../Modules/WorkOrders/GridCore.Modules.WorkOrders.csproj" />
+    <ProjectReference Include="../Modules/Inventory/GridCore.Modules.Inventory.csproj" />
+    <ProjectReference Include="../Modules/Finance/GridCore.Modules.Finance.csproj" />
+  </ItemGroup>
+
+</Project>

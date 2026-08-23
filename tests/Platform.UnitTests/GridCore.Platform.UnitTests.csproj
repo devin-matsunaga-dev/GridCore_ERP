@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Platform/GridCore.Platform.csproj" />
+    <ProjectReference Include="../../src/Contracts/GridCore.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

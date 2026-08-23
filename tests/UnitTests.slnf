@@ -1,0 +1,16 @@
+{
+  "solution": {
+    "path": "..\\GridCore.slnx",
+    "projects": [
+      "tests\\Assets.UnitTests\\GridCore.Modules.Assets.UnitTests.csproj",
+      "tests\\Billing.UnitTests\\GridCore.Modules.Billing.UnitTests.csproj",
+      "tests\\Customers.UnitTests\\GridCore.Modules.Customers.UnitTests.csproj",
+      "tests\\Finance.UnitTests\\GridCore.Modules.Finance.UnitTests.csproj",
+      "tests\\Inventory.UnitTests\\GridCore.Modules.Inventory.UnitTests.csproj",
+      "tests\\Metering.UnitTests\\GridCore.Modules.Metering.UnitTests.csproj",
+      "tests\\Payments.UnitTests\\GridCore.Modules.Payments.UnitTests.csproj",
+      "tests\\Platform.UnitTests\\GridCore.Platform.UnitTests.csproj",
+      "tests\\WorkOrders.UnitTests\\GridCore.Modules.WorkOrders.UnitTests.csproj"
+    ]
+  }
+}

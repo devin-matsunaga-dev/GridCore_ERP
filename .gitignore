@@ -1,0 +1,41 @@
+## .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userprefs
+project.lock.json
+TestResults/
+*.trx
+*.coverage
+coverage/
+.vs/
+.vscode/
+.idea/
+
+## Aspire
+.aspire/
+*.aspire-manifest.json
+
+## Node / web
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+## Env / secrets — never commit
+.env
+.env.*
+!.env.example
+*.pfx
+appsettings.*.local.json
+
+## OS
+.DS_Store
+Thumbs.db

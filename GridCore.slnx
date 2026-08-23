@@ -1,0 +1,74 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/AppHost/">
+    <Project Path="src/AppHost/GridCore.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/src/Contracts/">
+    <Project Path="src/Contracts/GridCore.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Assets/">
+    <Project Path="src/Modules/Assets/GridCore.Modules.Assets.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Billing/">
+    <Project Path="src/Modules/Billing/GridCore.Modules.Billing.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Customers/">
+    <Project Path="src/Modules/Customers/GridCore.Modules.Customers.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Finance/">
+    <Project Path="src/Modules/Finance/GridCore.Modules.Finance.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Inventory/">
+    <Project Path="src/Modules/Inventory/GridCore.Modules.Inventory.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Metering/">
+    <Project Path="src/Modules/Metering/GridCore.Modules.Metering.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Payments/">
+    <Project Path="src/Modules/Payments/GridCore.Modules.Payments.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/WorkOrders/">
+    <Project Path="src/Modules/WorkOrders/GridCore.Modules.WorkOrders.csproj" />
+  </Folder>
+  <Folder Name="/src/Platform/">
+    <Project Path="src/Platform/GridCore.Platform.csproj" />
+  </Folder>
+  <Folder Name="/src/ServiceDefaults/">
+    <Project Path="src/ServiceDefaults/GridCore.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/src/Web.Host/">
+    <Project Path="src/Web.Host/GridCore.Web.Host.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Assets.UnitTests/">
+    <Project Path="tests/Assets.UnitTests/GridCore.Modules.Assets.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Billing.UnitTests/">
+    <Project Path="tests/Billing.UnitTests/GridCore.Modules.Billing.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Customers.UnitTests/">
+    <Project Path="tests/Customers.UnitTests/GridCore.Modules.Customers.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Finance.UnitTests/">
+    <Project Path="tests/Finance.UnitTests/GridCore.Modules.Finance.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/IntegrationTests/">
+    <Project Path="tests/IntegrationTests/GridCore.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Inventory.UnitTests/">
+    <Project Path="tests/Inventory.UnitTests/GridCore.Modules.Inventory.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Metering.UnitTests/">
+    <Project Path="tests/Metering.UnitTests/GridCore.Modules.Metering.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Payments.UnitTests/">
+    <Project Path="tests/Payments.UnitTests/GridCore.Modules.Payments.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Platform.UnitTests/">
+    <Project Path="tests/Platform.UnitTests/GridCore.Platform.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tests/WorkOrders.UnitTests/">
+    <Project Path="tests/WorkOrders.UnitTests/GridCore.Modules.WorkOrders.UnitTests.csproj" />
+  </Folder>
+</Solution>

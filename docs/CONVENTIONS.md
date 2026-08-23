@@ -6,6 +6,7 @@
 ```
 src/
   AppHost/                       # Aspire orchestration
+  ServiceDefaults/               # Aspire shared defaults (telemetry, health, resilience)
   Web.Host/                      # ASP.NET Core host (thin endpoints)
   Modules/<Name>/
     Features/<Feature>/          # vertical slice: endpoint, service, models
@@ -13,6 +14,7 @@ src/
   Platform/                      # auth, audit, approvals, events, seed
   Contracts/                     # events, shared DTOs, provider interfaces
 tests/
+  UnitTests.slnf                 # solution filter: the fast tier only
   <Module>.UnitTests/            # FAST — no infra, run every WP
   IntegrationTests/              # SLOW — Testcontainers, run at gates/on-demand
   Web.ComponentTests/            # React (Vitest) — fast
@@ -69,16 +71,18 @@ If a behavior can be tested without infrastructure, it MUST be — pushing logic
 **Per-package loop (fast — this is what SESSION.md's report uses, runs in seconds):**
 ```bash
 dotnet build -c Debug && \
-dotnet test tests/*UnitTests -c Debug --no-build --filter "Category!=Integration" && \
+dotnet test tests/UnitTests.slnf -c Debug --no-build --filter "Category!=Integration" && \
 npm --prefix web run test -- --run
 ```
 
 **Phase-gate (full — unit + integration + E2E):**
 ```bash
 dotnet build -c Debug && \
-dotnet test -c Debug --no-build && \
+dotnet test GridCore.slnx -c Debug --no-build && \
 npm --prefix web run test -- --run
 ```
+`tests/UnitTests.slnf` is a solution filter listing only the `*.UnitTests` projects — `dotnet test` takes exactly one project/solution argument, so a `tests/*UnitTests` glob does not work. Add every new unit-test project to that filter. The `npm` line applies once `web/` exists (WP-0.6).
+
 (No `--maxcpucount:1`. No `-c Release` for routine testing — Release builds are slower to produce and only needed when publishing images.)
 
 ## Every WP adds

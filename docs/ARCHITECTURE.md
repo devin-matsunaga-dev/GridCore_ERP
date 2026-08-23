@@ -12,7 +12,9 @@ A utility-company ERP MVP: seven integrated modules (Customers, Meters, Billing,
 
 | Component | Tech | Role |
 |---|---|---|
-| `Web.Host` | ASP.NET Core | Hosts all module APIs |
+| `AppHost` | Aspire | Orchestrates the app + backing services |
+| `ServiceDefaults` | lib | Aspire shared defaults: telemetry, health checks, resilience, service discovery |
+| `Web.Host` | ASP.NET Core | Hosts all module APIs; the only project referencing every module |
 | `Modules.Customers` | lib | Customers, service locations, service accounts |
 | `Modules.Metering` | lib | Meters, readings, consumption, meter simulator |
 | `Modules.Billing` | lib | Rate engine, bills, adjustments |
@@ -35,6 +37,10 @@ A utility-company ERP MVP: seven integrated modules (Customers, Meters, Billing,
 - `Contracts` holds events + shared value objects only (no entities/EF types).
 - Each module owns its Postgres **schema** and its own EF migrations.
 - **Finance is downstream of everyone.** Billing, Payments, and Inventory raise events (`BillIssued`, `PaymentApproved`, `GoodsReceived`); Finance consumes them and posts journal entries. Finance never calls back into other modules.
+
+## Module composition
+
+Every module class library exposes one `IModule` (in `Platform.Modules`) with `Name` (also its Postgres schema), `AddServices` and `MapEndpoints`. `Web.Host` lists the modules explicitly in `Program.cs` — no assembly scanning, so the composition is greppable — and `ModuleRegistration` rejects two modules claiming the same schema name.
 
 ## Provider interfaces (the simulation seam — non-negotiable)
 
