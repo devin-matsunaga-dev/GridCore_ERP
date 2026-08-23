@@ -5,6 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Npgsql" />
+    <PackageReference Include="Aspire.StackExchange.Redis" />
+    <PackageReference Include="Aspire.RabbitMQ.Client" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Platform/GridCore.Platform.csproj" />
     <ProjectReference Include="../Contracts/GridCore.Contracts.csproj" />
     <ProjectReference Include="../ServiceDefaults/GridCore.ServiceDefaults.csproj" />

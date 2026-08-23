@@ -2,6 +2,7 @@
   "solution": {
     "path": "..\\GridCore.slnx",
     "projects": [
+      "tests\\AppHost.UnitTests\\GridCore.AppHost.UnitTests.csproj",
       "tests\\Assets.UnitTests\\GridCore.Modules.Assets.UnitTests.csproj",
       "tests\\Billing.UnitTests\\GridCore.Modules.Billing.UnitTests.csproj",
       "tests\\Customers.UnitTests\\GridCore.Modules.Customers.UnitTests.csproj",

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GridCore.AppHost.UnitTests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      IsAspireProjectResource=false: the AppHost is referenced as a plain assembly to be
+      unit-tested, not as a project resource to be orchestrated.
+    -->
+    <ProjectReference Include="../../src/AppHost/GridCore.AppHost.csproj" IsAspireProjectResource="false" />
+  </ItemGroup>
+
+</Project>

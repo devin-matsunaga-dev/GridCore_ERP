@@ -4,8 +4,8 @@
 
 ## Current position
 - **Phase:** 0 — Foundation
-- **Current WP:** WP-0.2 (Aspire AppHost + infra)
-- **Current branch:** feat/wp-0.1-skeleton (WP-0.1 complete, awaiting squash-merge)
+- **Current WP:** WP-0.3 (Auth + RBAC, 8 roles) **[SENSITIVE]**
+- **Current branch:** feat/wp-0.2-aspire-infra (WP-0.2 complete, awaiting squash-merge)
 - **Last tag:** —
 
 ## Platform versions (law — see ARCHITECTURE.md)
@@ -16,17 +16,21 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 
 ## In flight / carry-over
 - `docs/design/reference-dashboard.png` (canonical UI reference named by DESIGN.md) is **missing** — needed before WP-0.6.
-- `web/` React app not created yet — the fast loop's `npm --prefix web run test` line is inert until WP-0.6.
-- `src/AppHost/AppHost.cs` is the bare template (no resources composed) and `src/AppHost/aspire.config.json` sits next to the project — WP-0.2 owns both.
-- `Web.Host` maps no endpoints yet, so `/` returns 404. `/health` arrives in WP-0.2.
+- `web/` React app not created yet — the fast loop's `npm --prefix web run test` line is inert until WP-0.6, and the AppHost skips its Vite dev-server resource while the directory is absent (WP-0.6 creates `web/`; nothing else to wire).
+- **Docker is not reachable from this WSL distro** ("could not be found in this WSL 2 distro — activate WSL integration in Docker Desktop"), so `aspire run` could not be executed during WP-0.2. The composition was verified instead by generating the Aspire manifest and by the fast-tier model tests. Enable Docker Desktop WSL integration before the manual verification steps.
+- The Aspire **CLI is 13.4.6** while the SDK/packages are **13.5.2** — run `aspire update` (STATUS says at gates) before the Phase 0 gate.
+- `Web.Host` now requires AppHost-supplied connection strings (`gridcore`, `redis`, `rabbitmq`) to start; the gate-tier `WebApplicationFactory` boot (WP-0.7) must supply them from the shared Testcontainer.
+- `/health` is mapped by `MapDefaultEndpoints()` in **Development only** (Aspire's default, for the security reasons in aka.ms/aspire/healthchecks). If the demo deploy needs it exposed, that is WP-5.4.
+- Keycloak runs with `--import-realm` and a data volume but **no realm yet** — WP-0.3 owns the realm, the 8 roles, test users and the OIDC wiring in `Web.Host`.
+- MinIO is up as a container with `MinIO__Endpoint/AccessKey/SecretKey` handed to the host, but **no client is wired** — whichever WP first stores a document owns that.
 - Aspire project templates were installed locally via `dotnet new install Aspire.ProjectTemplates` (13.5.2); CI must do the same or vendor the AppHost SDK — WP-0.7.
-- New unit-test projects must be added to `tests/UnitTests.slnf` or the fast loop silently skips them.
+- New unit-test projects must be added to `tests/UnitTests.slnf` **and** `GridCore.slnx` or the fast loop silently skips them.
 
 ## Work packages
 
 ### Phase 0 — Foundation
 - [x] WP-0.1 Skeleton + docs
-- [ ] WP-0.2 Aspire + infra
+- [x] WP-0.2 Aspire + infra
 - [ ] WP-0.3 Auth + RBAC (8 roles)
 - [ ] WP-0.4 Audit + approvals
 - [ ] WP-0.5 Bus + outbox + Finance seam

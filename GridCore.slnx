@@ -41,6 +41,9 @@
     <Project Path="src/Web.Host/GridCore.Web.Host.csproj" />
   </Folder>
   <Folder Name="/tests/" />
+  <Folder Name="/tests/AppHost.UnitTests/">
+    <Project Path="tests/AppHost.UnitTests/GridCore.AppHost.UnitTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Assets.UnitTests/">
     <Project Path="tests/Assets.UnitTests/GridCore.Modules.Assets.UnitTests.csproj" />
   </Folder>

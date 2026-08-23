@@ -9,4 +9,16 @@
     <UserSecretsId>78ba96bd-cb94-46f7-b39f-9d93db4dda43</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" />
+    <PackageReference Include="Aspire.Hosting.Keycloak" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Web.Host/GridCore.Web.Host.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -10,7 +10,16 @@ using GridCore.Platform.Modules;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Infrastructure (Postgres, Redis, RabbitMQ, Keycloak, MinIO) is wired in WP-0.2.
+// Telemetry, resilience, service discovery and the "self" health check.
+builder.AddServiceDefaults();
+
+// Backing services are supplied by the Aspire AppHost; each client integration also
+// registers a health check, which is what /health aggregates. Names match the AppHost
+// resource names. Keycloak (WP-0.3) and MinIO (later) are wired by their own packages.
+builder.AddNpgsqlDataSource("gridcore");
+builder.AddRedisClient("redis");
+builder.AddRabbitMQClient("rabbitmq");
+
 var modules = builder.Services.AddModules(
     builder.Configuration,
     new CustomersModule(),
@@ -23,6 +32,9 @@ var modules = builder.Services.AddModules(
     new FinanceModule());
 
 var app = builder.Build();
+
+// /health (aggregate) and /alive (liveness).
+app.MapDefaultEndpoints();
 
 app.MapModules(modules);
 
