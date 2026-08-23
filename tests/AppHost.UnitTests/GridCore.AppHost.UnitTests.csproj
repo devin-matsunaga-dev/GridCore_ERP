@@ -6,10 +6,23 @@
 
   <ItemGroup>
     <!--
+      Mirrors the AppHost's own layout next to the test assembly: the export is asserted on
+      directly (roles, clients, one test user per role), and AddGridCoreInfrastructure resolves
+      the realm import relative to the AppHost directory, which under test is the output folder.
+    -->
+    <None Include="../../src/AppHost/keycloak/realms/gridcore-realm.json"
+          Link="keycloak/realms/gridcore-realm.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
       IsAspireProjectResource=false: the AppHost is referenced as a plain assembly to be
       unit-tested, not as a project resource to be orchestrated.
     -->
     <ProjectReference Include="../../src/AppHost/GridCore.AppHost.csproj" IsAspireProjectResource="false" />
+    <!-- GridCoreRoles is the source of truth the realm export is asserted against. -->
+    <ProjectReference Include="../../src/Platform/GridCore.Platform.csproj" />
   </ItemGroup>
 
 </Project>

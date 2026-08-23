@@ -30,6 +30,10 @@
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.5.2" />
   </ItemGroup>
 
+  <ItemGroup Label="Security">
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+  </ItemGroup>
+
   <ItemGroup Label="Aspire client integrations (Web.Host)">
     <PackageVersion Include="Aspire.Npgsql" Version="13.5.2" />
     <PackageVersion Include="Aspire.StackExchange.Redis" Version="13.5.2" />

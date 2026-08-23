@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using Aspire.Hosting.ApplicationModel;
 
 namespace GridCore.AppHost;
@@ -9,7 +10,7 @@ namespace GridCore.AppHost;
 /// <param name="Database">The application database (schema-per-module lives inside it).</param>
 /// <param name="Cache">Redis: cache, rate limiting, SignalR backplane.</param>
 /// <param name="Bus">RabbitMQ: the transactional-outbox transport (WP-0.5).</param>
-/// <param name="Identity">Keycloak: OIDC provider; realm + roles arrive in WP-0.3.</param>
+/// <param name="Identity">Keycloak: OIDC provider hosting the GridCore realm, its roles and its clients.</param>
 /// <param name="ObjectStore">MinIO: document and report storage.</param>
 /// <param name="ObjectStoreAccessKey">MinIO root user, handed to the host as well as the container.</param>
 /// <param name="ObjectStoreSecretKey">MinIO root password, handed to the host as well as the container.</param>
@@ -39,6 +40,18 @@ public static class InfrastructureComposition
 
     /// <summary>Resource name of the Keycloak container.</summary>
     public const string IdentityResourceName = "keycloak";
+
+    /// <summary>Keycloak realm GridCore authenticates against; the issuer is <c>{keycloak}/realms/{realm}</c>.</summary>
+    public const string IdentityRealmName = "gridcore";
+
+    /// <summary>Client id every GridCore access token is audienced to.</summary>
+    public const string IdentityApiClientId = "gridcore-api";
+
+    /// <summary>Client id the React SPA authenticates with (authorization code + PKCE).</summary>
+    public const string IdentityWebClientId = "gridcore-web";
+
+    /// <summary>Realm export directory, relative to the AppHost project. Imported in Development only.</summary>
+    public const string IdentityRealmImportPath = "keycloak/realms";
 
     /// <summary>Resource name of the MinIO container.</summary>
     public const string ObjectStoreResourceName = "minio";
@@ -86,6 +99,13 @@ public static class InfrastructureComposition
         var identity = builder
             .AddKeycloak(IdentityResourceName, adminUsername: identityAdmin, adminPassword: identityPassword)
             .WithDataVolume();
+
+        // The realm export carries test users with a well-known password, so it is imported only in
+        // Development. A production realm — same roles and clients, real users — is WP-5.1's job.
+        if (builder.Environment.IsDevelopment())
+        {
+            identity.WithRealmImport(IdentityRealmImportPath);
+        }
 
         var objectStoreAccessKey = builder.AddParameter("minio-access-key");
         var objectStoreSecretKey = builder.AddParameter("minio-secret-key", secret: true);

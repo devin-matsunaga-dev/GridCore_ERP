@@ -18,6 +18,9 @@ public static class WebComposition
     /// <summary>Health endpoint the host exposes; aggregates the checks registered by the client integrations.</summary>
     public const string HealthEndpointPath = "/health";
 
+    /// <summary>Keycloak's primary endpoint, which the OIDC issuer URL is built from.</summary>
+    public const string IdentityEndpointName = "http";
+
     /// <summary>
     /// Adds the ASP.NET Core host and wires it to every backing service. The host waits for the
     /// infrastructure so a cold `aspire run` does not report a false failure while containers boot.
@@ -35,12 +38,32 @@ public static class WebComposition
             .WithReference(infrastructure.Cache).WaitFor(infrastructure.Cache)
             .WithReference(infrastructure.Bus).WaitFor(infrastructure.Bus)
             .WithReference(infrastructure.Identity).WaitFor(infrastructure.Identity)
+            .WithGridCoreAuthentication(infrastructure.Identity)
             // MinIO is a plain container, so it is passed as configuration rather than a connection string.
             .WithEnvironment("MinIO__Endpoint", infrastructure.ObjectStore.GetEndpoint("api"))
             .WithEnvironment("MinIO__AccessKey", infrastructure.ObjectStoreAccessKey)
             .WithEnvironment("MinIO__SecretKey", infrastructure.ObjectStoreSecretKey)
             .WaitFor(infrastructure.ObjectStore)
             .WithHttpHealthCheck(HealthEndpointPath);
+    }
+
+    /// <summary>
+    /// Points the host at the Keycloak realm. Configuration only — the host uses plain OIDC bearer
+    /// authentication, so another provider is a change of these values and nothing else. The issuer
+    /// is the same URL the browser uses, so tokens minted for the SPA validate on the API.
+    /// </summary>
+    private static IResourceBuilder<ProjectResource> WithGridCoreAuthentication(
+        this IResourceBuilder<ProjectResource> webHost,
+        IResourceBuilder<KeycloakResource> identity)
+    {
+        var realmUrl = ReferenceExpression.Create(
+            $"{identity.GetEndpoint(IdentityEndpointName)}/realms/{InfrastructureComposition.IdentityRealmName}");
+
+        return webHost
+            .WithEnvironment("Authentication__Authority", realmUrl)
+            .WithEnvironment("Authentication__Audience", InfrastructureComposition.IdentityApiClientId)
+            // Keycloak is served over plain HTTP on the developer's loopback interface.
+            .WithEnvironment("Authentication__RequireHttpsMetadata", "false");
     }
 
     /// <summary>

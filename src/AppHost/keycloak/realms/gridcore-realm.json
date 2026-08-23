@@ -1,0 +1,268 @@
+{
+  "realm": "gridcore",
+  "displayName": "GridCore Utility ERP",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 3600,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "Administrator",
+        "description": "Full access, including user and permission administration.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "CustomerService",
+        "description": "Front office: customers, service accounts, taking payments.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Billing",
+        "description": "Meter-to-cash: readings, rates, bill generation and adjustments.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Finance",
+        "description": "General ledger, AR/AP, journal posting.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Warehouse",
+        "description": "Stock, warehouses, goods receipt.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Technician",
+        "description": "Field crew: executes work orders, updates assets and meters.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Supervisor",
+        "description": "Schedules and assigns work, approves field work.",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "Manager",
+        "description": "Oversight: reads everything, approves adjustments and purchases.",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "gridcore-api",
+      "name": "GridCore API",
+      "description": "Audience of every GridCore access token. Validates tokens; never initiates a flow.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    },
+    {
+      "clientId": "gridcore-web",
+      "name": "GridCore Web",
+      "description": "React SPA. Authorization code + PKCE; direct access grants stay on so the RBAC checks can fetch a token with curl.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:5173",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://127.0.0.1:5173/*"
+      },
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "gridcore-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "gridcore-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "administrator@gridcore.test",
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Administrator"
+      ]
+    },
+    {
+      "username": "customer-service",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "customer-service@gridcore.test",
+      "firstName": "Carla",
+      "lastName": "Service",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "CustomerService"
+      ]
+    },
+    {
+      "username": "billing",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "billing@gridcore.test",
+      "firstName": "Ben",
+      "lastName": "Biller",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Billing"
+      ]
+    },
+    {
+      "username": "finance",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "finance@gridcore.test",
+      "firstName": "Fay",
+      "lastName": "Ledger",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Finance"
+      ]
+    },
+    {
+      "username": "warehouse",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "warehouse@gridcore.test",
+      "firstName": "Wes",
+      "lastName": "Store",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Warehouse"
+      ]
+    },
+    {
+      "username": "technician",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "technician@gridcore.test",
+      "firstName": "Tom",
+      "lastName": "Field",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Technician"
+      ]
+    },
+    {
+      "username": "supervisor",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "supervisor@gridcore.test",
+      "firstName": "Sam",
+      "lastName": "Crew",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Supervisor"
+      ]
+    },
+    {
+      "username": "manager",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "manager@gridcore.test",
+      "firstName": "Mia",
+      "lastName": "Ops",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Dev!Passw0rd",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Manager"
+      ]
+    }
+  ]
+}

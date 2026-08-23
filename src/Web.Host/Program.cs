@@ -7,6 +7,7 @@ using GridCore.Modules.Metering;
 using GridCore.Modules.Payments;
 using GridCore.Modules.WorkOrders;
 using GridCore.Platform.Modules;
+using GridCore.Platform.Security;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,10 +16,17 @@ builder.AddServiceDefaults();
 
 // Backing services are supplied by the Aspire AppHost; each client integration also
 // registers a health check, which is what /health aggregates. Names match the AppHost
-// resource names. Keycloak (WP-0.3) and MinIO (later) are wired by their own packages.
+// resource names. MinIO (later) is wired by its own package.
 builder.AddNpgsqlDataSource("gridcore");
 builder.AddRedisClient("redis");
 builder.AddRabbitMQClient("rabbitmq");
+
+// OIDC bearer auth + permission-based authorization. Authority/audience come from the
+// Authentication section, which the AppHost points at the Keycloak realm.
+builder.Services.AddGridCoreSecurity(builder.Configuration);
+
+// RFC 7807 bodies for the framework's own 401/403/404 responses, per CONVENTIONS.md.
+builder.Services.AddProblemDetails();
 
 var modules = builder.Services.AddModules(
     builder.Configuration,
@@ -33,9 +41,15 @@ var modules = builder.Services.AddModules(
 
 var app = builder.Build();
 
-// /health (aggregate) and /alive (liveness).
+app.UseStatusCodePages();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+// /health (aggregate) and /alive (liveness). Anonymous — Aspire probes them without a token.
 app.MapDefaultEndpoints();
 
+app.MapMeEndpoints();
 app.MapModules(modules);
 
 app.Run();

@@ -4,8 +4,8 @@
 
 ## Current position
 - **Phase:** 0 — Foundation
-- **Current WP:** WP-0.3 (Auth + RBAC, 8 roles) **[SENSITIVE]**
-- **Current branch:** feat/wp-0.2-aspire-infra (WP-0.2 complete, awaiting squash-merge)
+- **Current WP:** WP-0.4 (Audit + approvals + platform)
+- **Current branch:** feat/wp-0.3-auth-rbac (WP-0.3 complete, awaiting squash-merge)
 - **Last tag:** —
 
 ## Platform versions (law — see ARCHITECTURE.md)
@@ -17,11 +17,14 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 ## In flight / carry-over
 - `docs/design/reference-dashboard.png` (canonical UI reference named by DESIGN.md) is **missing** — needed before WP-0.6.
 - `web/` React app not created yet — the fast loop's `npm --prefix web run test` line is inert until WP-0.6, and the AppHost skips its Vite dev-server resource while the directory is absent (WP-0.6 creates `web/`; nothing else to wire).
-- **Docker is not reachable from this WSL distro** ("could not be found in this WSL 2 distro — activate WSL integration in Docker Desktop"), so `aspire run` could not be executed during WP-0.2. The composition was verified instead by generating the Aspire manifest and by the fast-tier model tests. Enable Docker Desktop WSL integration before the manual verification steps.
+- Docker **is** reachable now (WSL integration enabled), and WP-0.3 was verified live with `aspire run`: all resources green, `/health` 200, all eight roles logging in, `/api/me/admin-probe` 200 for Administrator and 403 for the other seven.
 - The Aspire **CLI is 13.4.6** while the SDK/packages are **13.5.2** — run `aspire update` (STATUS says at gates) before the Phase 0 gate.
-- `Web.Host` now requires AppHost-supplied connection strings (`gridcore`, `redis`, `rabbitmq`) to start; the gate-tier `WebApplicationFactory` boot (WP-0.7) must supply them from the shared Testcontainer.
+- `Web.Host` now requires AppHost-supplied connection strings (`gridcore`, `redis`, `rabbitmq`) to start, **and** `Authentication:Authority` + `Authentication:Audience` (it throws a named `InvalidOperationException` without them); the gate-tier `WebApplicationFactory` boot (WP-0.7) must supply the connection strings from the shared Testcontainer and stub the authority.
 - `/health` is mapped by `MapDefaultEndpoints()` in **Development only** (Aspire's default, for the security reasons in aka.ms/aspire/healthchecks). If the demo deploy needs it exposed, that is WP-5.4.
-- Keycloak runs with `--import-realm` and a data volume but **no realm yet** — WP-0.3 owns the realm, the 8 roles, test users and the OIDC wiring in `Web.Host`.
+- The Keycloak realm lives at `src/AppHost/keycloak/realms/gridcore-realm.json` and is imported **in Development only** (it carries eight test users, password `Dev!Passw0rd`). Keycloak imports a realm once into its data volume: after editing that file, `docker volume rm` the keycloak volume or the change is ignored. **WP-5.1 owes a production realm** — same roles and clients, real users, no default passwords — since nothing is imported outside Development.
+- The host is now **secure by default**: a fallback policy requires an authenticated caller, so every new module endpoint needs `.RequirePermission(...)` (or a deliberate `.AllowAnonymous()`). Add new permissions to `Platform/Security/Permissions.cs` and grant them in `RolePermissionMap` — nowhere else.
+- Aspire resolves Keycloak's `http` endpoint to an **https** proxy URL (`https://localhost:<port>/realms/gridcore`), so that is the issuer the SPA must use in WP-0.6; using a different host for login than for token validation would break issuer matching.
+- WP-0.4 (audit) should write entries against `ClaimsPrincipal.UserId()` / `UserName()` from `Platform/Security/GridCorePrincipal.cs` rather than reading claims directly.
 - MinIO is up as a container with `MinIO__Endpoint/AccessKey/SecretKey` handed to the host, but **no client is wired** — whichever WP first stores a document owns that.
 - Aspire project templates were installed locally via `dotnet new install Aspire.ProjectTemplates` (13.5.2); CI must do the same or vendor the AppHost SDK — WP-0.7.
 - New unit-test projects must be added to `tests/UnitTests.slnf` **and** `GridCore.slnx` or the fast loop silently skips them.
@@ -31,7 +34,7 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 ### Phase 0 — Foundation
 - [x] WP-0.1 Skeleton + docs
 - [x] WP-0.2 Aspire + infra
-- [ ] WP-0.3 Auth + RBAC (8 roles)
+- [x] WP-0.3 Auth + RBAC (8 roles)
 - [ ] WP-0.4 Audit + approvals
 - [ ] WP-0.5 Bus + outbox + Finance seam
 - [ ] WP-0.6 React shell
