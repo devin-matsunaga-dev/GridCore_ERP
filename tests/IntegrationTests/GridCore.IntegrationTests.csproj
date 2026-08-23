@@ -4,6 +4,12 @@
     <ProjectReference Include="../../src/Web.Host/GridCore.Web.Host.csproj" />
   </ItemGroup>
 
+  <!-- Gate tier only: containers never appear in the fast loop. -->
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.RabbitMq" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

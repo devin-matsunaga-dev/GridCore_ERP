@@ -13,6 +13,11 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
+  <ItemGroup Label="Testing (gate tier only — Testcontainers)">
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.RabbitMq" Version="4.14.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Aspire / service defaults">
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.8.0" />
@@ -40,6 +45,17 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <!--
+    Messaging: MassTransit is pinned to the 8.x line because 8.x is the last Apache-2.0 release —
+    9.x moved to a commercial licence (licenses.nuget.org shows massient.com/license). 8.5.10 ships
+    a first-class net10.0 target, so staying free costs nothing. NEVER bump this to 9.x.
+  -->
+  <ItemGroup Label="Messaging (MassTransit 8.x — Apache-2.0; see DECISIONS.md)">
+    <PackageVersion Include="MassTransit" Version="8.5.10" />
+    <PackageVersion Include="MassTransit.RabbitMQ" Version="8.5.10" />
+    <PackageVersion Include="MassTransit.EntityFrameworkCore" Version="8.5.10" />
   </ItemGroup>
 
   <ItemGroup Label="Aspire client integrations (Web.Host)">

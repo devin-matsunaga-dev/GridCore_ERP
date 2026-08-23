@@ -1,13 +1,16 @@
 using GridCore.Platform.Approvals;
 using GridCore.Platform.Audit;
+using GridCore.Platform.Messaging;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Platform.Data;
 
 /// <summary>
-/// The platform's own schema: the audit trail and the approval queue. Modules own their schemas the
-/// same way and never read this one directly — <see cref="IAuditLog"/> and
-/// <see cref="IApprovalService"/> are the seams.
+/// The platform's own schema: the audit trail, the approval queue, the transactional outbox and the
+/// consumer dedupe table. Modules own their schemas the same way and never read this one directly —
+/// <see cref="IAuditLog"/>, <see cref="IApprovalService"/>, <see cref="IEventPublisher"/> and
+/// <see cref="IMessageDeduplicator"/> are the seams.
 /// </summary>
 public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> options) : DbContext(options)
 {
@@ -25,6 +28,9 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
 
     /// <summary>Approval requests, pending and decided.</summary>
     public DbSet<ApprovalRequest> ApprovalRequests => Set<ApprovalRequest>();
+
+    /// <summary>Events each consumer has already handled — the dedupe helper's memory.</summary>
+    public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
 
     /// <inheritdoc />
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -51,6 +57,15 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
 
         modelBuilder.HasDefaultSchema(SchemaName);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PlatformDbContext).Assembly);
+
+        // MassTransit's outbox and inbox tables live in the platform schema alongside everything
+        // else the platform owns, which is what lets a publish share a transaction with the write
+        // that caused it. Only the table names are restated in snake_case per CONVENTIONS.md; the
+        // columns keep the library's names because the library queries its own model, and renaming
+        // them buys nothing but a migration to get wrong.
+        modelBuilder.AddInboxStateEntity(entity => entity.ToTable("inbox_state"));
+        modelBuilder.AddOutboxMessageEntity(entity => entity.ToTable("outbox_message"));
+        modelBuilder.AddOutboxStateEntity(entity => entity.ToTable("outbox_state"));
 
         // The relational model targets Postgres. The fast test tier runs the same model on SQLite,
         // which has no jsonb, so the column type is relaxed rather than duplicating the model.

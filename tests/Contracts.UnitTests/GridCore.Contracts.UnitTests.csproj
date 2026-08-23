@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Modules/Finance/GridCore.Modules.Finance.csproj" />
     <ProjectReference Include="../../src/Contracts/GridCore.Contracts.csproj" />
   </ItemGroup>
 

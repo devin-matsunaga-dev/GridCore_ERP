@@ -7,6 +7,7 @@ using GridCore.Modules.Metering;
 using GridCore.Modules.Payments;
 using GridCore.Modules.WorkOrders;
 using GridCore.Platform;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Security;
 
@@ -42,6 +43,10 @@ var modules = builder.Services.AddModules(
     new WorkOrdersModule(),
     new InventoryModule(),
     new FinanceModule());
+
+// The bus is configured after the modules on purpose: AddGridCoreMessaging reads back the
+// consumers they registered, so the composition stays explicit and nothing is assembly-scanned.
+builder.Services.AddGridCoreMessaging(builder.Configuration);
 
 var app = builder.Build();
 

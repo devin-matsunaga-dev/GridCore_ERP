@@ -54,8 +54,9 @@ Production swaps an implementation via DI config only — no domain code changes
 ## Communication & data
 
 - In-process: direct service interfaces.
-- Cross-module async: MassTransit + RabbitMQ via **transactional outbox** (never publish directly). Consumers idempotent (Platform dedupe helper).
+- Cross-module async: MassTransit + RabbitMQ via **transactional outbox** (never publish directly). Consumers idempotent (Platform dedupe helper). Modules publish through `IEventPublisher` and consume by deriving `IdempotentConsumer<TEvent>` — neither takes a dependency on MassTransit.
 - PostgreSQL, schema-per-module. Money = `decimal` everywhere, never float. Ledger entries are append-only.
+- **One connection, one transaction per scope.** Every module context is registered with `AddGridCoreDbContext<T>` on the scope's shared connection, and a write wraps itself in `IUnitOfWork.ExecuteAsync`. That is what lets a module's write, its audit entry and its outbox row — three different contexts, three different schemas — commit together; invariants 1 and 2 are otherwise unenforceable.
 - Redis: cache + rate-limit + SignalR backplane (dashboards).
 - MinIO: document/report storage.
 

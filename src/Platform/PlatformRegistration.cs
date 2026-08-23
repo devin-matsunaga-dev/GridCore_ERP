@@ -1,6 +1,7 @@
 using GridCore.Platform.Approvals;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Notifications;
 using GridCore.Platform.Scheduling;
 using GridCore.Platform.Security;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 
 namespace GridCore.Platform;
 
@@ -63,8 +65,12 @@ public static class PlatformRegistration
                 + "set ConnectionStrings__" + options.ConnectionStringName + " to run the host on its own.");
         }
 
-        services.AddDbContext<PlatformDbContext>(builder => builder.UseNpgsql(
-            connectionString,
+        // One connection per scope, shared by every module's context, so a write in a module's
+        // schema and the audit entry and outbox row in the platform's commit in one transaction.
+        services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(new NpgsqlConnection(connectionString)));
+
+        services.AddGridCoreDbContext<PlatformDbContext>((builder, connection) => builder.UseNpgsql(
+            connection,
             npgsql => npgsql.MigrationsHistoryTable(
                 PlatformDbContext.MigrationsHistoryTable,
                 PlatformDbContext.SchemaName)));
@@ -74,6 +80,8 @@ public static class PlatformRegistration
         services.TryAddScoped<ICurrentUser, HttpContextCurrentUser>();
         services.TryAddScoped<IAuditLog, AuditLog>();
         services.TryAddScoped<IApprovalService, ApprovalService>();
+        services.TryAddScoped<IMessageDeduplicator, MessageDeduplicator>();
+        services.TryAddScoped<IdempotentEventHandler>();
         services.TryAddSingleton<INotificationSender, LoggingNotificationSender>();
         services.AddHostedService<ScheduledJobRunner>();
 

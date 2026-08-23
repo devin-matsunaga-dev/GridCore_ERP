@@ -28,10 +28,10 @@ docs/
 - Errors: RFC 7807 ProblemDetails. 400 validation / 401-403 auth / 404 / 409 workflow conflict.
 - DTOs are records; never expose EF entities. Validation via FluentValidation at the edge.
 - IDs `Guid` v7. **Money `decimal`** (never double/float); centralize rounding in one helper.
-- EF: `IEntityTypeConfiguration` classes, snake_case tables, migrations `WPxy_Desc`.
+- EF: `IEntityTypeConfiguration` classes, snake_case tables, migrations `WPxy_Desc`. Register a module context with `AddGridCoreDbContext<T>` (never plain `AddDbContext`) and wrap every write in `IUnitOfWork.ExecuteAsync` — a context on its own connection cannot share a transaction with the audit trail or the outbox.
 
 ## Events / Finance
-- Events past-tense in `Contracts` (`BillIssued`, `PaymentApproved`, `GoodsReceived`). Records with EventId, OccurredAt, ids + facts. Consumers idempotent.
+- Events past-tense in `Contracts` (`BillIssued`, `PaymentApproved`, `GoodsReceived`). Records with EventId, OccurredAt, ids + facts, built by a static `For(...)` that stamps a Guid v7 EventId from OccurredAt. Publish with `IEventPublisher`; consume by deriving `IdempotentConsumer<TEvent>` and giving it a stable `ConsumerName` (never renamed — the name is the dedupe key).
 - Journal posting lives only in Finance, triggered by events. Every posting balanced; assert it in code (throw if debits≠credits).
 
 ## React

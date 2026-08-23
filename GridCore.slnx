@@ -50,6 +50,9 @@
   <Folder Name="/tests/Billing.UnitTests/">
     <Project Path="tests/Billing.UnitTests/GridCore.Modules.Billing.UnitTests.csproj" />
   </Folder>
+  <Folder Name="/tests/Contracts.UnitTests/">
+    <Project Path="tests/Contracts.UnitTests/GridCore.Contracts.UnitTests.csproj" />
+  </Folder>
   <Folder Name="/tests/Customers.UnitTests/">
     <Project Path="tests/Customers.UnitTests/GridCore.Modules.Customers.UnitTests.csproj" />
   </Folder>
