@@ -5,7 +5,7 @@
 ## Current position
 - **Phase:** 0 — Foundation
 - **Current WP:** WP-0.8 (Reference data + demo seeder) → then the Phase 0 gate
-- **Current branch:** feat/wp-0.7-ci-test-harness (WP-0.7 complete, awaiting squash-merge; **not pushed** — owner pushes)
+- **Current branch:** feat/wp-0.7-ci-test-harness (WP-0.7 complete, pushed, **CI green**; awaiting squash-merge)
 - **Last tag:** —
 
 ## Platform versions (law — see ARCHITECTURE.md)
@@ -15,7 +15,7 @@
 FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integration (shared Testcontainer + Respawn) and E2E run at gates only. See CONVENTIONS.md ⚡ section.
 
 ## In flight / carry-over
-- **CI is live (WP-0.7)** — `.github/workflows/ci.yml`, three jobs: `dotnet-unit` and `web` in parallel on every push/PR, `integration` behind both. `.github/workflows/release.yml` builds and pushes the host image to GHCR on a `v*` tag only. `.github/dependabot.yml` watches nuget, npm and github-actions. **Nothing has been pushed yet, so no CI run has been observed** — the first push to `origin` is what proves the pipeline green.
+- **CI is live and verified green (WP-0.7)** — `.github/workflows/ci.yml`, three jobs: `dotnet-unit` and `web` in parallel on every push/PR, `integration` behind both. `.github/workflows/release.yml` builds and pushes the host image to GHCR on a `v*` tag only. `.github/dependabot.yml` watches nuget, npm and github-actions. All three CI jobs passed on the first push of `feat/wp-0.7-ci-test-harness`. The **release workflow is still unproven** — no `v*` tag exists yet, so the GHCR push path first runs at the Phase 0 gate (`v0.1-phase0`); if it fails there, the likely causes are package-write permission on the repo or the image name's lowercasing.
 - Node is pinned in **`web/.nvmrc`** (24) and CI reads the version from that file. Change the Node version there, not in the workflow.
 - **`tests/Build.UnitTests` is new** — fast tests that assert on the repo's own build/CI configuration. It is what now catches a unit-test project missing from `tests/UnitTests.slnf`, a `--maxcpucount:1` creeping back into CI, a MassTransit 9.x bump, and a `lint` script that stopped linting. Adding a workflow flag that one of these forbids will fail the fast loop, by design.
 - **The linter is `oxlint`, not ESLint** (`web/.oxlintrc.json`; `npm run lint` = `oxlint && tsc -b --noEmit`). ESLint is *impossible* here: `typescript@7` is the native compiler and its npm package exports only `{ version, versionMajorMinor }` — no `createSourceFile`/`createProgram` — so typescript-eslint cannot parse a file and ESLint cannot read `.ts`/`.tsx` at all. Revisit if typescript-eslint ships TS 7 support. The type check stays alongside it because oxlint is type-unaware.
