@@ -4,10 +4,13 @@
     <ProjectReference Include="../../src/Web.Host/GridCore.Web.Host.csproj" />
   </ItemGroup>
 
-  <!-- Gate tier only: containers never appear in the fast loop. -->
+  <!-- Gate tier only: containers and a booted host never appear in the fast loop. -->
   <ItemGroup>
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.RabbitMq" />
+    <PackageReference Include="Testcontainers.Redis" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
 
   <ItemGroup>

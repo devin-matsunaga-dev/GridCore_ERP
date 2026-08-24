@@ -17,7 +17,7 @@ export function greetingFor(now: Date): string {
 /** First name for the greeting; an email falls back to the part before the `@`. */
 export function firstNameOf(displayName: string): string {
   const base = displayName.includes('@') ? displayName.split('@')[0]! : displayName;
-  return base.split(/[\s._-]+/).filter(Boolean)[0] ?? base;
+  return base.split(/[\s._-]+/).find(Boolean) ?? base;
 }
 
 /** Detects the platform so the search hint shows ⌘K on macOS and Ctrl K elsewhere. */

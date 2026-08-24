@@ -17,7 +17,7 @@ describe('Sparkline', () => {
     const points = pointsOf(container);
 
     expect(points).toHaveLength(4);
-    expect(points.map(([x]) => x)).toEqual([...points.map(([x]) => x)].sort((a, b) => a - b));
+    expect(points.map(([x]) => x)).toEqual(points.map(([x]) => x).toSorted((a, b) => a - b));
   });
 
   it('draws a rising series upwards — smaller y is higher on screen', () => {

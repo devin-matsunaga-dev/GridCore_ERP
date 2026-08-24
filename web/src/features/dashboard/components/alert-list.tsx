@@ -5,13 +5,17 @@ import { cn } from '@/lib/utils';
 import type { Alert } from '../demo-data';
 
 /** Icon in a soft severity circle + title + subtext + relative time. */
-export function AlertList({ alerts, now = new Date() }: { alerts: Alert[]; now?: Date }) {
+export function AlertList({ alerts, now }: { alerts: Alert[]; now?: Date }) {
+  // Defaulted here rather than in the parameter list: the reference instant for relative times is
+  // meant to be re-read on every render, and a `new` expression in a default prop hides that.
+  const reference = now ?? new Date();
+
   return (
     <ul className="divide-border divide-y">
       {alerts.map((alert) => {
         const tone = statusToneClasses(alert.tone);
         const Icon = alert.tone === 'success' ? CircleCheck : TriangleAlert;
-        const occurredAt = new Date(now.getTime() - alert.minutesAgo * 60_000);
+        const occurredAt = new Date(reference.getTime() - alert.minutesAgo * 60_000);
 
         return (
           <li key={alert.id} className="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0">

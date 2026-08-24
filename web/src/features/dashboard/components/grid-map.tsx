@@ -51,9 +51,9 @@ export function GridMap({ className }: { className?: string }) {
           />
         );
       })}
-      {nodes.map((node, index) => (
+      {nodes.map((node) => (
         <circle
-          key={index}
+          key={`${node.x}-${node.y}`}
           cx={node.x}
           cy={node.y}
           r="4.5"

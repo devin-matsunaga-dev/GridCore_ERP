@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc -b --noEmit",
-    "test": "vitest"
+    "lint": "oxlint && tsc -b --noEmit",
+    "test": "vitest",
+    "lint:fix": "oxlint --fix"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -40,10 +41,14 @@
     "@vitejs/plugin-react": "^6.1.0",
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^30.0.1",
+    "oxlint": "1.79.0",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

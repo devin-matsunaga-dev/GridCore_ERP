@@ -112,16 +112,16 @@ function toDate(value: Date | string): Date {
 
 /**
  * Round axis ticks from 0 to a value at or above `max`, so a chart reads $0/$1M/$2M/$3M rather
- * than the raw data's maximum. Returns `count` + 1 values including both ends.
+ * than the raw data's maximum. Returns `steps` + 1 values including both ends.
  */
-export function niceTicks(max: number, count = 3): number[] {
+export function niceTicks(max: number, steps = 3): number[] {
   if (!Number.isFinite(max) || max <= 0) return [0];
 
-  const rawStep = max / count;
+  const rawStep = max / steps;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   const step =
     [1, 2, 2.5, 4, 5, 8, 10].map((m) => m * magnitude).find((candidate) => candidate >= rawStep) ??
     magnitude * 10;
 
-  return Array.from({ length: count + 1 }, (_, index) => index * step);
+  return Array.from({ length: steps + 1 }, (_, index) => index * step);
 }

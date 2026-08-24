@@ -1,0 +1,100 @@
+name: Release
+
+# Images are built and pushed only for a version tag, never for a branch push: a tag is the only
+# thing in this repo that names a build someone might deploy.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version to publish the image as (e.g. v0.1-phase0)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+  REGISTRY: ghcr.io
+
+jobs:
+  image:
+    name: Build and push the host image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # The version is the tag with its leading "v" stripped, and the owner is lowercased because
+      # a container repository may not contain uppercase characters while a GitHub login may.
+      - name: Resolve image coordinates
+        id: coordinates
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "repository=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/gridcore-web-host" >> "$GITHUB_OUTPUT"
+
+      # The .NET SDK's own container publishing reads the credentials docker login writes, so no
+      # Dockerfile is checked in and there is nothing to keep in step with the csproj.
+      - name: Log in to GHCR
+        run: echo '${{ secrets.GITHUB_TOKEN }}' | docker login ${{ env.REGISTRY }} -u '${{ github.actor }}' --password-stdin
+
+      - name: Publish image
+        run: >
+          dotnet publish src/Web.Host/GridCore.Web.Host.csproj
+          -c Release
+          --os linux --arch x64
+          /t:PublishContainer
+          -p:ContainerRegistry=${{ env.REGISTRY }}
+          -p:ContainerRepository=${{ steps.coordinates.outputs.repository }}
+          -p:ContainerImageTags='"${{ steps.coordinates.outputs.version }};latest"'
+
+      - name: Summarise
+        run: |
+          echo "Pushed \`${{ env.REGISTRY }}/${{ steps.coordinates.outputs.repository }}:${{ steps.coordinates.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  bundle:
+    name: Build the SPA bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # The SPA is still served by the Vite dev server under the AppHost. Its production hosting —
+      # a static image behind the reverse proxy — is WP-5.1/WP-5.2's to design, so the tag keeps
+      # the built bundle as an artifact rather than inventing a container those WPs would replace.
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: web/dist

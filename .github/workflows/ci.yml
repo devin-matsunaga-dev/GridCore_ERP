@@ -1,0 +1,148 @@
+name: CI
+
+# The tier split from CONVENTIONS.md ⚡, expressed as jobs: the two fast jobs run in parallel on
+# every push and pull request and are expected to finish in well under a minute of work each; the
+# container-backed gate suite runs after them, so a broken build never occupies a Docker runner.
+on:
+  push:
+    branches: [main]
+    tags-ignore: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  # Inside the workspace so actions/cache can restore it.
+  NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
+jobs:
+  dotnet-unit:
+    name: .NET unit tests (fast)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore GridCore.slnx
+
+      # Build once. Everything after this is --no-build --no-restore, which is what keeps the loop
+      # in seconds (CONVENTIONS.md rule B). The whole solution is built, not just the test
+      # projects, so warnings-as-errors covers the AppHost and the host as well.
+      - name: Build
+        run: dotnet build GridCore.slnx -c Debug --no-restore
+
+      # tests/UnitTests.slnf lists only the *.UnitTests projects. RunConfiguration.MaxCpuCount=0
+      # means "one worker per core" — the deliberate opposite of the --maxcpucount:1 that made the
+      # previous project's suite take hours. Never add that flag here.
+      - name: Unit tests
+        run: >
+          dotnet test tests/UnitTests.slnf -c Debug --no-build --no-restore
+          --filter "Category!=Integration"
+          --logger "trx;LogFileName=unit.trx"
+          --logger "console;verbosity=minimal"
+          --results-directory artifacts/test-results
+          -- RunConfiguration.MaxCpuCount=0
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-unit-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+  web:
+    name: Web (lint, unit tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci` (not `npm install`): the lockfile is the input, and a lockfile that has drifted
+      # from package.json should fail CI rather than be quietly rewritten.
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test -- --run
+
+      # Proves the production bundle still compiles; nothing is published from CI.
+      - name: Build
+        run: npm run build
+
+  integration:
+    name: Integration tests (gate tier)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Gate tier only runs once the fast tiers are green: containers are the expensive part of the
+    # pipeline and there is nothing to learn from them when the code does not compile.
+    needs: [dotnet-unit, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Build
+        run: dotnet build tests/IntegrationTests/GridCore.IntegrationTests.csproj -c Debug
+
+      # One Postgres, one RabbitMQ and one Redis container for the whole run (GateFixture); the
+      # ubuntu-latest runner ships the Docker daemon Testcontainers talks to.
+      - name: Integration tests
+        run: >
+          dotnet test tests/IntegrationTests/GridCore.IntegrationTests.csproj -c Debug
+          --no-build --no-restore
+          --filter "Category=Integration"
+          --logger "trx;LogFileName=integration.trx"
+          --logger "console;verbosity=minimal"
+          --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          path: artifacts/test-results
+          if-no-files-found: ignore

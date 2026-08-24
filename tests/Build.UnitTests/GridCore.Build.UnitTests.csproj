@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Guards the build and CI configuration itself. It references no product project on purpose:
+    everything under test is a checked-in file, read from the repository root at run time, so this
+    stays the cheapest project in the fast tier.
+  -->
+
+</Project>

@@ -52,7 +52,7 @@ If a behavior can be tested without infrastructure, it MUST be — pushing logic
 
 ## Hard rules that keep it fast
 
-**A. Never force single-core.** The regression command must run tests in **parallel**. Do NOT use `--maxcpucount:1` (this alone made the old suite crawl). xUnit runs test classes in parallel by default — keep it that way; only opt specific integration collections out of parallelism.
+**A. Never force single-core.** The regression command must run tests in **parallel**. Do NOT use `--maxcpucount:1` (this alone made the old suite crawl). xUnit runs test classes in parallel by default — keep it that way; only opt specific integration collections out of parallelism. xUnit's default only parallelises *within* an assembly, though: VSTest runs test assemblies one after another unless told otherwise, so the commands below pass `-- RunConfiguration.MaxCpuCount=0` (0 = one worker per core). `tests/Build.UnitTests` fails the loop if that flag is ever dropped from CI or replaced with a 1.
 
 **B. Don't rebuild on every test run.** Build once, then test with `--no-build --no-restore` in the loop. The regression command below does this.
 
@@ -71,14 +71,14 @@ If a behavior can be tested without infrastructure, it MUST be — pushing logic
 **Per-package loop (fast — this is what SESSION.md's report uses, runs in seconds):**
 ```bash
 dotnet build -c Debug && \
-dotnet test tests/UnitTests.slnf -c Debug --no-build --filter "Category!=Integration" && \
+dotnet test tests/UnitTests.slnf -c Debug --no-build --filter "Category!=Integration" -- RunConfiguration.MaxCpuCount=0 && \
 npm --prefix web run test -- --run
 ```
 
 **Phase-gate (full — unit + integration + E2E):**
 ```bash
 dotnet build -c Debug && \
-dotnet test GridCore.slnx -c Debug --no-build && \
+dotnet test GridCore.slnx -c Debug --no-build -- RunConfiguration.MaxCpuCount=0 && \
 npm --prefix web run test -- --run
 ```
 `tests/UnitTests.slnf` is a solution filter listing only the `*.UnitTests` projects — `dotnet test` takes exactly one project/solution argument, so a `tests/*UnitTests` glob does not work. Add every new unit-test project to that filter. The `npm` line applies once `web/` exists (WP-0.6).

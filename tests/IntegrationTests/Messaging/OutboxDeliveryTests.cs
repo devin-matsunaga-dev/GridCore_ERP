@@ -1,5 +1,5 @@
 using GridCore.Contracts.Events;
-using GridCore.Modules.Finance.Features.EventSeam;
+using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
 using MassTransit.EntityFrameworkCoreIntegration;
@@ -13,18 +13,27 @@ namespace GridCore.IntegrationTests.Messaging;
 /// caller's transaction and reaches the consumer only after that transaction commits. The unit
 /// tier proves the dedupe and the accounting; only this needs Postgres and a broker.
 /// </summary>
-[Collection(OutboxCollection.Name)]
+[Collection(GateCollection.Name)]
 [Trait("Category", "Integration")]
-public sealed class OutboxDeliveryTests(OutboxFixture fixture)
+public sealed class OutboxDeliveryTests(GateFixture fixture) : IAsyncLifetime
 {
     private static readonly TimeSpan DeliveryTimeout = TimeSpan.FromSeconds(30);
+
+    /// <inheritdoc />
+    public Task InitializeAsync() => fixture.ResetAsync();
+
+    /// <inheritdoc />
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task An_event_is_staged_in_the_outbox_and_delivered_after_the_commit()
     {
         var issued = NewBillIssued(184.55m);
 
-        await using (var scope = fixture.Host.Services.CreateAsyncScope())
+        // Taken before the publish: a delivery that beats the assertion is still observed.
+        var delivered = fixture.Postings.NextAsync();
+
+        await using (var scope = fixture.CreateScope())
         {
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
             var publisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
@@ -41,7 +50,7 @@ public sealed class OutboxDeliveryTests(OutboxFixture fixture)
             });
         }
 
-        var posting = await fixture.Recorder.Delivered.WaitAsync(DeliveryTimeout);
+        var posting = await delivered.WaitAsync(DeliveryTimeout);
 
         Assert.Equal(issued.EventId, posting.EventId);
         Assert.Equal("B-000123", posting.Reference);
@@ -53,9 +62,8 @@ public sealed class OutboxDeliveryTests(OutboxFixture fixture)
     public async Task Nothing_is_published_for_work_that_rolled_back()
     {
         var abandoned = NewBillIssued(99m);
-        var before = fixture.Recorder.Count;
 
-        await using var scope = fixture.Host.Services.CreateAsyncScope();
+        await using var scope = fixture.CreateScope();
 
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var publisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
@@ -73,7 +81,7 @@ public sealed class OutboxDeliveryTests(OutboxFixture fixture)
         await Task.Delay(TimeSpan.FromSeconds(2));
 
         Assert.Equal(0, await fixture.CountOutboxMessagesForAsync(abandoned.EventId));
-        Assert.Equal(before, fixture.Recorder.Count);
+        Assert.DoesNotContain(fixture.Postings.Postings, posting => posting.EventId == abandoned.EventId);
     }
 
     private static BillIssued NewBillIssued(decimal amount) => BillIssued.For(
