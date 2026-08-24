@@ -2,7 +2,7 @@ using GridCore.Modules.Customers.Features.Shared;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;
 
-/// <summary>The account-number and location-code format, on its own.</summary>
+/// <summary>The customer, location and service-account number formats, on their own.</summary>
 public class RegistryNumbersTests
 {
     [Theory]
@@ -11,6 +11,19 @@ public class RegistryNumbersTests
     [InlineData(999_999, "C-999999")]
     public void An_ordinal_is_padded_to_a_fixed_width(long ordinal, string expected) =>
         Assert.Equal(expected, RegistryNumbers.Format(RegistryNumbers.CustomerPrefix, ordinal));
+
+    [Fact]
+    public void The_three_series_are_told_apart_by_their_prefix() =>
+        // Each registry issues its own series, so the same ordinal appears in all three. A number
+        // that lost its prefix would parse as another registry's row.
+        Assert.Equal(
+            ["C-000001", "L-000001", "A-000001"],
+            new[] { RegistryNumbers.CustomerPrefix, RegistryNumbers.ServiceLocationPrefix, RegistryNumbers.ServiceAccountPrefix }
+                .Select(prefix => RegistryNumbers.Format(prefix, 1)));
+
+    [Fact]
+    public void A_number_from_another_series_does_not_continue_this_one() =>
+        Assert.Null(RegistryNumbers.OrdinalOf(RegistryNumbers.ServiceAccountPrefix, "C-000042"));
 
     [Fact]
     public void A_series_past_the_padding_grows_rather_than_wrapping() =>

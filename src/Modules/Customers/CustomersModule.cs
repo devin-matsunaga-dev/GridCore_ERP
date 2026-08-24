@@ -1,5 +1,6 @@
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Seeding;
@@ -33,6 +34,7 @@ public sealed class CustomersModule : IModule
         services.AddScoped<IRegistryNumberGenerator, SequentialRegistryNumberGenerator>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
+        services.AddScoped<IServiceAccountService, ServiceAccountService>();
 
         // Edge validation. Registered one by one rather than by scanning, so the composition stays
         // greppable — the same reason Program.cs lists the modules.
@@ -40,10 +42,13 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<UpdateCustomerRequest, UpdateCustomerRequestValidator>();
         services.AddGridCoreValidator<ChangeCustomerStatusRequest, ChangeCustomerStatusRequestValidator>();
         services.AddGridCoreValidator<ServiceLocationRequest, ServiceLocationRequestValidator>();
+        services.AddGridCoreValidator<OpenServiceAccountRequest, OpenServiceAccountRequestValidator>();
+        services.AddGridCoreValidator<ServiceAccountTransitionRequest, ServiceAccountTransitionRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
         services.AddDemoSeeder<CustomersDemoSeeder>();
+        services.AddDemoSeeder<ServiceAccountsDemoSeeder>();
     }
 
     /// <inheritdoc />
@@ -53,5 +58,6 @@ public sealed class CustomersModule : IModule
 
         endpoints.MapCustomerEndpoints();
         endpoints.MapServiceLocationEndpoints();
+        endpoints.MapServiceAccountEndpoints();
     }
 }

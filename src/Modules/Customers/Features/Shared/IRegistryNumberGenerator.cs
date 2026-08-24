@@ -15,6 +15,9 @@ public interface IRegistryNumberGenerator
 
     /// <summary>The next unused service location code.</summary>
     Task<string> NextServiceLocationCodeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The next unused service account number.</summary>
+    Task<string> NextServiceAccountNumberAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -55,6 +58,16 @@ public sealed class SequentialRegistryNumberGenerator(CustomersDbContext databas
                 .Where(location => location.LocationCode.StartsWith(RegistryNumbers.ServiceLocationPrefix))
                 .OrderByDescending(location => location.LocationCode)
                 .Select(location => location.LocationCode),
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string> NextServiceAccountNumberAsync(CancellationToken cancellationToken = default) =>
+        NextAsync(
+            RegistryNumbers.ServiceAccountPrefix,
+            database.ServiceAccounts
+                .Where(account => account.AccountNumber.StartsWith(RegistryNumbers.ServiceAccountPrefix))
+                .OrderByDescending(account => account.AccountNumber)
+                .Select(account => account.AccountNumber),
             cancellationToken);
 
     private static async Task<string> NextAsync(string prefix, IQueryable<string> issued, CancellationToken cancellationToken)

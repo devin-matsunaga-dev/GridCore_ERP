@@ -23,6 +23,14 @@ public sealed class ServiceLocationNotFoundException(Guid id)
     public Guid ServiceLocationId { get; } = id;
 }
 
+/// <summary>No service account with that id. Surfaces as 404.</summary>
+public sealed class ServiceAccountNotFoundException(Guid id)
+    : RegistryException($"Service account '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid ServiceAccountId { get; } = id;
+}
+
 /// <summary>
 /// The registry is not in a state that allows what was asked — an illegal status transition, or a
 /// number already taken. Surfaces as 409.

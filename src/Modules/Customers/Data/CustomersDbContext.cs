@@ -1,12 +1,13 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Customers.Data;
 
 /// <summary>
-/// The Customers module's schema: the customer registry and the premises they are served at.
-/// WP-1.2 adds the service accounts that connect the two.
+/// The Customers module's schema: the customer registry, the premises they are served at, and the
+/// service accounts that join the two.
 /// </summary>
 public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> options) : DbContext(options)
 {
@@ -18,6 +19,15 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();
+
+    /// <summary>A customer taking service at a premise — the join, with its own lifecycle.</summary>
+    public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
+
+    /// <summary>
+    /// Every transition an account has been through. Exposed as a set of its own so the history of
+    /// one account can be read without loading the account, which is what the history endpoint does.
+    /// </summary>
+    public DbSet<ServiceAccountHistoryEntry> ServiceAccountHistory => Set<ServiceAccountHistoryEntry>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -71,7 +71,7 @@ public sealed class ServiceLocation
             Id = Guid.CreateVersion7(now),
             LocationCode = locationCode.Trim(),
             Address = address,
-            Description = Clean(description, DescriptionLength),
+            Description = RegistryText.Clean(description, DescriptionLength),
             IsActive = isActive,
             RegisteredAt = now,
         };
@@ -89,28 +89,11 @@ public sealed class ServiceLocation
         // overwrite why the premise was taken out of service.
         if (isActive != IsActive)
         {
-            StatusReason = Clean(statusReason, ReasonLength);
+            StatusReason = RegistryText.Clean(statusReason, ReasonLength);
         }
 
         Address = address;
-        Description = Clean(description, DescriptionLength);
+        Description = RegistryText.Clean(description, DescriptionLength);
         IsActive = isActive;
-    }
-
-    private static string? Clean(string? value, int maxLength)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        var trimmed = value.Trim();
-
-        if (trimmed.Length is 0)
-        {
-            return null;
-        }
-
-        return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
     }
 }

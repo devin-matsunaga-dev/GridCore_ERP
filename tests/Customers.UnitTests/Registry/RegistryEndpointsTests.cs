@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Platform.Security;
 using GridCore.Platform.Validation;
@@ -21,6 +22,7 @@ public class RegistryEndpointsTests
         IEndpointRouteBuilder routes = WebApplication.CreateBuilder().Build();
         routes.MapCustomerEndpoints();
         routes.MapServiceLocationEndpoints();
+        routes.MapServiceAccountEndpoints();
 
         return [.. routes.DataSources.SelectMany(source => source.Endpoints).Cast<RouteEndpoint>()];
     }
@@ -38,6 +40,9 @@ public class RegistryEndpointsTests
     [InlineData("/api/customers/{id:guid}", "GET")]
     [InlineData("/api/service-locations/", "GET")]
     [InlineData("/api/service-locations/{id:guid}", "GET")]
+    [InlineData("/api/service-accounts/", "GET")]
+    [InlineData("/api/service-accounts/{id:guid}", "GET")]
+    [InlineData("/api/service-accounts/{id:guid}/history", "GET")]
     public void Reading_the_registry_is_gated_on_the_read_permission(string route, string method) =>
         Assert.Equal(
             PermissionPolicy.NameFor(Permissions.Customers.Read),
@@ -49,6 +54,10 @@ public class RegistryEndpointsTests
     [InlineData("/api/customers/{id:guid}/status", "POST")]
     [InlineData("/api/service-locations/", "POST")]
     [InlineData("/api/service-locations/{id:guid}", "PUT")]
+    [InlineData("/api/service-accounts/", "POST")]
+    [InlineData("/api/service-accounts/{id:guid}/start", "POST")]
+    [InlineData("/api/service-accounts/{id:guid}/stop", "POST")]
+    [InlineData("/api/service-accounts/{id:guid}/close", "POST")]
     public void Writing_to_the_registry_is_gated_on_the_write_permission(string route, string method) =>
         // Failure path in the shape the routing layer enforces it: a caller holding only
         // customers.read is refused with 403 on every one of these, without the handler running.
@@ -72,9 +81,10 @@ public class RegistryEndpointsTests
             permission => Assert.True(permission is not null && Permissions.All.Contains(permission)));
 
     [Fact]
-    public void A_premise_cannot_be_deleted() =>
-        // Deactivation is the only way out, deliberately: meters, work orders and bills reference a
-        // location, and a deleted row would take their context with it.
+    public void Nothing_in_the_registry_can_be_deleted() =>
+        // Deactivation and closure are the only ways out, deliberately: meters, work orders and
+        // bills reference a location and an account, and a deleted row would take their context
+        // with it — along with the service history somebody may have to answer for.
         Assert.DoesNotContain(
             MappedEndpoints(),
             endpoint => endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains(HttpMethods.Delete));

@@ -1,5 +1,6 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;
@@ -14,6 +15,8 @@ public class RegistryValidatorTests
     private static readonly CreateCustomerRequestValidator CustomerRules = new();
     private static readonly ChangeCustomerStatusRequestValidator StatusRules = new();
     private static readonly ServiceLocationRequestValidator LocationRules = new();
+    private static readonly OpenServiceAccountRequestValidator OpenAccountRules = new();
+    private static readonly ServiceAccountTransitionRequestValidator TransitionRules = new();
 
     private static CreateCustomerRequest AValidCustomer() =>
         new("Sablan Family Residence", CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114", 75.00m);
@@ -100,4 +103,28 @@ public class RegistryValidatorTests
     [Fact]
     public void A_premise_with_no_address_at_all_is_rejected() =>
         Assert.Equal(["Address"], FailedFieldsOf(LocationRules, AValidLocation() with { Address = null! }));
+
+    [Fact]
+    public void Opening_an_account_needs_both_a_customer_and_a_premise() =>
+        Assert.Equal(
+            ["CustomerId", "ServiceLocationId"],
+            FailedFieldsOf(OpenAccountRules, new OpenServiceAccountRequest(Guid.Empty, Guid.Empty)));
+
+    [Fact]
+    public void A_complete_account_opening_passes() =>
+        Assert.True(OpenAccountRules
+            .Validate(new OpenServiceAccountRequest(Guid.CreateVersion7(), Guid.CreateVersion7(), "Requested at the counter"))
+            .IsValid);
+
+    [Fact]
+    public void A_transition_needs_nothing_but_a_reason_that_fits()
+    {
+        // Whether the move is legal depends on where the account is now, which the validator cannot
+        // see — that answer is a 409 from the aggregate, so an empty body is valid here.
+        Assert.True(TransitionRules.Validate(new ServiceAccountTransitionRequest()).IsValid);
+
+        Assert.Equal(
+            ["Reason"],
+            FailedFieldsOf(TransitionRules, new ServiceAccountTransitionRequest(new string('x', ServiceAccount.ReasonLength + 1))));
+    }
 }

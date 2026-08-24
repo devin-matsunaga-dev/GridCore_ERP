@@ -1,5 +1,6 @@
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Audit;
@@ -50,6 +51,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<IRegistryNumberGenerator, SequentialRegistryNumberGenerator>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
+        services.AddScoped<IServiceAccountService, ServiceAccountService>();
 
         _provider = services.BuildServiceProvider();
 
@@ -83,6 +85,14 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IServiceLocationService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the service account registry, in its own scope.</summary>
+    public Task<TResult> WithAccountsAsync<TResult>(Func<IServiceAccountService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IServiceAccountService>()));
     }
 
     /// <summary>Reads back what a test wrote, on a context outside any unit of work.</summary>

@@ -36,6 +36,18 @@ public static class AuditActions
 
     /// <summary>A service location's details were changed.</summary>
     public const string ServiceLocationUpdated = "service_location.update";
+
+    /// <summary>A service account was opened, joining a customer to a premise.</summary>
+    public const string ServiceAccountOpened = "service_account.open";
+
+    /// <summary>Service was energised on an account.</summary>
+    public const string ServiceAccountStarted = "service_account.start";
+
+    /// <summary>Service was cut on an account, leaving it open.</summary>
+    public const string ServiceAccountStopped = "service_account.stop";
+
+    /// <summary>A service account was closed for good.</summary>
+    public const string ServiceAccountClosed = "service_account.close";
 }
 
 /// <summary>Canonical audit entity-type names, prefixed with the owning module's schema.</summary>
@@ -52,4 +64,7 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";
+
+    /// <summary>A row of <c>customers.service_accounts</c>.</summary>
+    public const string ServiceAccount = "customers.service_account";
 }

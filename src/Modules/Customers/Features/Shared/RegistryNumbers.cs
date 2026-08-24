@@ -20,6 +20,9 @@ public static class RegistryNumbers
     /// <summary>Prefix of a service location code.</summary>
     public const string ServiceLocationPrefix = "L-";
 
+    /// <summary>Prefix of a service account number.</summary>
+    public const string ServiceAccountPrefix = "A-";
+
     /// <summary>Digits an ordinal is padded to. It grows past this rather than wrapping.</summary>
     public const int Digits = 6;
 

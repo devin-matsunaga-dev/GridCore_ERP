@@ -1,6 +1,7 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Seeding;
@@ -60,6 +61,7 @@ public class CustomersModuleTests
 
         Assert.True(Registers<ICustomerService>(services));
         Assert.True(Registers<IServiceLocationService>(services));
+        Assert.True(Registers<IServiceAccountService>(services));
         Assert.True(Registers<IRegistryNumberGenerator>(services));
     }
 
@@ -74,18 +76,21 @@ public class CustomersModuleTests
         Assert.True(Registers<IValidator<UpdateCustomerRequest>>(services));
         Assert.True(Registers<IValidator<ChangeCustomerStatusRequest>>(services));
         Assert.True(Registers<IValidator<ServiceLocationRequest>>(services));
+        Assert.True(Registers<IValidator<OpenServiceAccountRequest>>(services));
+        Assert.True(Registers<IValidator<ServiceAccountTransitionRequest>>(services));
     }
 
-    [Fact]
-    public void The_demo_seeder_is_registered_unconditionally()
+    [Theory]
+    [InlineData(typeof(CustomersDemoSeeder))]
+    [InlineData(typeof(ServiceAccountsDemoSeeder))]
+    public void The_demo_seeders_are_registered_unconditionally(Type seeder)
     {
-        // Registering it does not run it: DemoSeedRunner is only registered where DemoSeedGuard
+        // Registering one does not run it: DemoSeedRunner is only registered where DemoSeedGuard
         // allows it, so the environment rule stays in one place rather than in every module.
         var services = ComposedModule();
 
         Assert.Contains(
             services,
-            descriptor => descriptor.ServiceType == typeof(IDemoSeeder)
-                && descriptor.ImplementationType == typeof(CustomersDemoSeeder));
+            descriptor => descriptor.ServiceType == typeof(IDemoSeeder) && descriptor.ImplementationType == seeder);
     }
 }

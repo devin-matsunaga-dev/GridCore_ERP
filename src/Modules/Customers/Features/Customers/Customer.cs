@@ -99,11 +99,11 @@ public sealed class Customer
         return new Customer
         {
             Id = Guid.CreateVersion7(now),
-            AccountNumber = Trim(accountNumber, RegistryNumbers.MaxLength)!,
-            Name = Trim(name, NameLength)!,
-            ContactName = Trim(contactName, NameLength),
-            Email = Trim(email, EmailLength),
-            Phone = Trim(phone, PhoneLength),
+            AccountNumber = RegistryText.Clean(accountNumber, RegistryNumbers.MaxLength)!,
+            Name = RegistryText.Clean(name, NameLength)!,
+            ContactName = RegistryText.Clean(contactName, NameLength),
+            Email = RegistryText.Clean(email, EmailLength),
+            Phone = RegistryText.Clean(phone, PhoneLength),
             Class = customerClass,
             Status = status,
             DepositHeld = Deposit(depositHeld),
@@ -132,11 +132,11 @@ public sealed class Customer
         // exactly as it was rather than half-applied.
         var deposit = Deposit(depositHeld);
 
-        Name = Trim(name, NameLength)!;
+        Name = RegistryText.Clean(name, NameLength)!;
         Class = customerClass;
-        ContactName = Trim(contactName, NameLength);
-        Email = Trim(email, EmailLength);
-        Phone = Trim(phone, PhoneLength);
+        ContactName = RegistryText.Clean(contactName, NameLength);
+        Email = RegistryText.Clean(email, EmailLength);
+        Phone = RegistryText.Clean(phone, PhoneLength);
         DepositHeld = deposit;
     }
 
@@ -156,7 +156,7 @@ public sealed class Customer
 
         Status = status;
         StatusChangedAt = now;
-        StatusReason = Trim(reason, ReasonLength);
+        StatusReason = RegistryText.Clean(reason, ReasonLength);
     }
 
     private static decimal Deposit(decimal amount)
@@ -194,22 +194,5 @@ public sealed class Customer
         {
             throw new RegistryValidationException($"'{value}' is not a {typeof(TEnum).Name} GridCore declares.");
         }
-    }
-
-    private static string? Trim(string? value, int maxLength)
-    {
-        if (value is null)
-        {
-            return null;
-        }
-
-        var trimmed = value.Trim();
-
-        if (trimmed.Length is 0)
-        {
-            return null;
-        }
-
-        return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
     }
 }

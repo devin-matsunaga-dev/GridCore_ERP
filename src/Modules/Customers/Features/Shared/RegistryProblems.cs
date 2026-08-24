@@ -27,6 +27,10 @@ public static class RegistryProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service location not found");
         }
+        catch (ServiceAccountNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Service account not found");
+        }
         catch (RegistryWorkflowException exception)
         {
             return Problem(exception, StatusCodes.Status409Conflict, "The registry is not in that state");
@@ -44,6 +48,10 @@ public static class RegistryProblems
     /// <summary>A 404 for a location id that matched nothing.</summary>
     public static IResult ServiceLocationNotFound(Guid id) =>
         Problem(new ServiceLocationNotFoundException(id), StatusCodes.Status404NotFound, "Service location not found");
+
+    /// <summary>A 404 for an account id that matched nothing.</summary>
+    public static IResult ServiceAccountNotFound(Guid id) =>
+        Problem(new ServiceAccountNotFoundException(id), StatusCodes.Status404NotFound, "Service account not found");
 
     private static IResult Problem(RegistryException exception, int statusCode, string title) =>
         Results.Problem(new ProblemDetails
