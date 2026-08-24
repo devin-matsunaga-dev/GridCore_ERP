@@ -60,6 +60,15 @@ const toneByStatus: Record<string, StatusTone> = {
   fair: 'warning',
   poor: 'danger',
   critical: 'danger',
+  // Meter lifecycle (WP-2.1). Installed is the only status a bill may be raised from, so it reads
+  // as the good one; Faulty is still on the wall and still measuring badly, which is the danger.
+  // `instore` is the meter's own word and deliberately not `instock`, which above already means
+  // "this catalogue line is stocked and above its reorder level" — the same collision the low-stock
+  // pill avoided by never being labelled "Low".
+  instore: 'neutral',
+  installed: 'success',
+  faulty: 'danger',
+  removed: 'neutral',
   // Stock movements: what arrived, what left, and the one that moved a count with nothing moving.
   receipt: 'success',
   issue: 'info',

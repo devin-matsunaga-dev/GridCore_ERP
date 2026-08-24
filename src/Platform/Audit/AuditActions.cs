@@ -49,6 +49,21 @@ public static class AuditActions
     /// <summary>A service account was closed for good.</summary>
     public const string ServiceAccountClosed = "service_account.close";
 
+    /// <summary>A meter was entered in the meter register.</summary>
+    public const string MeterRegistered = "meter.create";
+
+    /// <summary>A meter's device details were corrected.</summary>
+    public const string MeterUpdated = "meter.update";
+
+    /// <summary>A meter was fitted at a service location.</summary>
+    public const string MeterInstalled = "meter.install";
+
+    /// <summary>A meter was taken off a service location.</summary>
+    public const string MeterRemoved = "meter.remove";
+
+    /// <summary>A meter moved through its lifecycle without changing where it is.</summary>
+    public const string MeterStatusChanged = "meter.status";
+
     /// <summary>A utility asset was entered in the register.</summary>
     public const string AssetRegistered = "asset.create";
 
@@ -97,6 +112,13 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>customers.service_accounts</c>.</summary>
     public const string ServiceAccount = "customers.service_account";
+
+    /// <summary>
+    /// A row of <c>metering.meters</c>. History lines are audited against the meter they belong to
+    /// rather than as entities of their own: the line is already append-only, and the question an
+    /// auditor asks is "what happened to this meter".
+    /// </summary>
+    public const string Meter = "metering.meter";
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";

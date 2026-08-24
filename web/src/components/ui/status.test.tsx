@@ -86,4 +86,24 @@ describe('the registry lifecycles (WP-1.5)', () => {
     expect(toneFor('Low')).toBe('success');
     expect(toneFor('Low stock')).toBe('danger');
   });
+
+  it('tones the meter lifecycle (WP-2.1)', () => {
+    expect(toneFor('In store')).toBe('neutral');
+    expect(toneFor('Installed')).toBe('success');
+    expect(toneFor('Faulty')).toBe('danger');
+    expect(toneFor('Removed')).toBe('neutral');
+    expect(toneFor('Retired')).toBe('neutral');
+  });
+
+  /**
+   * Failure path of the same family as the low-stock one, and why a meter is "In store" rather than
+   * "In stock": Inventory already uses that phrase for a catalogue line that is stocked and above
+   * its reorder level, which is a good thing. A meter sitting in a store is neither good nor bad,
+   * and one key cannot mean both — the map is shared by every screen in the app.
+   */
+  it('keeps a meter in a store distinct from a catalogue line being in stock', () => {
+    expect(toneFor('In stock')).toBe('success');
+    expect(toneFor('In store')).toBe('neutral');
+    expect(toneFor('In stock')).not.toBe(toneFor('In store'));
+  });
 });

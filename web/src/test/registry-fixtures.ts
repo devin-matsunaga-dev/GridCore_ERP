@@ -1,6 +1,7 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
 import type { Customer, ServiceAccount, ServiceLocation } from '@/api/customers';
 import type { StockItem, StockMovement, Warehouse } from '@/api/inventory';
+import type { Meter } from '@/api/metering';
 
 /**
  * Rows shaped exactly as the host returns them, for the registry screen tests. Deliberately in the
@@ -43,6 +44,39 @@ export function serviceLocation(overrides: Partial<ServiceLocation> = {}): Servi
     isActive: true,
     statusReason: null,
     registeredAt: '2026-02-11T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * A meter as the register returns it. Fitted at a premise, never at an account — the meter carries
+ * a `serviceLocationId` and no account of any kind, which is the whole shape of WP-2.1.
+ */
+export function meter(overrides: Partial<Meter> = {}): Meter {
+  return {
+    id: '0192f000-0000-7000-8000-000000000401',
+    meterNumber: 'MTR-000001',
+    serialNumber: 'SEN-4471102',
+    type: 'SinglePhase',
+    manufacturer: 'Sensus',
+    model: 'iConA',
+    status: 'Installed',
+    isFitted: true,
+    allowedTransitions: ['Faulty', 'Removed'],
+    allowedStatusChanges: ['Faulty'],
+    serviceLocationId: serviceLocation().id,
+    serviceLocation: {
+      id: serviceLocation().id,
+      locationCode: serviceLocation().locationCode,
+      formattedAddress: serviceLocation().formattedAddress,
+      isActive: true,
+    },
+    installedAt: '2026-02-14T00:30:00+00:00',
+    installationReading: 14820.5,
+    registeredAt: '2026-02-10T00:30:00+00:00',
+    statusChangedAt: '2026-02-14T00:30:00+00:00',
+    statusReason: 'New connection, meter set on the north wall',
+    history: [],
     ...overrides,
   };
 }

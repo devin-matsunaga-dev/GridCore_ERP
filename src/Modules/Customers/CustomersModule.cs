@@ -1,3 +1,4 @@
+using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -35,6 +36,11 @@ public sealed class CustomersModule : IModule
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
+
+        // The premise registry as the rest of GridCore reads it (WP-2.1). Registered against the
+        // Contracts interface rather than the concrete type: this is the one place that knows both
+        // halves, and a consumer never learns a customers schema exists.
+        services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
 
         // Edge validation. Registered one by one rather than by scanning, so the composition stays
         // greppable — the same reason Program.cs lists the modules.

@@ -6,6 +6,7 @@ import {
   useServiceLocationsByIds,
   type ServiceAccount,
 } from '@/api/customers';
+import { useMetersByLocationIds } from '@/api/metering';
 import { DetailList, orNotRecorded } from '@/components/registry/detail-list';
 import { EmptyState } from '@/components/registry/empty-state';
 import { ErrorState } from '@/components/registry/error-state';
@@ -22,17 +23,23 @@ import { ServiceAccountCard } from './components/service-account-card';
  * it is served at and its own history. A page rather than a drawer, because this is the view that
  * WP-2.x hangs meters, bills and payments off — the fan-out is the point.
  *
- * Three modules' worth of rows are assembled here by *service*, never by a join: the customer, the
- * accounts filtered by `?customerId=`, and each premise fetched by id.
+ * Four modules' worth of rows are assembled here by *service*, never by a join: the customer, the
+ * accounts filtered by `?customerId=`, each premise fetched by id, and the meter measuring each of
+ * those premises.
+ *
+ * The meter hangs off the **premise**, not off the account (WP-2.1, owner's call). A meter is
+ * fitted to a place — the meter board stays when the occupant moves out — so the premise is what
+ * relates the two, and the account number beside a meter is context this page assembles rather
+ * than anything the meter itself carries.
  */
 export function CustomerDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
 
   const customer = useCustomer(customerId);
   const accounts = useServiceAccounts({ customerId }, Boolean(customerId));
-  const locations = useServiceLocationsByIds(
-    (accounts.data ?? []).map((account) => account.serviceLocationId),
-  );
+  const premiseIds = (accounts.data ?? []).map((account) => account.serviceLocationId);
+  const locations = useServiceLocationsByIds(premiseIds);
+  const meters = useMetersByLocationIds(premiseIds);
 
   if (customer.isError) {
     return (
@@ -169,6 +176,8 @@ export function CustomerDetailPage() {
                 account={account}
                 location={locations.byId.get(account.serviceLocationId)}
                 isLocationPending={locations.isPending}
+                meter={meters.byLocationId.get(account.serviceLocationId)}
+                isMeterPending={meters.isPending}
               />
             ))}
           </div>

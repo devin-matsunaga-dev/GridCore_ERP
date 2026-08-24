@@ -1,3 +1,4 @@
+using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -52,6 +53,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
+        services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
 
         _provider = services.BuildServiceProvider();
 
@@ -93,6 +95,17 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IServiceAccountService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the premise registry <i>as another module sees it</i> —
+    /// the cross-module read seam, resolved from the container exactly as Metering resolves it.
+    /// </summary>
+    public Task<TResult> WithDirectoryAsync<TResult>(Func<IServiceLocationDirectory, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IServiceLocationDirectory>()));
     }
 
     /// <summary>Reads back what a test wrote, on a context outside any unit of work.</summary>

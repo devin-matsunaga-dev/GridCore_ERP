@@ -4,6 +4,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Finance.Data;
 using GridCore.Modules.Finance.Features.EventSeam;
 using GridCore.Modules.Inventory.Data;
+using GridCore.Modules.Metering.Data;
 using GridCore.Platform.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -201,6 +202,7 @@ public sealed class GateFixture : IAsyncLifetime
         yield return new FinanceDbContext(Options<FinanceDbContext>(FinanceDbContext.SchemaName));
         yield return new BillingDbContext(Options<BillingDbContext>(BillingDbContext.SchemaName));
         yield return new CustomersDbContext(Options<CustomersDbContext>(CustomersDbContext.SchemaName));
+        yield return new MeteringDbContext(Options<MeteringDbContext>(MeteringDbContext.SchemaName));
         yield return new InventoryDbContext(Options<InventoryDbContext>(InventoryDbContext.SchemaName));
         yield return new AssetsDbContext(Options<AssetsDbContext>(AssetsDbContext.SchemaName));
     }

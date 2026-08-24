@@ -1,26 +1,36 @@
 import { MapPin } from 'lucide-react';
 import { Link } from 'react-router';
 import type { ServiceAccount, ServiceLocation } from '@/api/customers';
+import type { Meter } from '@/api/metering';
 import { DetailList, orNotRecorded } from '@/components/registry/detail-list';
 import { Timeline, type TimelineEntry } from '@/components/registry/timeline';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusPill, toneFor } from '@/components/ui/status';
 import { formatDate, formatLabel } from '@/lib/format';
+import { ServiceAccountMeter } from './service-account-meter';
 
 /**
- * One service account on the 360° page: the premise it is served at, the dates that answer "since
- * when is this live", and the account's own history — which is the service record an agent reads
- * back on the phone, not the audit trail.
+ * One service account on the 360° page: the premise it is served at, the meter measuring that
+ * premise, the dates that answer "since when is this live", and the account's own history — which
+ * is the service record an agent reads back on the phone, not the audit trail.
+ *
+ * Three modules meet on this card and nothing here joins them. The account comes from Customers,
+ * the premise is fetched by id, and the meter is looked up **by premise** — a meter is fitted to a
+ * place and holds no account, so the premise is what relates the two (WP-2.1, owner's call).
  */
 export function ServiceAccountCard({
   account,
   location,
   isLocationPending,
+  meter,
+  isMeterPending,
 }: {
   account: ServiceAccount;
   location: ServiceLocation | undefined;
   isLocationPending: boolean;
+  meter: Meter | undefined;
+  isMeterPending: boolean;
 }) {
   return (
     <Card>
@@ -58,6 +68,8 @@ export function ServiceAccountCard({
             { label: 'Reason', value: orNotRecorded(account.statusReason) },
           ]}
         />
+
+        <ServiceAccountMeter meter={meter} isPending={isMeterPending} />
 
         {/*
           The transitions the aggregate would allow, shown as the disabled/enabled buttons DESIGN.md
