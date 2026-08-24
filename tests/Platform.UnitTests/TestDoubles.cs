@@ -1,5 +1,7 @@
 using GridCore.Platform.Notifications;
 using GridCore.Platform.Security;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 
 namespace GridCore.Platform.UnitTests;
 
@@ -36,4 +38,19 @@ public sealed class FakeClock(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => _now;
 
     public void Advance(TimeSpan by) => _now = _now.Add(by);
+}
+
+/// <summary>
+/// A host environment a test names, so the Development-only rules (migrations at startup, demo
+/// seeding) can be exercised from both sides without a host.
+/// </summary>
+public sealed class FakeHostEnvironment(string environmentName) : IHostEnvironment
+{
+    public string EnvironmentName { get; set; } = environmentName;
+
+    public string ApplicationName { get; set; } = "GridCore.Tests";
+
+    public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+
+    public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
 }

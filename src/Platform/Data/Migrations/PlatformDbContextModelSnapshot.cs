@@ -210,6 +210,23 @@ namespace GridCore.Platform.Data.Migrations
                     b.ToTable("processed_messages", "platform");
                 });
 
+            modelBuilder.Entity("GridCore.Platform.Seeding.DemoSeedRecord", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("SeededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("seeded_at");
+
+                    b.HasKey("Name")
+                        .HasName("pk_demo_seed_records");
+
+                    b.ToTable("demo_seed_records", "platform");
+                });
+
             modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
                 {
                     b.Property<long>("Id")

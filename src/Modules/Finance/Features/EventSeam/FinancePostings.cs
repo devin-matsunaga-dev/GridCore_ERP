@@ -1,4 +1,5 @@
 using GridCore.Contracts.Events;
+using GridCore.Modules.Finance.Features.ChartOfAccounts;
 
 namespace GridCore.Modules.Finance.Features.EventSeam;
 

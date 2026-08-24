@@ -1,5 +1,8 @@
+using GridCore.Modules.Inventory.Data;
+using GridCore.Platform.Data;
 using GridCore.Platform.Modules;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,11 +15,17 @@ public sealed class InventoryModule : IModule
 
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
-        // Registered per feature slice from WP-1.x onwards.
+        ArgumentNullException.ThrowIfNull(services);
+
+        // The inventory schema, on the scope's shared connection so a stock movement, its audit
+        // entry and the GoodsReceived outbox row commit together. It carries the warehouses
+        // (WP-0.8); items and stock levels are WP-1.4's.
+        services.AddGridCoreDbContext<InventoryDbContext>((builder, connection) =>
+            builder.UseNpgsql(connection, GridCoreDbContexts.InSchema(InventoryDbContext.SchemaName)));
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
-        // Endpoints are mapped per feature slice from WP-1.x onwards.
+        // Endpoints are mapped per feature slice from WP-1.4 onwards.
     }
 }

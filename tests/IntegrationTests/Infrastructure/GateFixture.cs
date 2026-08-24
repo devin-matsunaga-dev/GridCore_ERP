@@ -1,6 +1,11 @@
+using GridCore.Modules.Billing.Data;
+using GridCore.Modules.Finance.Data;
 using GridCore.Modules.Finance.Features.EventSeam;
+using GridCore.Modules.Inventory.Data;
 using GridCore.Platform.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
@@ -168,20 +173,39 @@ public sealed class GateFixture : IAsyncLifetime
         services.AddScoped<IJournalPostingSeam, RecordingJournalPostingSeam>();
     }
 
+    /// <summary>
+    /// Applies every schema's migrations before the host starts, so the outbox delivery service
+    /// never polls a table that does not exist yet. Each context is created directly rather than
+    /// resolved from the host, because the host is what these migrations are for.
+    /// </summary>
     private async Task MigrateAsync()
     {
-        var options = new DbContextOptionsBuilder<PlatformDbContext>()
-            .UseNpgsql(
-                PostgresConnectionString,
-                npgsql => npgsql.MigrationsHistoryTable(
-                    PlatformDbContext.MigrationsHistoryTable,
-                    PlatformDbContext.SchemaName))
-            .Options;
-
-        await using var context = new PlatformDbContext(options);
-
-        await context.Database.MigrateAsync();
+        foreach (var context in CreateContexts())
+        {
+            await using (context)
+            {
+                await context.Database.MigrateAsync();
+            }
+        }
     }
+
+    /// <summary>
+    /// One instance of every GridCore context, on the shared container. Adding a module's context
+    /// here is the one thing a new persisted schema owes the gate tier.
+    /// </summary>
+    private IEnumerable<DbContext> CreateContexts()
+    {
+        yield return new PlatformDbContext(Options<PlatformDbContext>(PlatformDbContext.SchemaName));
+        yield return new FinanceDbContext(Options<FinanceDbContext>(FinanceDbContext.SchemaName));
+        yield return new BillingDbContext(Options<BillingDbContext>(BillingDbContext.SchemaName));
+        yield return new InventoryDbContext(Options<InventoryDbContext>(InventoryDbContext.SchemaName));
+    }
+
+    private DbContextOptions<TContext> Options<TContext>(string schema)
+        where TContext : DbContext =>
+        new DbContextOptionsBuilder<TContext>()
+            .UseNpgsql(PostgresConnectionString, GridCoreDbContexts.InSchema(schema))
+            .Options;
 
     private async Task<Respawner> CreateRespawnerAsync()
     {
@@ -192,7 +216,12 @@ public sealed class GateFixture : IAsyncLifetime
         return await Respawner.CreateAsync(connection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
-            TablesToIgnore = [.. await MigrationHistoryTablesAsync(connection), .. MessagingTables],
+            TablesToIgnore =
+            [
+                .. await MigrationHistoryTablesAsync(connection),
+                .. MessagingTables,
+                .. ReferenceDataTables(),
+            ],
         });
     }
 
@@ -210,6 +239,34 @@ public sealed class GateFixture : IAsyncLifetime
         new(PlatformDbContext.SchemaName, "inbox_state"),
         new(PlatformDbContext.SchemaName, "processed_messages"),
     ];
+
+    /// <summary>
+    /// Tables whose rows a migration seeded — the chart of accounts, the rate plans, the warehouses.
+    /// </summary>
+    /// <remarks>
+    /// Truncating these would delete reference data that only a migration puts back, and the
+    /// migration has already been recorded as applied, so it never would: the second test in a run
+    /// would find an empty chart of accounts. They are discovered from each model's own seed data
+    /// rather than listed, so a module shipping reference data in a later WP is protected the day it
+    /// appears, with nothing here to remember to update.
+    /// </remarks>
+    private IEnumerable<Table> ReferenceDataTables()
+    {
+        foreach (var context in CreateContexts())
+        {
+            using (context)
+            {
+                // The design-time model, not the runtime one: seed data is configuration EF strips
+                // out of the read-optimised model a running context uses.
+                var model = context.GetService<IDesignTimeModel>().Model;
+
+                foreach (var entity in model.GetEntityTypes().Where(entity => entity.GetSeedData().Any()))
+                {
+                    yield return new Table(entity.GetSchema() ?? model.GetDefaultSchema()!, entity.GetTableName()!);
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Every module's migrations-history table, discovered rather than listed. Truncating one would

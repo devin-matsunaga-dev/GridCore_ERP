@@ -18,6 +18,9 @@ public static class AuditActions
 
     /// <summary>An approval request was withdrawn by the person who raised it.</summary>
     public const string ApprovalCancelled = "approval.cancel";
+
+    /// <summary>A demo seeder wrote its dataset (Development only).</summary>
+    public const string DemoSeeded = "demo.seed";
 }
 
 /// <summary>Canonical audit entity-type names, prefixed with the owning module's schema.</summary>
@@ -25,4 +28,7 @@ public static class AuditEntityTypes
 {
     /// <summary>A row of <c>platform.approval_requests</c>.</summary>
     public const string ApprovalRequest = "platform.approval_request";
+
+    /// <summary>A row of <c>platform.demo_seed_records</c>.</summary>
+    public const string DemoSeedRecord = "platform.demo_seed_record";
 }

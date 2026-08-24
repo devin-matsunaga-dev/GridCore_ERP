@@ -10,6 +10,14 @@
 
   <!-- Modules reference Platform and Contracts only. A module NEVER references another module. -->
   <ItemGroup>
+    <!-- Design-time only: `dotnet ef migrations add` against this library. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../Platform/GridCore.Platform.csproj" />
     <ProjectReference Include="../../Contracts/GridCore.Contracts.csproj" />
   </ItemGroup>

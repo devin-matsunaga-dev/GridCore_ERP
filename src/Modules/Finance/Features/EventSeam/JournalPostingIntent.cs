@@ -1,28 +1,5 @@
 namespace GridCore.Modules.Finance.Features.EventSeam;
 
-/// <summary>
-/// Account codes the seam posts to. Placeholders: WP-0.8 ships the real chart of accounts by
-/// migration, and WP-2.6 replaces these constants with a lookup against it. They are named here so
-/// the seam produces a recognisable posting today rather than an untyped blob.
-/// </summary>
-public static class FinanceAccounts
-{
-    /// <summary>Cash at bank.</summary>
-    public const string Cash = "1000";
-
-    /// <summary>Accounts receivable — what customers owe.</summary>
-    public const string AccountsReceivable = "1100";
-
-    /// <summary>Inventory held in warehouses.</summary>
-    public const string Inventory = "1300";
-
-    /// <summary>Accounts payable — what we owe vendors.</summary>
-    public const string AccountsPayable = "2000";
-
-    /// <summary>Utility revenue.</summary>
-    public const string Revenue = "4000";
-}
-
 /// <summary>One side of a journal entry: an account and the amount debited or credited to it.</summary>
 /// <param name="AccountCode">The account posted to.</param>
 /// <param name="Debit">Amount debited. Money is <see langword="decimal"/>, never a float.</param>

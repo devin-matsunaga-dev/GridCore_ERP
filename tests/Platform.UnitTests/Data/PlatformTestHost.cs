@@ -1,5 +1,7 @@
+using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
+using GridCore.Platform.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -50,7 +52,16 @@ public sealed class PlatformTestHost : IDisposable
     private readonly SqliteConnection _connection;
     private readonly ServiceProvider _provider;
 
-    public PlatformTestHost(TimeProvider? clock = null)
+    /// <param name="clock">The clock the host uses; a <c>FakeClock</c> keeps tests off wall time.</param>
+    /// <param name="currentUser">Who is acting. Defaults to the system, as background work is.</param>
+    /// <param name="configure">
+    /// Extra registrations — a demo seeder, a replacement service — added before the provider is
+    /// built, so a test can compose the host it needs rather than the host growing a flag per test.
+    /// </param>
+    public PlatformTestHost(
+        TimeProvider? clock = null,
+        ICurrentUser? currentUser = null,
+        Action<IServiceCollection>? configure = null)
     {
         _connection = new SqliteConnection("Filename=:memory:");
         _connection.Open();
@@ -71,10 +82,20 @@ public sealed class PlatformTestHost : IDisposable
         services.AddScoped<IMessageDeduplicator, MessageDeduplicator>();
         services.AddScoped<IdempotentEventHandler>();
 
+        // Who is acting, and the audit trail attributed to them. Outside a request that is the
+        // system, exactly as it is for a scheduled job or a consumed message.
+        services.AddSingleton(currentUser ?? SystemUser.Instance);
+        services.AddScoped<IAuditLog, AuditLog>();
+
+        configure?.Invoke(services);
+
         _provider = services.BuildServiceProvider();
 
         CreateTables();
     }
+
+    /// <summary>The host's root provider, for a service that takes an <c>IServiceScopeFactory</c>.</summary>
+    public IServiceProvider Services => _provider;
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request or a message would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)

@@ -1,6 +1,7 @@
 using GridCore.Platform.Approvals;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Messaging;
+using GridCore.Platform.Seeding;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,7 +19,7 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
     public const string SchemaName = "platform";
 
     /// <summary>Table that records applied migrations, kept inside the platform schema.</summary>
-    public const string MigrationsHistoryTable = "__ef_migrations_history";
+    public const string MigrationsHistoryTable = GridCoreDbContexts.MigrationsHistoryTable;
 
     /// <summary>Column type used for JSON snapshots on Postgres; rewritten for other providers.</summary>
     public const string JsonColumnType = "jsonb";
@@ -31,6 +32,9 @@ public sealed class PlatformDbContext(DbContextOptions<PlatformDbContext> option
 
     /// <summary>Events each consumer has already handled — the dedupe helper's memory.</summary>
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
+
+    /// <summary>Which demo seeders have already run, so seeding a demo world twice is a no-op.</summary>
+    public DbSet<DemoSeedRecord> DemoSeedRecords => Set<DemoSeedRecord>();
 
     /// <inheritdoc />
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

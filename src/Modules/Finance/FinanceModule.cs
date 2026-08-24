@@ -1,7 +1,10 @@
+using GridCore.Modules.Finance.Data;
 using GridCore.Modules.Finance.Features.EventSeam;
+using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -16,6 +19,12 @@ public sealed class FinanceModule : IModule
     public void AddServices(IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        // The finance schema, on the scope's shared connection so a posting can commit in the same
+        // transaction as its audit entry. It carries the chart of accounts (WP-0.8); WP-2.6 adds
+        // the journal entries that post to it.
+        services.AddGridCoreDbContext<FinanceDbContext>((builder, connection) =>
+            builder.UseNpgsql(connection, GridCoreDbContexts.InSchema(FinanceDbContext.SchemaName)));
 
         // The event seam: Finance is downstream of Billing, Payments and Inventory and reacts to
         // their facts. The ledger behind the seam is WP-2.6's; the wiring is proven here.

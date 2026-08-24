@@ -4,6 +4,7 @@ using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Notifications;
 using GridCore.Platform.Scheduling;
+using GridCore.Platform.Seeding;
 using GridCore.Platform.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
@@ -30,6 +31,12 @@ public sealed class GridCorePlatformOptions
     /// elsewhere; a production deploy migrates as its own step.
     /// </summary>
     public bool? ApplyMigrationsAtStartup { get; set; }
+
+    /// <summary>
+    /// Whether to seed the demo world at startup. Defaults to on in Development and is ignored
+    /// everywhere else — see <see cref="DemoSeedGuard"/>: this setting can only turn seeding off.
+    /// </summary>
+    public bool? SeedDemoData { get; set; }
 }
 
 /// <summary>Host-side wiring for audit, approvals, notifications and the scheduler.</summary>
@@ -69,11 +76,8 @@ public static class PlatformRegistration
         // schema and the audit entry and outbox row in the platform's commit in one transaction.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(new NpgsqlConnection(connectionString)));
 
-        services.AddGridCoreDbContext<PlatformDbContext>((builder, connection) => builder.UseNpgsql(
-            connection,
-            npgsql => npgsql.MigrationsHistoryTable(
-                PlatformDbContext.MigrationsHistoryTable,
-                PlatformDbContext.SchemaName)));
+        services.AddGridCoreDbContext<PlatformDbContext>((builder, connection) =>
+            builder.UseNpgsql(connection, GridCoreDbContexts.InSchema(PlatformDbContext.SchemaName)));
 
         services.AddHttpContextAccessor();
         services.TryAddSingleton(TimeProvider.System);
@@ -87,8 +91,34 @@ public static class PlatformRegistration
 
         if (options.ApplyMigrationsAtStartup ?? environment.IsDevelopment())
         {
-            services.AddHostedService<PlatformDatabaseInitializer>();
+            services.AddHostedService<GridCoreDatabaseInitializer>();
         }
+
+        // After the initializer, deliberately: hosted services start in registration order, and a
+        // seeder that runs before its schema exists fails on exactly the fresh volume it is for.
+        if (DemoSeedGuard.IsAllowed(environment, options.SeedDemoData))
+        {
+            services.AddDemoSeeder<ApprovalQueueDemoSeeder>();
+            services.AddHostedService<DemoSeedRunner>();
+        }
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers a module's demo seeder. Resolved from the seeding scope, so it may take the
+    /// module's own <see cref="Microsoft.EntityFrameworkCore.DbContext"/> and services.
+    /// </summary>
+    /// <remarks>
+    /// Registering a seeder does not make it run: <see cref="DemoSeedRunner"/> is only registered
+    /// where <see cref="DemoSeedGuard"/> permits it, so a module may call this unconditionally.
+    /// </remarks>
+    public static IServiceCollection AddDemoSeeder<TSeeder>(this IServiceCollection services)
+        where TSeeder : class, IDemoSeeder
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddScoped<IDemoSeeder, TSeeder>();
 
         return services;
     }
