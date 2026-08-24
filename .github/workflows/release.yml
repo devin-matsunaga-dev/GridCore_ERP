@@ -94,7 +94,7 @@ jobs:
       # a static image behind the reverse proxy — is WP-5.1/WP-5.2's to design, so the tag keeps
       # the built bundle as an artifact rather than inventing a container those WPs would replace.
       - name: Upload bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-bundle
           path: web/dist
