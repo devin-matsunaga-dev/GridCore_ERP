@@ -5,6 +5,7 @@ using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
+using GridCore.Platform.Registry;
 using GridCore.Platform.Security;
 using Microsoft.EntityFrameworkCore;
 

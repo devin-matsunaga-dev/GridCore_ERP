@@ -1,5 +1,5 @@
 using GridCore.Modules.Customers.Data;
-using Microsoft.EntityFrameworkCore;
+using GridCore.Platform.Registry;
 
 namespace GridCore.Modules.Customers.Features.Shared;
 
@@ -24,56 +24,38 @@ public interface IRegistryNumberGenerator
 /// Continues each series from the highest number already issued, inside the caller's transaction.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Two registrations racing would read the same highest number and try to issue it twice. The
-/// unique index is what makes that safe: the loser's transaction is rejected and its caller gets a
-/// 409, so a duplicate account number is impossible rather than merely unlikely. That is the right
-/// trade for an MVP whose registrations are typed in by hand — a Postgres sequence would serialise
-/// the issue, at the cost of SQL the fast tier's SQLite cannot run, and swapping this
-/// implementation for one is a DI change with no domain code touched.
-/// </para>
-/// <para>
-/// The lookup is an <c>ORDER BY … DESC LIMIT 1</c> over the unique index rather than a
-/// <c>MAX</c> over a parsed substring, which works because <see cref="RegistryNumbers"/> pads to a
-/// fixed width: the lexical maximum and the numeric maximum are the same string.
-/// </para>
+/// Each series is one <see cref="RegistryNumberSeries.NextAsync"/> over this module's own column;
+/// the race and the ordering trade are documented there, because every registry shares them.
 /// </remarks>
 public sealed class SequentialRegistryNumberGenerator(CustomersDbContext database) : IRegistryNumberGenerator
 {
     /// <inheritdoc />
     public Task<string> NextCustomerAccountNumberAsync(CancellationToken cancellationToken = default) =>
-        NextAsync(
-            RegistryNumbers.CustomerPrefix,
+        RegistryNumberSeries.NextAsync(
+            CustomerNumbers.CustomerPrefix,
             database.Customers
-                .Where(customer => customer.AccountNumber.StartsWith(RegistryNumbers.CustomerPrefix))
+                .Where(customer => customer.AccountNumber.StartsWith(CustomerNumbers.CustomerPrefix))
                 .OrderByDescending(customer => customer.AccountNumber)
                 .Select(customer => customer.AccountNumber),
             cancellationToken);
 
     /// <inheritdoc />
     public Task<string> NextServiceLocationCodeAsync(CancellationToken cancellationToken = default) =>
-        NextAsync(
-            RegistryNumbers.ServiceLocationPrefix,
+        RegistryNumberSeries.NextAsync(
+            CustomerNumbers.ServiceLocationPrefix,
             database.ServiceLocations
-                .Where(location => location.LocationCode.StartsWith(RegistryNumbers.ServiceLocationPrefix))
+                .Where(location => location.LocationCode.StartsWith(CustomerNumbers.ServiceLocationPrefix))
                 .OrderByDescending(location => location.LocationCode)
                 .Select(location => location.LocationCode),
             cancellationToken);
 
     /// <inheritdoc />
     public Task<string> NextServiceAccountNumberAsync(CancellationToken cancellationToken = default) =>
-        NextAsync(
-            RegistryNumbers.ServiceAccountPrefix,
+        RegistryNumberSeries.NextAsync(
+            CustomerNumbers.ServiceAccountPrefix,
             database.ServiceAccounts
-                .Where(account => account.AccountNumber.StartsWith(RegistryNumbers.ServiceAccountPrefix))
+                .Where(account => account.AccountNumber.StartsWith(CustomerNumbers.ServiceAccountPrefix))
                 .OrderByDescending(account => account.AccountNumber)
                 .Select(account => account.AccountNumber),
             cancellationToken);
-
-    private static async Task<string> NextAsync(string prefix, IQueryable<string> issued, CancellationToken cancellationToken)
-    {
-        var highest = await issued.FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-
-        return RegistryNumbers.Format(prefix, (RegistryNumbers.OrdinalOf(prefix, highest) ?? 0) + 1);
-    }
 }

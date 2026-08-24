@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Platform.Registry;
 
 namespace GridCore.Modules.Customers.Features.Customers;
 

@@ -4,6 +4,7 @@ using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
 using GridCore.Platform.Data;
+using GridCore.Platform.Registry;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -65,11 +66,11 @@ public class CustomersDemoSeederTests
         // The series starts at one and has no gaps, so a customer registered after the demo world
         // continues it rather than colliding with it.
         Assert.Equal(
-            Enumerable.Range(1, customers.Count).Select(ordinal => RegistryNumbers.Format(RegistryNumbers.CustomerPrefix, ordinal)),
+            Enumerable.Range(1, customers.Count).Select(ordinal => RegistryNumbers.Format(CustomerNumbers.CustomerPrefix, ordinal)),
             customers.Select(customer => customer.AccountNumber));
 
         Assert.Equal(
-            Enumerable.Range(1, codes.Count).Select(ordinal => RegistryNumbers.Format(RegistryNumbers.ServiceLocationPrefix, ordinal)),
+            Enumerable.Range(1, codes.Count).Select(ordinal => RegistryNumbers.Format(CustomerNumbers.ServiceLocationPrefix, ordinal)),
             codes);
     }
 
@@ -85,7 +86,7 @@ public class CustomersDemoSeederTests
         var registered = await host.WithCustomersAsync(customers =>
             customers.RegisterAsync(new RegisterCustomerInput("Walk-in registration", CustomerClass.Residential)));
 
-        Assert.Equal(RegistryNumbers.Format(RegistryNumbers.CustomerPrefix, seeded.Count + 1), registered.AccountNumber);
+        Assert.Equal(RegistryNumbers.Format(CustomerNumbers.CustomerPrefix, seeded.Count + 1), registered.AccountNumber);
     }
 
     [Fact]

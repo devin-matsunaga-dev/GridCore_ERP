@@ -1,8 +1,10 @@
-namespace GridCore.Modules.Customers.Features.Shared;
+namespace GridCore.Platform.Registry;
 
 /// <summary>
-/// How the registry treats the free text a caller types. Shared so a description, a reason and a
-/// name cannot drift into storing "  " differently from each other.
+/// How a registry treats the free text a caller types. Shared so a description, a reason and a
+/// name cannot drift into storing "  " differently from each other — and shared across
+/// <i>modules</i>, not just slices, because every registry has the same problem and a per-module
+/// copy is how three of them end up disagreeing.
 /// </summary>
 public static class RegistryText
 {

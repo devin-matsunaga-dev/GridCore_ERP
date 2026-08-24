@@ -1,16 +1,17 @@
+using GridCore.Modules.Assets.Data;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Finance.Data;
 using GridCore.Modules.Finance.Features.EventSeam;
 using GridCore.Modules.Inventory.Data;
 using GridCore.Platform.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using Respawn;
 using Respawn.Graph;
+using Respawn;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
 using Testcontainers.Redis;
@@ -201,6 +202,7 @@ public sealed class GateFixture : IAsyncLifetime
         yield return new BillingDbContext(Options<BillingDbContext>(BillingDbContext.SchemaName));
         yield return new CustomersDbContext(Options<CustomersDbContext>(CustomersDbContext.SchemaName));
         yield return new InventoryDbContext(Options<InventoryDbContext>(InventoryDbContext.SchemaName));
+        yield return new AssetsDbContext(Options<AssetsDbContext>(AssetsDbContext.SchemaName));
     }
 
     private DbContextOptions<TContext> Options<TContext>(string schema)

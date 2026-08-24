@@ -1,13 +1,13 @@
 using GridCore.Platform.Security;
 
-namespace GridCore.Modules.Customers.Features.Shared;
+namespace GridCore.Platform.Registry;
 
 /// <summary>
 /// Who did something, as a registry record stores it. Distinct from the audit trail on purpose: an
-/// audit entry answers "who changed this row" for an administrator, while an account history is
-/// part of the service record a customer-service agent reads back on the phone — so the name is
-/// captured alongside the id rather than resolved against the identity provider years later, when
-/// the person may no longer exist there.
+/// audit entry answers "who changed this row" for an administrator, while a registry history is
+/// part of the service record somebody reads back — on the phone to a customer, or off a tablet in
+/// front of a transformer — so the name is captured alongside the id rather than resolved against
+/// the identity provider years later, when the person may no longer exist there.
 /// </summary>
 /// <param name="Id">The identity-provider subject id, or <see cref="SystemUser.SystemUserId"/>.</param>
 /// <param name="Name">Display name at the time, where one was known.</param>

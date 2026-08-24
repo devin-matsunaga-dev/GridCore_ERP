@@ -1,6 +1,7 @@
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
+using GridCore.Platform.Registry;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;

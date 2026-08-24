@@ -1,6 +1,7 @@
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Platform.Registry;
 using GridCore.Platform.Seeding;
 using Microsoft.EntityFrameworkCore;
 
@@ -80,7 +81,7 @@ public sealed class ServiceAccountsDemoSeeder(CustomersDbContext database, TimeP
             }
 
             var account = ServiceAccount.Open(
-                RegistryNumbers.Format(RegistryNumbers.ServiceAccountPrefix, ++ordinal),
+                RegistryNumbers.Format(CustomerNumbers.ServiceAccountPrefix, ++ordinal),
                 customerId,
                 locationId,
                 Attribution,

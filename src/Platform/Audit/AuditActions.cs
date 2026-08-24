@@ -48,6 +48,18 @@ public static class AuditActions
 
     /// <summary>A service account was closed for good.</summary>
     public const string ServiceAccountClosed = "service_account.close";
+
+    /// <summary>A utility asset was entered in the register.</summary>
+    public const string AssetRegistered = "asset.create";
+
+    /// <summary>An asset's details were corrected.</summary>
+    public const string AssetUpdated = "asset.update";
+
+    /// <summary>An asset moved through its lifecycle — installed, withdrawn, retired.</summary>
+    public const string AssetStatusChanged = "asset.status";
+
+    /// <summary>An asset's condition was assessed.</summary>
+    public const string AssetConditionAssessed = "asset.condition";
 }
 
 /// <summary>Canonical audit entity-type names, prefixed with the owning module's schema.</summary>
@@ -67,4 +79,7 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>customers.service_accounts</c>.</summary>
     public const string ServiceAccount = "customers.service_account";
+
+    /// <summary>A row of <c>assets.assets</c>.</summary>
+    public const string Asset = "assets.asset";
 }

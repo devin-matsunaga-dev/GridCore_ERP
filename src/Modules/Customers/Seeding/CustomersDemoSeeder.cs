@@ -2,6 +2,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Platform.Registry;
 using GridCore.Platform.Seeding;
 
 namespace GridCore.Modules.Customers.Seeding;
@@ -65,7 +66,7 @@ public sealed class CustomersDemoSeeder(CustomersDbContext database, TimeProvide
         database.Customers.AddRange(
             DemoCustomers.Select((customer, index) =>
                 Customer.Register(
-                    RegistryNumbers.Format(RegistryNumbers.CustomerPrefix, index + 1),
+                    RegistryNumbers.Format(CustomerNumbers.CustomerPrefix, index + 1),
                     customer.Name,
                     customer.Class,
                     Next(),
@@ -78,7 +79,7 @@ public sealed class CustomersDemoSeeder(CustomersDbContext database, TimeProvide
         database.ServiceLocations.AddRange(
             DemoLocations.Select((location, index) =>
                 ServiceLocation.Register(
-                    RegistryNumbers.Format(RegistryNumbers.ServiceLocationPrefix, index + 1),
+                    RegistryNumbers.Format(CustomerNumbers.ServiceLocationPrefix, index + 1),
                     Address.Create(location.Line1, location.City, location.Region, Country, postalCode: location.PostalCode),
                     Next(),
                     location.Description)));

@@ -1,0 +1,91 @@
+using GridCore.Modules.Assets.Features.Assets;
+using GridCore.Platform.Security;
+using GridCore.Platform.Validation;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace GridCore.Modules.Assets.UnitTests.Registry;
+
+/// <summary>
+/// Endpoint metadata only — no server is started, so this stays in the fast tier. What is asserted
+/// is exactly what the routing layer uses to decide 401 vs 403, which is the difference between a
+/// register a warehouse clerk can read and one they can rewrite.
+/// </summary>
+public class AssetEndpointsTests
+{
+    private static IReadOnlyList<RouteEndpoint> MappedEndpoints()
+    {
+        IEndpointRouteBuilder routes = WebApplication.CreateBuilder().Build();
+        routes.MapAssetEndpoints();
+
+        return [.. routes.DataSources.SelectMany(source => source.Endpoints).Cast<RouteEndpoint>()];
+    }
+
+    private static RouteEndpoint EndpointAt(string route, string method) =>
+        MappedEndpoints().Single(endpoint =>
+            endpoint.RoutePattern.RawText == route
+            && endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains(method));
+
+    private static string? PolicyOf(RouteEndpoint endpoint) =>
+        endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Single().Policy;
+
+    [Theory]
+    [InlineData("/api/assets/", "GET")]
+    [InlineData("/api/assets/{id:guid}", "GET")]
+    [InlineData("/api/assets/{id:guid}/history", "GET")]
+    public void Reading_the_register_is_gated_on_the_read_permission(string route, string method) =>
+        Assert.Equal(
+            PermissionPolicy.NameFor(Permissions.Assets.Read),
+            PolicyOf(EndpointAt(route, method)));
+
+    [Theory]
+    [InlineData("/api/assets/", "POST")]
+    [InlineData("/api/assets/{id:guid}", "PUT")]
+    [InlineData("/api/assets/{id:guid}/status", "POST")]
+    [InlineData("/api/assets/{id:guid}/condition", "POST")]
+    public void Writing_to_the_register_is_gated_on_the_write_permission(string route, string method) =>
+        // Failure path in the shape the routing layer enforces it: a caller holding only assets.read
+        // — a warehouse clerk, a billing officer, a manager — is refused with 403 on every one of
+        // these, without the handler running.
+        Assert.Equal(
+            PermissionPolicy.NameFor(Permissions.Assets.Write),
+            PolicyOf(EndpointAt(route, method)));
+
+    [Fact]
+    public void No_register_endpoint_opts_out_of_authentication() =>
+        Assert.All(MappedEndpoints(), endpoint =>
+            Assert.Empty(endpoint.Metadata.GetOrderedMetadata<IAllowAnonymous>()));
+
+    [Fact]
+    public void Every_permission_the_register_demands_is_one_GridCore_declares() =>
+        Assert.All(
+            MappedEndpoints()
+                .SelectMany(endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>())
+                .Select(authorize => authorize.Policy)
+                .Where(policy => policy is not null)
+                .Select(policy => PermissionPolicy.PermissionFor(policy!)),
+            permission => Assert.True(permission is not null && Permissions.All.Contains(permission)));
+
+    [Fact]
+    public void Nothing_in_the_register_can_be_deleted() =>
+        // Retirement is the only way out, deliberately: work orders, costs and inspections all
+        // reference an asset, and a deleted row would take their context with it — along with the
+        // maintenance history somebody may have to answer for.
+        Assert.DoesNotContain(
+            MappedEndpoints(),
+            endpoint => endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains(HttpMethods.Delete));
+
+    [Fact]
+    public void Every_write_endpoint_validates_its_body_before_the_handler_runs()
+    {
+        // A write that skipped its validator would reach the aggregate, throw, and answer 409 or
+        // 500 for what is plainly a 400 — so "has a filter" is asserted, not assumed.
+        var writes = MappedEndpoints().Where(endpoint =>
+            endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods
+                .Any(method => method is "POST" or "PUT"));
+
+        Assert.All(writes, endpoint => Assert.NotNull(endpoint.Metadata.GetMetadata<ValidatedRequest>()));
+    }
+}

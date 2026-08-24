@@ -4,6 +4,7 @@ using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
 using GridCore.Platform.Data;
+using GridCore.Platform.Registry;
 using GridCore.Platform.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,7 +76,7 @@ public class ServiceAccountsDemoSeederTests
 
         // Starting at 1 with no gaps is what lets the first real account continue the series.
         Assert.Equal(
-            Enumerable.Range(1, numbers.Count).Select(ordinal => RegistryNumbers.Format(RegistryNumbers.ServiceAccountPrefix, ordinal)),
+            Enumerable.Range(1, numbers.Count).Select(ordinal => RegistryNumbers.Format(CustomerNumbers.ServiceAccountPrefix, ordinal)),
             numbers);
     }
 

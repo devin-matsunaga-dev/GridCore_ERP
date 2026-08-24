@@ -1,6 +1,7 @@
 using GridCore.Modules.Customers.Features.Shared;
-using Microsoft.EntityFrameworkCore;
+using GridCore.Platform.Registry;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Customers.Features.ServiceLocations;
 
