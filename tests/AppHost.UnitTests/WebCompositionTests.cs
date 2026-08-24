@@ -6,6 +6,28 @@ namespace GridCore.AppHost.UnitTests;
 
 public class WebCompositionTests
 {
+    /// <summary>
+    /// Resolves a resource's environment variables the way `aspire publish` would, which keeps this
+    /// in the fast tier: no endpoints are allocated and no container is started.
+    /// </summary>
+    private static async Task<IReadOnlyDictionary<string, string>> EnvironmentOf(
+        DistributedApplication application,
+        IResource resource)
+    {
+        var executionContext = new DistributedApplicationExecutionContext(
+            new DistributedApplicationExecutionContextOptions(DistributedApplicationOperation.Publish)
+            {
+                Services = application.Services,
+            });
+
+        var configuration = await ExecutionConfigurationBuilder
+            .Create(resource)
+            .WithEnvironmentVariablesConfig()
+            .BuildAsync(executionContext);
+
+        return configuration.EnvironmentVariables.ToDictionary(StringComparer.Ordinal);
+    }
+
     [Fact]
     public void AddGridCoreWebHost_waits_for_every_backing_service()
     {
@@ -50,9 +72,10 @@ public class WebCompositionTests
     public void AddGridCoreWebApp_adds_the_dev_server_once_web_exists()
     {
         var builder = DistributedApplication.CreateBuilder([]);
-        var webHost = builder.AddGridCoreWebHost(builder.AddGridCoreInfrastructure());
+        var infrastructure = builder.AddGridCoreInfrastructure();
+        var webHost = builder.AddGridCoreWebHost(infrastructure);
 
-        var webApp = builder.AddGridCoreWebApp(webHost, directoryExists: _ => true);
+        var webApp = builder.AddGridCoreWebApp(webHost, infrastructure, directoryExists: _ => true);
 
         Assert.NotNull(webApp);
         Assert.Equal(WebComposition.WebAppResourceName, webApp.Resource.Name);
@@ -64,9 +87,10 @@ public class WebCompositionTests
     public void AddGridCoreWebApp_skips_the_dev_server_when_web_has_not_been_created()
     {
         var builder = DistributedApplication.CreateBuilder([]);
-        var webHost = builder.AddGridCoreWebHost(builder.AddGridCoreInfrastructure());
+        var infrastructure = builder.AddGridCoreInfrastructure();
+        var webHost = builder.AddGridCoreWebHost(infrastructure);
 
-        var webApp = builder.AddGridCoreWebApp(webHost, directoryExists: _ => false);
+        var webApp = builder.AddGridCoreWebApp(webHost, infrastructure, directoryExists: _ => false);
 
         Assert.Null(webApp);
         Assert.DoesNotContain(builder.Resources, r => r.Name == WebComposition.WebAppResourceName);
@@ -105,5 +129,64 @@ public class WebCompositionTests
         var builder = DistributedApplication.CreateBuilder([]);
 
         Assert.Throws<ArgumentNullException>(() => builder.AddGridCoreWebHost(null!));
+    }
+
+    [Fact]
+    public async Task The_spa_logs_in_against_the_same_realm_the_api_validates_against()
+    {
+        var builder = DistributedApplication.CreateBuilder([]);
+        var infrastructure = builder.AddGridCoreInfrastructure();
+        var webHost = builder.AddGridCoreWebHost(infrastructure);
+
+        var webApp = builder.AddGridCoreWebApp(webHost, infrastructure, directoryExists: _ => true);
+
+        using var application = builder.Build();
+        var spa = await EnvironmentOf(application, webApp!.Resource);
+        var api = await EnvironmentOf(application, webHost.Resource);
+
+        // Same issuer on both sides, or the API rejects every token the SPA obtains.
+        Assert.Equal(api["Authentication__Authority"], spa["VITE_OIDC_AUTHORITY"]);
+        Assert.Equal(InfrastructureComposition.IdentityWebClientId, spa["VITE_OIDC_CLIENT_ID"]);
+        Assert.Equal(api["Authentication__Audience"], spa["VITE_OIDC_AUDIENCE"]);
+    }
+
+    /// <summary>Vite hides anything without the prefix from the browser bundle.</summary>
+    [Fact]
+    public async Task Every_setting_handed_to_the_spa_is_vite_prefixed()
+    {
+        var builder = DistributedApplication.CreateBuilder([]);
+        var infrastructure = builder.AddGridCoreInfrastructure();
+        var webHost = builder.AddGridCoreWebHost(infrastructure);
+
+        var webApp = builder.AddGridCoreWebApp(webHost, infrastructure, directoryExists: _ => true);
+
+        using var application = builder.Build();
+        var spa = await EnvironmentOf(application, webApp!.Resource);
+
+        var oidcSettings = spa.Keys.Where(key => key.Contains("OIDC", StringComparison.Ordinal));
+        Assert.NotEmpty(oidcSettings);
+        Assert.All(oidcSettings, key => Assert.StartsWith("VITE_", key, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Regression: with Aspire's default proxied endpoint the browser is handed a random port, and
+    /// Keycloak answers the login with "Invalid parameter: redirect_uri".
+    /// </summary>
+    [Fact]
+    public void The_dev_server_is_served_unproxied_on_the_port_the_realm_registers()
+    {
+        var builder = DistributedApplication.CreateBuilder([]);
+        var infrastructure = builder.AddGridCoreInfrastructure();
+        var webHost = builder.AddGridCoreWebHost(infrastructure);
+
+        var webApp = builder.AddGridCoreWebApp(webHost, infrastructure, directoryExists: _ => true);
+
+        var endpoint = Assert.Single(
+            webApp!.Resource.Annotations.OfType<EndpointAnnotation>(),
+            e => e.Name == WebComposition.WebAppEndpointName);
+
+        Assert.Equal(WebComposition.WebAppPort, endpoint.Port);
+        Assert.Equal(WebComposition.WebAppPort, endpoint.TargetPort);
+        Assert.False(endpoint.IsProxied);
     }
 }

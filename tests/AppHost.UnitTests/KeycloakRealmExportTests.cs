@@ -103,4 +103,36 @@ public class KeycloakRealmExportTests
         Assert.False(api.GetProperty("directAccessGrantsEnabled").GetBoolean());
         Assert.False(api.GetProperty("serviceAccountsEnabled").GetBoolean());
     }
+
+    /// <summary>
+    /// The bug this guards: Aspire proxies the dev server on a randomly allocated port unless the
+    /// endpoint is pinned, and Keycloak then rejects the login with "Invalid parameter:
+    /// redirect_uri". The AppHost's port, the realm's registered URIs and the Vite config must all
+    /// name the same port.
+    /// </summary>
+    [Fact]
+    public void The_spa_client_registers_the_port_the_apphost_serves_it_on()
+    {
+        var client = Client(InfrastructureComposition.IdentityWebClientId);
+        var origin = $"http://localhost:{WebComposition.WebAppPort}";
+
+        var redirectUris = client.GetProperty("redirectUris").EnumerateArray().Select(uri => uri.GetString()).ToList();
+        var webOrigins = client.GetProperty("webOrigins").EnumerateArray().Select(uri => uri.GetString()).ToList();
+
+        Assert.Contains($"{origin}/*", redirectUris);
+        Assert.Contains(origin, webOrigins);
+        Assert.Equal(origin, client.GetProperty("rootUrl").GetString());
+        Assert.Contains($"{origin}/*", client.GetProperty("attributes").GetProperty("post.logout.redirect.uris").GetString()!);
+    }
+
+    /// <summary>The SPA's dev-server config has to agree, or Vite serves the wrong port.</summary>
+    [Fact]
+    public void The_vite_config_pins_the_same_port()
+    {
+        var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var viteConfig = File.ReadAllText(Path.Combine(repositoryRoot, "web", "vite.config.ts"));
+
+        Assert.Contains($"const DEV_PORT = {WebComposition.WebAppPort};", viteConfig, StringComparison.Ordinal);
+        Assert.Contains("strictPort: true", viteConfig, StringComparison.Ordinal);
+    }
 }

@@ -5,7 +5,7 @@
 ## Step 1 — Load context (in order)
 1. `docs/ARCHITECTURE.md` — design + invariants. Binding.
 2. `docs/CONVENTIONS.md` — code standards **incl. the ⚡ testing-speed rules**. Binding.
-3. `docs/DESIGN.md` — UI system; reference at `docs/design/reference-dashboard.png`. Binding for any frontend WP.
+3. `docs/DESIGN.md` — UI system; reference at `docs/Design.png`. Binding for any frontend WP.
 4. `docs/STATUS.md` — current position + in-flight notes.
 5. `docs/DECISIONS.md` — settled choices; don't relitigate.
 

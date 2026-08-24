@@ -1,13 +1,13 @@
 # DESIGN.md — Utility ERP UI
 
-> Visual law for every screen. Canonical reference: `docs/design/reference-dashboard.png`. Every page must look like it belongs in that screenshot.
+> Visual law for every screen. Canonical reference: `docs/Design.png`. Every page must look like it belongs in that screenshot.
 
 ## Direction
 
 Clean, light, enterprise operations console. White canvas, generous whitespace, one green accent, restrained semantic color for status. Dense data presented calmly. Left dark-green sidebar, sectioned nav (Operations / Enterprise / Reports).
 
 ## Stack
-Tailwind CSS + shadcn/ui; lucide-react icons (20px, stroke 1.75); Recharts; Inter font.
+Tailwind CSS + shadcn/ui; lucide-react icons (20px, stroke 1.75); Recharts; Roboto font.
 
 ## Tokens
 
@@ -62,4 +62,4 @@ Invert neutrals (canvas #10161300… slate-green dark, cards #1A2420, borders #2
 - **Workflow screens:** wizard-style for the two demonstration cycles so a demo flows top-to-bottom.
 
 ## Quality floor
-Responsive to 1280px (tables scroll below), visible green focus ring, WCAG AA contrast, skeleton loading, reduced-motion respected, all money/dates formatted centrally, timestamps user-local.
+Responsive to 1280px (tables scroll below), visible green focus ring, WCAG AA contrast, skeleton loading, reduced-motion respected, all money/dates formatted centrally, timestamps user-local. Scrollable regions use the app's own thin scrollbar (`.scrollbar-subtle`, tinted to the surface it sits on) — never the browser default, which reads as chrome bolted onto the design; scrollable panes never scroll sideways.

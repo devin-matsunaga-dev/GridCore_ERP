@@ -1,0 +1,216 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * DESIGN.md is the law for every value below; the canonical reference is docs/Design.png.
+ * Light is the primary direction — dark mode inverts neutrals only, the semantic hues hold.
+ */
+:root {
+  --radius: 0.875rem; /* 14px — cards */
+  --radius-control: 0.625rem; /* 10px — buttons */
+  --radius-field: 0.5rem; /* 8px — inputs */
+  --radius-pill: 0.375rem; /* 6px — status pills */
+
+  --canvas: #f7f8f7;
+  --card: #ffffff;
+  --border: #e8ebe9;
+
+  --text-heading: #1a211e;
+  --text-body: #4a534e;
+  --text-muted: #8a938d;
+
+  --primary: #1f7a4d;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e7f2ec;
+
+  --sidebar-bg: #14231c;
+  --sidebar-text: #9db0a6;
+  --sidebar-section: #6e8478;
+  --sidebar-active-bg: #1e3229;
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: #22362c;
+
+  --success: #22a06b;
+  --success-soft: #e3f5ec;
+  --warning: #e8a33d;
+  --warning-soft: #fbf0dd;
+  --danger: #e5484d;
+  --danger-soft: #fce8e8;
+  --info: #3b7dd8;
+  --info-soft: #e4eefb;
+  --neutral: #8a938d;
+  --neutral-soft: #f0f2f1;
+
+  --chart-1: #1f7a4d;
+  --chart-2: #3b7dd8;
+  --chart-3: #e8a33d;
+  --chart-4: #22a06b;
+  --chart-5: #c4ccc7;
+
+  --ring: #1f7a4d;
+  --card-shadow: 0 1px 2px 0 rgb(26 33 30 / 0.04), 0 1px 3px 0 rgb(26 33 30 / 0.03);
+
+  --scrollbar-thumb: #d5dbd7;
+  --scrollbar-thumb-hover: #bcc5bf;
+}
+
+.dark {
+  --canvas: #101613;
+  --card: #1a2420;
+  --border: #2a352f;
+
+  --text-heading: #eef2f0;
+  --text-body: #a9b3ad;
+  --text-muted: #7d8a83;
+
+  --primary: #2e9660;
+  --primary-foreground: #08110c;
+  --primary-soft: color-mix(in oklab, #2e9660 15%, transparent);
+
+  --sidebar-active-bg: #23392f;
+  --sidebar-border: #223229;
+
+  --success-soft: color-mix(in oklab, #22a06b 15%, transparent);
+  --warning-soft: color-mix(in oklab, #e8a33d 15%, transparent);
+  --danger-soft: color-mix(in oklab, #e5484d 15%, transparent);
+  --info-soft: color-mix(in oklab, #3b7dd8 15%, transparent);
+  --neutral-soft: color-mix(in oklab, #8a938d 15%, transparent);
+
+  /* The neutral categorical colour is a light grey by design; on a dark card it would be the
+     loudest thing in the chart, so it inverts along with the other neutrals. */
+  --chart-5: #4a5a52;
+
+  --ring: #2e9660;
+  --card-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+
+  --scrollbar-thumb: #2f3b35;
+  --scrollbar-thumb-hover: #3d4a43;
+}
+
+@theme inline {
+  --font-sans: 'Roboto', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-canvas: var(--canvas);
+  --color-card: var(--card);
+  --color-border: var(--border);
+
+  --color-heading: var(--text-heading);
+  --color-body: var(--text-body);
+  --color-muted: var(--text-muted);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-section: var(--sidebar-section);
+  --color-sidebar-active: var(--sidebar-active-bg);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-ring: var(--ring);
+
+  --radius-card: var(--radius);
+  --radius-control: var(--radius-control);
+  --radius-field: var(--radius-field);
+  --radius-pill: var(--radius-pill);
+
+  --shadow-card: var(--card-shadow);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-body font-sans antialiased;
+  }
+
+  /* Quality floor: a visible green focus ring on every interactive element. */
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+
+  /* Money and counts align column-to-column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /*
+   * The browser's default scrollbar is a light chrome bar — loud on the canvas and glaring on the
+   * near-black sidebar. These keep the thumb tinted to the surface it sits on. `scrollbar-gutter`
+   * reserves the track so content does not shift when the bar appears, which is also what stops a
+   * classic (non-overlay) scrollbar from squeezing the content into a second, horizontal bar.
+   */
+  .scrollbar-subtle {
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-subtle::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-subtle:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+
+  /*
+   * On the dark sidebar the thumb is a lift of the sidebar itself, not a light bar. No reserved
+   * gutter here: it would sit inside the nav's padding and leave the items visibly off-centre.
+   */
+  .scrollbar-on-sidebar {
+    scrollbar-gutter: auto;
+    --scrollbar-thumb: #2c4137;
+    --scrollbar-thumb-hover: #3a5548;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
