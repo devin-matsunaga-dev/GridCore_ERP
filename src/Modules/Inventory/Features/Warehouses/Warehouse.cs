@@ -63,8 +63,8 @@ public sealed class Warehouse
             throw new ArgumentException($"Warehouse '{code}' has a location longer than {LocationLength} characters.", nameof(location));
         }
 
-        // Codes are quoted by people and matched by machines; one canonical case means "main" and
-        // "MAIN" can never become two warehouses.
+        // Codes are quoted by people and matched by machines; one canonical case means "rota" and
+        // "ROTA" can never become two warehouses.
         if (!string.Equals(code, code.ToUpperInvariant(), StringComparison.Ordinal))
         {
             throw new ArgumentException($"Warehouse code '{code}' must be upper case.", nameof(code));

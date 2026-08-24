@@ -5,20 +5,29 @@ namespace GridCore.Modules.Inventory.Features.Warehouses;
 /// receive and issue stock (ARCHITECTURE.md invariant 8) with no seeder involved.
 /// </summary>
 /// <remarks>
-/// Three, because the Ops &amp; Maintenance cycle needs somewhere parts come <i>from</i> that is not
-/// where they were bought <i>into</i> — a main store, a depot the crews draw from, and a yard for
-/// bulk plant. Adding one is a new migration; migrations are append-only (invariant 7).
+/// <para>
+/// <b>One store per island</b>, because that is how a utility spread across the Northern Marianas
+/// actually holds stock: a crew on Rota cannot draw a connector from a shelf on Saipan, so the
+/// island <i>is</i> the warehouse. Lower Base is the main store; Tinian and Rota hold what their own
+/// crews work from.
+/// </para>
+/// <para>
+/// This set replaced WP-0.8's invented main store / north depot / substation yard (WP-1.4). Adding
+/// or changing one is a <b>new migration</b> — migrations are append-only (invariant 7) — and note
+/// that a code change is an <i>id</i> change, because <c>ReferenceId</c> derives the id
+/// from the code.
+/// </para>
 /// </remarks>
 public static class DefaultWarehouses
 {
-    /// <summary>Code of the central store goods are received into.</summary>
-    public const string MainStore = "MAIN";
+    /// <summary>Code of the main store, at Lower Base on Saipan.</summary>
+    public const string LowerBase = "LB";
 
-    /// <summary>Code of the depot field crews draw parts from.</summary>
-    public const string NorthDepot = "NORTH";
+    /// <summary>Code of the Tinian store.</summary>
+    public const string Tinian = "TINIAN";
 
-    /// <summary>Code of the yard holding bulk plant.</summary>
-    public const string SubstationYard = "YARD";
+    /// <summary>Code of the Rota store.</summary>
+    public const string Rota = "ROTA";
 
     /// <summary>
     /// The instant this reference set was authored, and the timestamp component of every warehouse
@@ -29,9 +38,9 @@ public static class DefaultWarehouses
     /// <summary>Every warehouse, in code order.</summary>
     public static IReadOnlyList<Warehouse> All { get; } =
     [
-        Warehouse.Reference(MainStore, "Main store", "1 Utility Way, Central depot"),
-        Warehouse.Reference(NorthDepot, "North depot", "45 Kestrel Road, North district"),
-        Warehouse.Reference(SubstationYard, "Substation yard", "Substation 7, East industrial park"),
+        Warehouse.Reference(LowerBase, "Lower Base Warehouse", "Lower Base, Saipan"),
+        Warehouse.Reference(Rota, "Rota Warehouse", "Songsong, Rota"),
+        Warehouse.Reference(Tinian, "Tinian Warehouse", "San Jose, Tinian"),
     ];
 
     /// <summary>The warehouse with <paramref name="code"/>.</summary>

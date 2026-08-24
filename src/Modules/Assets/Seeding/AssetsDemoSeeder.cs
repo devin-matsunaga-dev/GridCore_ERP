@@ -200,7 +200,7 @@ public sealed class AssetsDemoSeeder(AssetsDbContext database, TimeProvider cloc
 
         // Plant in the yard, never installed — the InStorage case a register has to show.
         new(AssetClass.Transformer, "Spare Transformer, 500 kVA", Position: null,
-            "Warehouse MAIN, bay 2",
+            "Lower Base Warehouse, bay 2",
             "ABB", "ONAN 500 kVA", "ABB-T-901337",
             InstalledOn: null,
             RegisteredNote: "Received as network spare; not yet allocated",

@@ -1,4 +1,5 @@
 using GridCore.Modules.Inventory.Features.Warehouses;
+using GridCore.Modules.Inventory.UnitTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Inventory.UnitTests.Warehouses;
@@ -34,9 +35,9 @@ public class DefaultWarehousesTests
     [Fact]
     public void A_warehouse_id_is_the_same_every_time_the_set_is_built()
     {
-        var rebuilt = Warehouse.Reference(DefaultWarehouses.MainStore, "Main store", "1 Utility Way, Central depot");
+        var rebuilt = Warehouse.Reference(DefaultWarehouses.LowerBase, "Lower Base Warehouse", "Lower Base, Saipan");
 
-        Assert.Equal(rebuilt.Id, DefaultWarehouses.Require(DefaultWarehouses.MainStore).Id);
+        Assert.Equal(rebuilt.Id, DefaultWarehouses.Require(DefaultWarehouses.LowerBase).Id);
     }
 
     [Fact]
@@ -49,8 +50,8 @@ public class DefaultWarehousesTests
     public void A_lower_case_code_is_refused()
     {
         // Failure path: codes are quoted by people and matched by machines. Without one canonical
-        // case, "main" and "MAIN" become two warehouses holding half the stock each.
-        var refused = Assert.Throws<ArgumentException>(() => Warehouse.Reference("main", "Main store", null));
+        // case, "rota" and "ROTA" become two warehouses holding half the stock each.
+        var refused = Assert.Throws<ArgumentException>(() => Warehouse.Reference("rota", "Rota Warehouse", null));
 
         Assert.Contains("upper case", refused.Message, StringComparison.Ordinal);
     }
@@ -81,7 +82,7 @@ public class DefaultWarehousesTests
     {
         using var database = new InventoryTestDatabase();
 
-        database.Context.Warehouses.Add(Warehouse.Reference(DefaultWarehouses.MainStore, "A second main store", null));
+        database.Context.Warehouses.Add(Warehouse.Reference(DefaultWarehouses.LowerBase, "A second Lower Base store", null));
 
         await Assert.ThrowsAsync<DbUpdateException>(() => database.Context.SaveChangesAsync());
     }

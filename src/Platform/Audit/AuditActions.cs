@@ -60,6 +60,24 @@ public static class AuditActions
 
     /// <summary>An asset's condition was assessed.</summary>
     public const string AssetConditionAssessed = "asset.condition";
+
+    /// <summary>A stock item was entered in the catalogue.</summary>
+    public const string StockItemRegistered = "stock_item.create";
+
+    /// <summary>A stock item's catalogue details were corrected, or the line was discontinued.</summary>
+    public const string StockItemUpdated = "stock_item.update";
+
+    /// <summary>Stock was booked in at a warehouse.</summary>
+    public const string StockReceived = "stock.receive";
+
+    /// <summary>Stock was issued out to a job.</summary>
+    public const string StockIssued = "stock.issue";
+
+    /// <summary>A stock count was corrected. Sensitive: permission-gated and audited (invariant 5).</summary>
+    public const string StockAdjusted = "stock.adjust";
+
+    /// <summary>A reorder level was set — the change that quietly silences a low-stock report.</summary>
+    public const string StockMinimumSet = "stock.minimum";
 }
 
 /// <summary>Canonical audit entity-type names, prefixed with the owning module's schema.</summary>
@@ -82,4 +100,11 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";
+
+    /// <summary>
+    /// A row of <c>inventory.stock_items</c>. Movements and levels are audited against the item they
+    /// belong to rather than as entities of their own: the ledger line is already immutable, and the
+    /// question an auditor asks is "what happened to this item", not "what happened to this row".
+    /// </summary>
+    public const string StockItem = "inventory.stock_item";
 }

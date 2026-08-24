@@ -3,6 +3,7 @@ using System;
 using GridCore.Modules.Inventory.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GridCore.Modules.Inventory.Data.Migrations
 {
     [DbContext(typeof(InventoryDbContext))]
-    partial class InventoryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824055956_WP14_Items")]
+    partial class WP14_Items
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -261,27 +264,27 @@ namespace GridCore.Modules.Inventory.Data.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7c0d-9c1e-e98375f2c81d"),
-                            Code = "LB",
+                            Id = new Guid("01a03111-1c00-7583-ad03-8fbf7e6529e6"),
+                            Code = "MAIN",
                             IsActive = true,
-                            Location = "Lower Base, Saipan",
-                            Name = "Lower Base Warehouse"
+                            Location = "1 Utility Way, Central depot",
+                            Name = "Main store"
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7d37-a6f3-535f3ba97c35"),
-                            Code = "ROTA",
+                            Id = new Guid("01a03111-1c00-74a4-89fb-589a0a731112"),
+                            Code = "NORTH",
                             IsActive = true,
-                            Location = "Songsong, Rota",
-                            Name = "Rota Warehouse"
+                            Location = "45 Kestrel Road, North district",
+                            Name = "North depot"
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7448-b032-95181b438bb0"),
-                            Code = "TINIAN",
+                            Id = new Guid("01a03111-1c00-7d5d-9d3e-2a1ea67ec09e"),
+                            Code = "YARD",
                             IsActive = true,
-                            Location = "San Jose, Tinian",
-                            Name = "Tinian Warehouse"
+                            Location = "Substation 7, East industrial park",
+                            Name = "Substation yard"
                         });
                 });
 
