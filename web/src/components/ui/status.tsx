@@ -42,6 +42,28 @@ const toneByStatus: Record<string, StatusTone> = {
   declined: 'danger',
   rejected: 'danger',
   disconnected: 'danger',
+  // Registry lifecycles (WP-1.5): the customer, service-account, asset and stock-item statuses.
+  // A lifecycle state gets the tone of what it means operationally, not of how it sounds.
+  prospect: 'info',
+  suspended: 'warning',
+  instorage: 'neutral',
+  inservice: 'success',
+  undermaintenance: 'warning',
+  retired: 'neutral',
+  discontinued: 'neutral',
+  lowstock: 'danger',
+  instock: 'success',
+  // Asset condition — the inspector's grade, worst two both read as something to act on.
+  unknown: 'neutral',
+  excellent: 'success',
+  good: 'success',
+  fair: 'warning',
+  poor: 'danger',
+  critical: 'danger',
+  // Stock movements: what arrived, what left, and the one that moved a count with nothing moving.
+  receipt: 'success',
+  issue: 'info',
+  adjustment: 'warning',
   // Priority
   high: 'danger',
   medium: 'warning',

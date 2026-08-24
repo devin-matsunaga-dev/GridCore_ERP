@@ -47,6 +47,8 @@ function percentFormatter(digits: number): Intl.NumberFormat {
   return formatter;
 }
 
+const quantity = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 3 });
+
 const dateOnly = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium' });
 const dateAndTime = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' });
 const timeOnly = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'short' });
@@ -73,6 +75,28 @@ export function formatCount(value: number): string {
 /** Takes a fraction (0.064), renders `6.4%`. One decimal by default; pass 0 for a whole number. */
 export function formatPercent(fraction: number, digits = 1): string {
   return percentFormatter(digits).format(fraction);
+}
+
+/**
+ * A stock quantity: up to three decimals, because `inventory.stock_levels` is `numeric(18,3)` and
+ * anything finer is refused rather than rounded. Trailing zeros are dropped, so 12 metres reads
+ * `12` and a cut length reads `12.5`.
+ */
+export function formatQuantity(value: number): string {
+  return quantity.format(value);
+}
+
+/**
+ * Sentence-cases an API enum name for display: `InStorage` reads "In storage", `ConductorSpan`
+ * reads "Conductor span". DESIGN.md is sentence case throughout, and the wire value stays the
+ * PascalCase the host sent — only the label changes, never the value a filter posts back.
+ */
+export function formatLabel(value: string): string {
+  const words = value.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(' ');
+
+  return words
+    .map((word, index) => (index === 0 ? word : word.toLowerCase()))
+    .join(' ');
 }
 
 export function formatDate(value: Date | string): string {

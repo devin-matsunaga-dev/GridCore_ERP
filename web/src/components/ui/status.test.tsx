@@ -35,3 +35,55 @@ describe('the semantic status map', () => {
     expect(screen.getByText('Completed')).toHaveClass('bg-danger-soft');
   });
 });
+
+describe('the registry lifecycles (WP-1.5)', () => {
+  /**
+   * DESIGN.md: every state machine renders as a pill through this one map. A status with no entry
+   * would fall back to neutral and quietly lose its meaning, so each lifecycle is asserted here.
+   */
+  it('gives the customer lifecycle its tones', () => {
+    expect(toneFor('Prospect')).toBe('info');
+    expect(toneFor('Active')).toBe('success');
+    expect(toneFor('Suspended')).toBe('warning');
+    expect(toneFor('Closed')).toBe('neutral');
+  });
+
+  it('gives the service-account lifecycle its tones', () => {
+    expect(toneFor('Pending')).toBe('warning');
+    expect(toneFor('Disconnected')).toBe('danger');
+  });
+
+  it('gives the asset lifecycle its tones, including the PascalCase names', () => {
+    expect(toneFor('InStorage')).toBe('neutral');
+    expect(toneFor('InService')).toBe('success');
+    expect(toneFor('UnderMaintenance')).toBe('warning');
+    expect(toneFor('Retired')).toBe('neutral');
+  });
+
+  it('grades an asset condition, worst two both reading as something to act on', () => {
+    expect(toneFor('Excellent')).toBe('success');
+    expect(toneFor('Good')).toBe('success');
+    expect(toneFor('Fair')).toBe('warning');
+    expect(toneFor('Poor')).toBe('danger');
+    expect(toneFor('Critical')).toBe('danger');
+    expect(toneFor('Unknown')).toBe('neutral');
+  });
+
+  it('tones the stock statuses and the three movement types', () => {
+    expect(toneFor('In stock')).toBe('success');
+    expect(toneFor('Low stock')).toBe('danger');
+    expect(toneFor('Discontinued')).toBe('neutral');
+    expect(toneFor('Receipt')).toBe('success');
+    expect(toneFor('Issue')).toBe('info');
+    expect(toneFor('Adjustment')).toBe('warning');
+  });
+
+  /**
+   * Failure path, and why the low-stock pill is not labelled "Low": the priority scale already
+   * claims that word for a *good* thing, so the two must stay distinguishable.
+   */
+  it('keeps the low-stock pill distinct from a low priority', () => {
+    expect(toneFor('Low')).toBe('success');
+    expect(toneFor('Low stock')).toBe('danger');
+  });
+});

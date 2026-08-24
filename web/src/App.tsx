@@ -8,7 +8,7 @@ import { AppShell } from '@/components/shell/app-shell';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { createQueryClient } from '@/lib/query-client';
 import { NotFoundPage } from '@/routes/not-found-page';
-import { placeholderRoutes } from '@/routes/routes';
+import { moduleRoutes } from '@/routes/routes';
 import { ThemeProvider } from '@/theme/theme-provider';
 
 export function App() {
@@ -24,7 +24,7 @@ export function App() {
               <Routes>
                 <Route element={<AppShell />}>
                   <Route index element={<DashboardPage />} />
-                  {placeholderRoutes.map((route) => (
+                  {moduleRoutes.map((route) => (
                     <Route key={route.path} path={route.path} element={route.element} />
                   ))}
                   <Route path="*" element={<NotFoundPage />} />
