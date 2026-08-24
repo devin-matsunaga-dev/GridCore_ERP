@@ -1,4 +1,5 @@
 using GridCore.Modules.Billing.Data;
+using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Finance.Data;
 using GridCore.Modules.Finance.Features.EventSeam;
 using GridCore.Modules.Inventory.Data;
@@ -198,6 +199,7 @@ public sealed class GateFixture : IAsyncLifetime
         yield return new PlatformDbContext(Options<PlatformDbContext>(PlatformDbContext.SchemaName));
         yield return new FinanceDbContext(Options<FinanceDbContext>(FinanceDbContext.SchemaName));
         yield return new BillingDbContext(Options<BillingDbContext>(BillingDbContext.SchemaName));
+        yield return new CustomersDbContext(Options<CustomersDbContext>(CustomersDbContext.SchemaName));
         yield return new InventoryDbContext(Options<InventoryDbContext>(InventoryDbContext.SchemaName));
     }
 

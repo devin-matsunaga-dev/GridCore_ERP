@@ -45,9 +45,15 @@ public sealed class DemoSeedTests(GateFixture fixture) : IAsyncLifetime
 
         var platform = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
 
-        var record = Assert.Single(await platform.DemoSeedRecords.ToListAsync());
+        var records = await platform.DemoSeedRecords.Select(record => record.Name).ToListAsync();
 
-        Assert.Equal("platform.approval-queue", record.Name);
+        // One record per seeder, and every registered seeder ran. Asserted as a set rather than a
+        // count so a module contributing its own demo world extends this list instead of breaking it.
+        Assert.Contains("platform.approval-queue", records);
+        Assert.Equal(
+            scope.ServiceProvider.GetServices<IDemoSeeder>().Select(seeder => seeder.Name).Order(),
+            records.Order());
+
         Assert.Equal(2, await platform.ApprovalRequests.CountAsync());
     }
 
@@ -63,7 +69,12 @@ public sealed class DemoSeedTests(GateFixture fixture) : IAsyncLifetime
 
         var platform = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
 
-        Assert.Single(await platform.DemoSeedRecords.ToListAsync());
+        // One record per seeder still, not two — and, the reason the record exists, no second copy
+        // of anything a seeder wrote.
+        Assert.Equal(
+            scope.ServiceProvider.GetServices<IDemoSeeder>().Count(),
+            await platform.DemoSeedRecords.CountAsync());
+
         Assert.Equal(2, await platform.ApprovalRequests.CountAsync());
     }
 }

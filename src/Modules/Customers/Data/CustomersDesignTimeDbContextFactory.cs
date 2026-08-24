@@ -1,0 +1,25 @@
+using GridCore.Platform.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace GridCore.Modules.Customers.Data;
+
+/// <summary>
+/// Lets <c>dotnet ef migrations add</c> build the model without booting the host — this is a class
+/// library, so there is no host to boot. The connection string is never used: migrations are
+/// generated from the model, not from a live database.
+/// </summary>
+public sealed class CustomersDesignTimeDbContextFactory : IDesignTimeDbContextFactory<CustomersDbContext>
+{
+    /// <inheritdoc />
+    public CustomersDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<CustomersDbContext>()
+            .UseNpgsql(
+                "Host=localhost;Database=gridcore;Username=design-time;Password=design-time",
+                GridCoreDbContexts.InSchema(CustomersDbContext.SchemaName))
+            .Options;
+
+        return new CustomersDbContext(options);
+    }
+}

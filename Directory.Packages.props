@@ -39,6 +39,15 @@
     <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.5.2" />
   </ItemGroup>
 
+  <!--
+    Validation: FluentValidation is Apache-2.0 (verified on the 12.1.1 catalog entry) — unlike
+    FluentAssertions 8.x, which this repo deliberately does not use. Only the core package is
+    referenced; validators are registered one by one, so the DI-scanning package is not needed.
+  -->
+  <ItemGroup Label="Validation">
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+  </ItemGroup>
+
   <ItemGroup Label="Security">
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
   </ItemGroup>

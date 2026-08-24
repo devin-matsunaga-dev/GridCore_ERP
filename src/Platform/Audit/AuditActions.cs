@@ -21,6 +21,21 @@ public static class AuditActions
 
     /// <summary>A demo seeder wrote its dataset (Development only).</summary>
     public const string DemoSeeded = "demo.seed";
+
+    /// <summary>A customer was registered.</summary>
+    public const string CustomerCreated = "customer.create";
+
+    /// <summary>A customer's details were changed.</summary>
+    public const string CustomerUpdated = "customer.update";
+
+    /// <summary>A customer moved to another status.</summary>
+    public const string CustomerStatusChanged = "customer.status";
+
+    /// <summary>A service location was registered.</summary>
+    public const string ServiceLocationCreated = "service_location.create";
+
+    /// <summary>A service location's details were changed.</summary>
+    public const string ServiceLocationUpdated = "service_location.update";
 }
 
 /// <summary>Canonical audit entity-type names, prefixed with the owning module's schema.</summary>
@@ -31,4 +46,10 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>platform.demo_seed_records</c>.</summary>
     public const string DemoSeedRecord = "platform.demo_seed_record";
+
+    /// <summary>A row of <c>customers.customers</c>.</summary>
+    public const string Customer = "customers.customer";
+
+    /// <summary>A row of <c>customers.service_locations</c>.</summary>
+    public const string ServiceLocation = "customers.service_location";
 }
