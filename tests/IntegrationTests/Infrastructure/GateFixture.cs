@@ -90,20 +90,50 @@ public sealed class GateFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// How many times a reset will retry a deadlock before giving up. See <see cref="ResetAsync"/>.
+    /// </summary>
+    private const int ResetAttempts = 5;
+
+    /// <summary>
     /// Wipes application data so the next test starts from a known slate. Respawn truncates; it
     /// does not drop the schema or reapply migrations, which is what keeps a reset in the
     /// milliseconds rather than the seconds.
     /// </summary>
+    /// <remarks>
+    /// <b>Retried on deadlock, since WP-2.6.</b> A reset now races a real background writer: the
+    /// delivery service is still carrying the previous test's events to Finance's consumers, and a
+    /// consumer that posts a journal entry takes locks on the very rows Respawn is deleting. Postgres
+    /// picks a victim, and roughly one reset in twenty was it. This is not flakiness to paper over —
+    /// it is what a ledger written by consumers actually does — so the reset simply tries again, on a
+    /// fresh connection, and only fails if the contention never clears. Deliberately NOT a
+    /// <c>Task.Delay</c> before the reset (CONVENTIONS.md rule G): the first attempt nearly always
+    /// wins, and a fixed pause would tax every test in the suite to protect the one that does not.
+    /// </remarks>
     public async Task ResetAsync()
     {
         var respawner = _respawner
             ?? throw new InvalidOperationException("The gate fixture has not been initialised.");
 
-        await using var connection = new NpgsqlConnection(PostgresConnectionString);
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(PostgresConnectionString);
 
-        await connection.OpenAsync();
+                await connection.OpenAsync();
 
-        await respawner.ResetAsync(connection);
+                await respawner.ResetAsync(connection);
+
+                break;
+            }
+            catch (PostgresException exception)
+                when (attempt < ResetAttempts && exception.SqlState is PostgresErrorCodes.DeadlockDetected)
+            {
+                // Let the in-flight consumer finish and release its locks. Short and bounded: the
+                // work it is racing is one small transaction, not a batch.
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt));
+            }
+        }
 
         Postings.Clear();
     }
@@ -171,9 +201,12 @@ public sealed class GateFixture : IAsyncLifetime
 
     private void ConfigureTestServices(IServiceCollection services)
     {
-        // Finance's ledger is still a no-op (WP-2.6 owns the real one); the gate tier swaps the
-        // logging seam for a recording one by DI, exactly as production will swap in the ledger.
+        // Finance's ledger is real as of WP-2.6, so the gate tier no longer stands in for it: the
+        // recorder DECORATES the ledger rather than replacing it. A test can still await the seam
+        // firing without polling a broker, and the entry it was awaiting is genuinely in
+        // finance.journal_entries by the time the wait returns.
         services.AddSingleton(Postings);
+        services.AddScoped<JournalPostingSeam>();
         services.AddScoped<IJournalPostingSeam, RecordingJournalPostingSeam>();
     }
 

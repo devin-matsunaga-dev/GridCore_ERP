@@ -7,7 +7,13 @@ namespace GridCore.Modules.Finance.Features.ChartOfAccounts;
 /// <remarks>
 /// These are the codes; <see cref="ChartOfAccounts"/> is the accounts themselves, seeded by the
 /// WP-0.8 migration. A fast test asserts every code here exists in the chart, which is what keeps
-/// the two from drifting. WP-2.6 posts against the chart rows rather than the codes.
+/// the two from drifting.
+/// </para>
+/// <para>
+/// <b>A posting names a code here and lands on a chart row.</b> Since WP-2.6 the ledger resolves
+/// these against <c>finance.accounts</c> and a journal line holds a foreign key to the row it
+/// found, so a code that is not in the chart is refused at the posting rather than stored as a
+/// string nothing points at.
 /// </remarks>
 public static class FinanceAccounts
 {

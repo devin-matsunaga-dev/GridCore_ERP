@@ -105,6 +105,13 @@ public static class AuditActions
     /// </summary>
     public const string PaymentTaken = "payment.take";
 
+    /// <summary>
+    /// A balanced journal entry was posted to the general ledger. Recorded against <c>system</c>:
+    /// postings happen in a consumer reacting to a fact another module has already stated, and the
+    /// person behind that fact is named on the bill's or the payment's own entry.
+    /// </summary>
+    public const string JournalPosted = "journal.post";
+
     /// <summary>A utility asset was entered in the register.</summary>
     public const string AssetRegistered = "asset.create";
 
@@ -209,6 +216,14 @@ public static class AuditEntityTypes
     /// did this money come from" is asking about the payment, not about the document it settled.
     /// </summary>
     public const string Payment = "payments.payment";
+
+    /// <summary>
+    /// A row of <c>finance.journal_entries</c>. Lines are audited against the entry they belong to
+    /// rather than as entities of their own — an entry without its lines is not an entry, and both
+    /// are already append-only. The snapshot carries the lines for the same reason: the question
+    /// asked of a ledger is always which accounts moved.
+    /// </summary>
+    public const string JournalEntry = "finance.journal_entry";
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";

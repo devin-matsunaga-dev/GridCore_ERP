@@ -3,10 +3,15 @@ using Microsoft.Extensions.Logging;
 namespace GridCore.Modules.Finance.Features.EventSeam;
 
 /// <summary>
-/// The no-op ledger: logs the balanced entry it would post. This is what makes WP-0.5's seam
-/// demonstrable — an event published by Billing arrives at Finance, becomes a balanced journal
-/// entry and is logged with its totals — while leaving the general ledger itself to WP-2.6.
+/// The no-op ledger: logs the balanced entry it would post rather than writing one.
 /// </summary>
+/// <remarks>
+/// This is what made WP-0.5's seam demonstrable — an event published by Billing arrives at Finance,
+/// becomes a balanced journal entry and is logged with its totals — while the general ledger itself
+/// waited for WP-2.6. <see cref="JournalPostingSeam"/> is now what the module registers, and this
+/// is kept rather than deleted: it is still the right implementation wherever the seam should be
+/// visible without a finance schema behind it, and it is the shape a test double takes.
+/// </remarks>
 public sealed partial class LoggingJournalPostingSeam(ILogger<LoggingJournalPostingSeam> logger) : IJournalPostingSeam
 {
     /// <inheritdoc />

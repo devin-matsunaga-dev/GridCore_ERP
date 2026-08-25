@@ -25,6 +25,31 @@ public sealed class BillIssuedConsumer(IdempotentEventHandler handler, IJournalP
         journal.PostAsync(FinancePostings.From(message), cancellationToken);
 }
 
+/// <summary>
+/// Posts the correction when Billing adjusts an already-issued bill.
+/// </summary>
+/// <remarks>
+/// <b>A second entry, never a rewrite of the first.</b> The receivable raised on
+/// <see cref="BillIssued"/> stays exactly as it was posted — invariant 3 makes a ledger correction
+/// a new entry — and this puts the change beside it, so a trial balance and an AR view agree with
+/// what Billing says the customer owes without anything having been edited. Without this consumer
+/// the ledger would keep saying the original figure and AR would diverge from Billing the first
+/// time a disputed bill was credited.
+/// </remarks>
+public sealed class BillAdjustedConsumer(IdempotentEventHandler handler, IJournalPostingSeam journal)
+    : IdempotentConsumer<BillAdjusted>(handler)
+{
+    /// <summary>Stable dedupe identity. Never rename: a new name replays every past correction.</summary>
+    public const string Name = "finance.bill-adjusted";
+
+    /// <inheritdoc />
+    protected override string ConsumerName => Name;
+
+    /// <inheritdoc />
+    protected override Task ConsumeAsync(BillAdjusted message, CancellationToken cancellationToken) =>
+        journal.PostAsync(FinancePostings.From(message), cancellationToken);
+}
+
 /// <summary>Posts the cash receipt when a payment is approved.</summary>
 public sealed class PaymentApprovedConsumer(IdempotentEventHandler handler, IJournalPostingSeam journal)
     : IdempotentConsumer<PaymentApproved>(handler)

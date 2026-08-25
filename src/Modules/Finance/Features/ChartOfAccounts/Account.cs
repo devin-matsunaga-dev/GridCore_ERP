@@ -37,8 +37,8 @@ public enum NormalBalance
 /// </summary>
 /// <remarks>
 /// There are no balances here. The ledger is append-only (invariant 3), so an account's balance is
-/// the sum of its journal lines and never a column that could drift from them; WP-2.6 adds the
-/// entries and the trial balance that reads them.
+/// the sum of its journal lines and never a column that could drift from them — the trial balance
+/// computes it on demand from <c>finance.journal_lines</c>, which is what WP-2.6 built.
 /// </remarks>
 public sealed class Account
 {

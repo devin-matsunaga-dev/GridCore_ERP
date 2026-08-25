@@ -19,23 +19,40 @@ public sealed class FinanceModuleSeamTests
     {
         var services = AddFinance();
 
+        // BillAdjusted joined the set in WP-2.6. Without it the receivable raised on BillIssued
+        // would keep saying the original figure, and AR would diverge from Billing the first time a
+        // disputed bill was credited.
         Assert.Equal(
-            [typeof(BillIssuedConsumer), typeof(PaymentApprovedConsumer), typeof(GoodsReceivedConsumer)],
+            [
+                typeof(BillIssuedConsumer),
+                typeof(BillAdjustedConsumer),
+                typeof(PaymentApprovedConsumer),
+                typeof(GoodsReceivedConsumer),
+            ],
             RegisteredConsumers(services));
     }
 
     [Fact]
-    public void Registers_the_no_op_ledger_seam_wp_2_6_will_replace()
+    public void Registers_the_general_ledger_behind_the_seam()
     {
-        using var provider = AddFinance().AddLogging().BuildServiceProvider();
+        // WP-0.5's LoggingJournalPostingSeam is what this replaced, by DI and nothing else — Billing
+        // and Payments publish the same events they always did.
+        var registered = AddFinance()
+            .Single(descriptor => descriptor.ServiceType == typeof(IJournalPostingSeam));
 
-        Assert.IsType<LoggingJournalPostingSeam>(provider.GetRequiredService<IJournalPostingSeam>());
+        Assert.Equal(typeof(JournalPostingSeam), registered.ImplementationType);
     }
 
     [Fact]
     public void Every_consumer_names_itself_stably_and_distinctly()
     {
-        string[] names = [BillIssuedConsumer.Name, PaymentApprovedConsumer.Name, GoodsReceivedConsumer.Name];
+        string[] names =
+        [
+            BillIssuedConsumer.Name,
+            BillAdjustedConsumer.Name,
+            PaymentApprovedConsumer.Name,
+            GoodsReceivedConsumer.Name,
+        ];
 
         // The dedupe table is keyed on these; a collision would make one consumer swallow another's
         // events, and a rename would replay every event ever handled.
@@ -70,18 +87,23 @@ public sealed class FinanceModuleSeamTests
             new LoggingJournalPostingSeam(NullLogger<LoggingJournalPostingSeam>.Instance).PostAsync(null!));
 
     [Fact]
-    public void Consumes_the_three_upstream_events_and_nothing_else()
+    public void Consumes_the_four_upstream_events_and_nothing_else()
     {
-        Type[] consumed =
-        [
-            typeof(IConsumer<BillIssued>),
-            typeof(IConsumer<PaymentApproved>),
-            typeof(IConsumer<GoodsReceived>),
-        ];
+        Assert.True(typeof(IConsumer<BillIssued>).IsAssignableFrom(typeof(BillIssuedConsumer)));
+        Assert.True(typeof(IConsumer<BillAdjusted>).IsAssignableFrom(typeof(BillAdjustedConsumer)));
+        Assert.True(typeof(IConsumer<PaymentApproved>).IsAssignableFrom(typeof(PaymentApprovedConsumer)));
+        Assert.True(typeof(IConsumer<GoodsReceived>).IsAssignableFrom(typeof(GoodsReceivedConsumer)));
+    }
 
-        Assert.True(consumed[0].IsAssignableFrom(typeof(BillIssuedConsumer)));
-        Assert.True(consumed[1].IsAssignableFrom(typeof(PaymentApprovedConsumer)));
-        Assert.True(consumed[2].IsAssignableFrom(typeof(GoodsReceivedConsumer)));
+    [Fact]
+    public void Finance_names_the_payment_approved_consumer_differently_from_billings()
+    {
+        // Both modules claim PaymentApproved and each has its own work to do with it — Billing
+        // reduces the balance, Finance posts the cash receipt. The dedupe table is keyed on the
+        // consumer name, so a shared one would mean whichever handled it first silently suppressed
+        // the other. Billing's is "billing.payment-approved"; asserted from this side too, because
+        // the collision would be invisible from either alone.
+        Assert.Equal("finance.payment-approved", PaymentApprovedConsumer.Name);
     }
 
     /// <summary>What the module asked the host to run, read the way the host reads it.</summary>

@@ -3,9 +3,9 @@ using GridCore.Modules.Finance.Features.EventSeam;
 namespace GridCore.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// Stands in for Finance's ledger so the gate tier can see the event seam fire. Registered over
-/// <see cref="IJournalPostingSeam"/> exactly the way production will swap the real ledger in —
-/// by DI, with no change to the modules that raise the events.
+/// Lets the gate tier see Finance's event seam fire without polling a broker. Since WP-2.6 the
+/// ledger behind the seam is real, so this observes rather than substitutes — a test awaits the
+/// posting and then reads the journal entry it caused.
 /// </summary>
 public sealed class JournalPostingRecorder
 {
@@ -66,16 +66,26 @@ public sealed class JournalPostingRecorder
     }
 }
 
-/// <summary>The no-op ledger, wired to the recorder so a test can await the seam firing.</summary>
-public sealed class RecordingJournalPostingSeam(JournalPostingRecorder recorder) : IJournalPostingSeam
+/// <summary>
+/// The real ledger with a tap on it, so a test can await the seam firing.
+/// </summary>
+/// <remarks>
+/// A decorator, not a substitute. Before WP-2.6 this stood in for a ledger that did not exist; now
+/// the posting really is written, and the recorder only says when. Recording happens <b>after</b>
+/// the inner post, so a test released by <see cref="JournalPostingRecorder.NextAsync"/> can read
+/// the entry back — a tap that fired first would hand the test a race with its own assertion.
+/// </remarks>
+public sealed class RecordingJournalPostingSeam(JournalPostingSeam ledger, JournalPostingRecorder recorder)
+    : IJournalPostingSeam
 {
     /// <inheritdoc />
-    public Task PostAsync(JournalPostingIntent posting, CancellationToken cancellationToken = default)
+    public async Task PostAsync(JournalPostingIntent posting, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(recorder);
+        ArgumentNullException.ThrowIfNull(ledger);
+
+        await ledger.PostAsync(posting, cancellationToken).ConfigureAwait(false);
 
         recorder.Record(posting);
-
-        return Task.CompletedTask;
     }
 }
