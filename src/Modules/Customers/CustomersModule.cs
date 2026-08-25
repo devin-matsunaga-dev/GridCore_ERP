@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Registration;
+using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -43,6 +44,11 @@ public sealed class CustomersModule : IModule
         services.AddScoped<IDepositRuleService, DepositRuleService>();
         services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
 
+        // CSR search (WP-2.9). Read-only, and the one service in this module that consumes another
+        // module's seam: IMeterDirectory is registered by Metering, so a meter number can be
+        // resolved to a premise without this module knowing a metering schema exists.
+        services.AddScoped<ICustomerSearchService, CustomerSearchService>();
+
         // The premise registry as the rest of GridCore reads it (WP-2.1). Registered against the
         // Contracts interface rather than the concrete type: this is the one place that knows both
         // halves, and a consumer never learns a customers schema exists.
@@ -79,5 +85,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapServiceLocationEndpoints();
         endpoints.MapServiceAccountEndpoints();
         endpoints.MapRegistrationEndpoints();
+        endpoints.MapCustomerSearchEndpoints();
     }
 }

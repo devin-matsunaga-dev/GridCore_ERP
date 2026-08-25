@@ -42,6 +42,12 @@ public sealed class MeteringModule : IModule
         // and this module — the only one that knows both halves — registers the implementation.
         services.AddScoped<IMeterReadingDirectory, MeterReadingDirectory>();
 
+        // The meter register as the rest of GridCore reads it (WP-2.9). Customers turns the number
+        // a caller quotes off their wall into the premise it measures, then into whoever is served
+        // there — the first of those two hops is this seam, because Metering knows the meter and
+        // Customers knows the customer and neither may read the other's schema.
+        services.AddScoped<IMeterDirectory, MeterDirectory>();
+
         // The simulation seam. Metering owns the meter simulator (ARCHITECTURE.md's module table),
         // so unlike the premise directory this one IS registered here — but only ever against the
         // Contracts interface, which is what lets a production deployment swap in an AMI head-end by

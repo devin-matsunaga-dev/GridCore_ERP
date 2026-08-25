@@ -51,6 +51,41 @@ export type DataTableProps<TRow> = {
 
 const skeletonRowCount = 5;
 
+/**
+ * Moves the keyboard between the row buttons of a table body.
+ *
+ * Down and Up walk the rows a rep can activate; Home and End jump to the ends. Clamped rather than
+ * wrapped: a table is one page of a longer register, so wrapping from the last row to the first
+ * would leave both arrows going somewhere unexpected.
+ *
+ * The buttons keep their natural tab order — this is on top of Tab, not instead of it — so a screen
+ * reader user crossing the table cell by cell is unaffected, and a rep who typed in the filter above
+ * can reach the answer with two keys (WP-2.9's keyboard-first search).
+ */
+export function rowButtonToMove(
+  buttons: readonly HTMLElement[],
+  from: HTMLElement | null,
+  key: string,
+): HTMLElement | undefined {
+  if (buttons.length === 0) return undefined;
+
+  const current = from ? buttons.indexOf(from) : -1;
+
+  switch (key) {
+    case 'ArrowDown':
+      return buttons[Math.min(current + 1, buttons.length - 1)];
+    case 'ArrowUp':
+      // From outside the table (the filter box above it), Up is not an entry point — only Down is.
+      return current <= 0 ? undefined : buttons[current - 1];
+    case 'Home':
+      return current < 0 ? undefined : buttons[0];
+    case 'End':
+      return current < 0 ? undefined : buttons[buttons.length - 1];
+    default:
+      return undefined;
+  }
+}
+
 export function DataTable<TRow>({
   columns,
   rows,
@@ -88,7 +123,27 @@ export function DataTable<TRow>({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody
+          // Arrow keys walk the rows; Enter and Space activate, because the target is a real button.
+          onKeyDown={
+            onRowActivate
+              ? (event) => {
+                  const body = event.currentTarget;
+                  const buttons = [...body.querySelectorAll<HTMLElement>('button[data-row-activate]')];
+                  const target = rowButtonToMove(
+                    buttons,
+                    event.target instanceof HTMLElement ? event.target.closest('button[data-row-activate]') : null,
+                    event.key,
+                  );
+
+                  if (target) {
+                    event.preventDefault();
+                    target.focus();
+                  }
+                }
+              : undefined
+          }
+        >
           {isLoading
             ? Array.from({ length: skeletonRowCount }, (_, index) => (
                 <tr key={index} className="border-border border-b last:border-0">
@@ -221,6 +276,7 @@ function Row<TRow>({
           {activatable && column.key === activationKey ? (
             <button
               type="button"
+              data-row-activate=""
               // Stopped so the row's own click does not fire the same activation twice.
               onClick={(event) => {
                 event.stopPropagation();

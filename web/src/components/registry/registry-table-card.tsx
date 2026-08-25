@@ -49,7 +49,23 @@ export function RegistryTableCard<TRow>({
   const hasRows = !error && table.totalRows > 0;
 
   return (
-    <Card>
+    <Card
+      // Down from the search box drops into the table, which is what makes a filtered registry
+      // reachable with two keys: type, Down, Enter (WP-2.9's keyboard-first search). Only from a
+      // search input — Down inside a select is the select's own, and taking it would break the
+      // filters next to it.
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowDown' || event.defaultPrevented) return;
+        if (!(event.target instanceof HTMLInputElement) || event.target.type !== 'search') return;
+
+        const first = event.currentTarget.querySelector<HTMLElement>('button[data-row-activate]');
+
+        if (first) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
+    >
       {filters && <div className="border-border border-b px-6 py-4">{filters}</div>}
 
       <CardContent className={filters ? 'pt-5' : 'pt-6'}>

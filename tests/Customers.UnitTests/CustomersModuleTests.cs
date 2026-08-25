@@ -1,6 +1,7 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -58,6 +59,23 @@ public class CustomersModuleTests
 
         Assert.False(Registers<ServiceLocationDirectory>(services));
         Assert.False(Registers<ServiceAccountDirectory>(services));
+    }
+
+    [Fact]
+    public void The_search_box_is_registered_and_reads_the_meter_register_through_Contracts()
+    {
+        // WP-2.9. This is the first service in Customers that consumes another module's seam, so the
+        // thing worth pinning is what it does NOT register: IMeterDirectory is Metering's to answer,
+        // and a Customers registration of it would mean this module referencing the assembly that
+        // holds the implementation — the dependency ARCHITECTURE.md's boundary rule forbids.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(CustomerSearchService),
+            Assert.Single(services, service => service.ServiceType == typeof(ICustomerSearchService)).ImplementationType);
+
+        Assert.DoesNotContain(services, service => service.ServiceType == typeof(Contracts.Directories.IMeterDirectory));
+        Assert.False(Registers<CustomerSearchService>(services));
     }
 
     [Fact]

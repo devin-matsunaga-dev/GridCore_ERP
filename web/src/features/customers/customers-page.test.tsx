@@ -6,6 +6,7 @@ import { CustomersPage } from './customers-page';
 import { stubFetch, type FetchStub } from '@/test/api-stub';
 import { customer } from '@/test/registry-fixtures';
 import { renderWithProviders } from '@/test/render';
+import type { CustomerSearchHit } from '@/api/customers';
 
 const rows = [
   customer(),
@@ -21,6 +22,39 @@ const rows = [
     depositHeld: 75,
   }),
 ];
+
+/** The search endpoint's answer, in the shape the registry table renders rows out of. */
+function searchAnswering(hits: CustomerSearchHit[]) {
+  return (url: URL) => {
+    if (url.pathname !== '/api/customers/search') return undefined;
+
+    return {
+      body: {
+        term: url.searchParams.get('q') ?? '',
+        kinds: ['Name', 'Address'],
+        hits,
+        total: hits.length,
+        page: 1,
+        pageSize: 200,
+        truncated: false,
+      },
+    };
+  };
+}
+
+function hit(overrides: Partial<CustomerSearchHit> = {}): CustomerSearchHit {
+  return {
+    customer: rows[0],
+    matchedOn: 'Phone',
+    isExact: true,
+    matchedValue: '670-285-1234',
+    serviceAccountCount: 1,
+    serviceAccountNumber: 'A-000012',
+    serviceAddress: '12 Beach St, Songsong, Rota',
+    meterNumber: null,
+    ...overrides,
+  };
+}
 
 let stub: FetchStub;
 
@@ -133,5 +167,143 @@ describe('CustomersPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('You do not have access to this');
     expect(screen.getByText('You do not hold customers.read.')).toBeInTheDocument();
+  });
+
+  /**
+   * WP-2.9. The registry's search field IS the CSR search — one box, not a second screen beside it.
+   * An empty box lists the registry; a term in it runs the five-kind search over the same field, so
+   * a rep who types a phone number gets an answer rather than an empty table.
+   */
+  describe('the search field', () => {
+    it('lists the registry while the box is empty and asks the search endpoint for nothing', async () => {
+      renderPage();
+      await screen.findByText('Songsong Bakery');
+
+      expect(stub.lastCall('/api/customers')).toBeDefined();
+      expect(stub.lastCall('/api/customers/search')).toBeUndefined();
+    });
+
+    it('runs the search once there is a term, instead of the plain list', async () => {
+      renderPage((url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      await userEvent.type(screen.getByLabelText('Search customers'), '670-285-1234');
+
+      await waitFor(() => expect(stub.lastCall('/api/customers/search')).toBeDefined());
+
+      const request = stub.lastCall('/api/customers/search')!;
+
+      expect(request.searchParams.get('q')).toBe('670-285-1234');
+      // One window, sorted and paged in the browser, exactly as the plain list is.
+      expect(request.searchParams.get('pageSize')).toBe('200');
+    });
+
+    it('finds a customer by their contact number', async () => {
+      // The thing the old registry filter could never do: it matched account number and name only,
+      // while its placeholder promised email. A phone number now answers.
+      renderPage((url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      await userEvent.type(screen.getByLabelText('Search customers'), '670-285-1234');
+
+      const table = within(screen.getByRole('table', { name: 'Customers' }));
+
+      expect(await table.findByText('Exact phone')).toBeInTheDocument();
+      expect(table.getByText('670-285-1234')).toBeInTheDocument();
+    });
+
+    it('carries the status and class selects into the search', async () => {
+      // The box sits beside the selects, so a search that ignored them would answer a question
+      // nobody asked.
+      renderPage((url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      await userEvent.type(screen.getByLabelText('Search customers'), 'cruz');
+      await userEvent.selectOptions(screen.getByLabelText('Status'), 'Suspended');
+
+      await waitFor(() =>
+        expect(stub.lastCall('/api/customers/search')?.searchParams.get('status')).toBe('Suspended'),
+      );
+    });
+
+    it('explains each row only while a search is what produced it', async () => {
+      renderPage((url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      // No column for it on a plain listing: there is no reason to explain a row nobody searched for.
+      expect(screen.queryByRole('button', { name: /matched on/i })).not.toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText('Search customers'), 'cruz');
+
+      expect(await screen.findByRole('button', { name: /matched on/i })).toBeInTheDocument();
+    });
+
+    it('keeps every registry column when it switches to search results', async () => {
+      // A rep watching the table as they type sees the columns they were reading a moment ago with
+      // one more beside them, not a different table.
+      renderPage((url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      await userEvent.type(screen.getByLabelText('Search customers'), 'cruz');
+
+      const table = within(screen.getByRole('table', { name: 'Customers' }));
+
+      await table.findByText('Exact phone');
+      expect(table.getByText('C-000001')).toBeInTheDocument();
+      expect(table.getByText('Active')).toHaveClass('bg-success-soft');
+    });
+
+    it('reaches a customer with two keys from the box', async () => {
+      // Type, Down, Enter — WP-2.9's keyboard-first lookup, on the registry table.
+      stub = stubFetch(
+        (url) => searchAnswering([hit()])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined),
+      );
+
+      renderWithProviders(
+        <Routes>
+          <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/customers/:customerId" element={<p>Customer 360</p>} />
+        </Routes>,
+        { route: '/customers' },
+      );
+
+      await screen.findByText('Songsong Bakery');
+
+      const box = screen.getByLabelText('Search customers');
+      await userEvent.type(box, 'cruz');
+      await within(screen.getByRole('table', { name: 'Customers' })).findByText('Exact phone');
+
+      await userEvent.type(box, '{ArrowDown}');
+      await userEvent.keyboard('{Enter}');
+
+      expect(await screen.findByText('Customer 360')).toBeInTheDocument();
+    });
+
+    /** Failure path: a search that matched nobody says so, and says what it looked for. */
+    it('shows a no-match empty state naming the term', async () => {
+      renderPage((url) => searchAnswering([])(url) ?? (url.pathname === '/api/customers' ? { body: rows } : undefined));
+      await screen.findByText('Songsong Bakery');
+
+      await userEvent.type(screen.getByLabelText('Search customers'), 'nobody');
+
+      expect(await screen.findByText(/Nothing in the register matches "nobody"/)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    /** Failure path: a refused search is the RBAC gate, not an empty result. */
+    it('reports a permission refusal from the search endpoint', async () => {
+      renderPage((url) =>
+        url.pathname === '/api/customers/search'
+          ? { status: 403, body: { title: 'Forbidden', status: 403, detail: 'You do not hold customers.read.' } }
+          : url.pathname === '/api/customers'
+            ? { body: rows }
+            : undefined,
+      );
+
+      await screen.findByText('Songsong Bakery');
+      await userEvent.type(screen.getByLabelText('Search customers'), 'cruz');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('You do not have access to this');
+    });
   });
 });

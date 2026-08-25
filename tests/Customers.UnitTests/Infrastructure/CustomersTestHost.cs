@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Registration;
+using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -43,6 +44,11 @@ public sealed class CustomersTestHost : IDisposable
         services.AddSingleton(currentUser ?? SystemUser.Instance);
         services.AddSingleton<IEventPublisher>(Events);
 
+        // Metering registers the real IMeterDirectory; a Customers test may not resolve it, because
+        // a metering schema is the thing this module must never know about. WP-2.9's search consumes
+        // the seam, so the fast tier stands a double in front of it.
+        services.AddSingleton<IMeterDirectory>(Meters);
+
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
@@ -56,6 +62,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
         services.AddScoped<IDepositRuleService, DepositRuleService>();
         services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
+        services.AddScoped<ICustomerSearchService, CustomerSearchService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -66,6 +73,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>Everything the registry published while the test ran.</summary>
     public RecordingEventPublisher Events { get; } = new();
+
+    /// <summary>The meter register the search box resolves a meter number through.</summary>
+    public FakeMeterDirectory Meters { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -111,6 +121,14 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<ICustomerRegistrationService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the CSR search box, in its own scope.</summary>
+    public Task<TResult> WithSearchAsync<TResult>(Func<ICustomerSearchService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerSearchService>()));
     }
 
     /// <summary>Runs <paramref name="work"/> against the deposit schedule, in its own scope.</summary>

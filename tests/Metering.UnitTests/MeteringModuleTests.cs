@@ -67,6 +67,19 @@ public class MeteringModuleTests
     }
 
     [Fact]
+    public void The_meter_register_is_published_to_other_modules_through_Contracts()
+    {
+        // WP-2.9's seam, and the fifth in GridCore. Customers turns a quoted meter number into the
+        // premise it measures and may not read this schema; Metering could not finish the job either,
+        // because "whose meter is this" is a question about the customers schema. So the boundary
+        // sits in the middle of the resolution, with a directory on this side of it.
+        var directory = Assert.Single(Composed(), service => service.ServiceType == typeof(IMeterDirectory));
+
+        Assert.Equal(typeof(MeterDirectory), directory.ImplementationType);
+        Assert.DoesNotContain(Composed(), service => service.ServiceType == typeof(MeterDirectory));
+    }
+
+    [Fact]
     public void The_meter_simulator_is_registered_only_behind_the_provider_interface()
     {
         // ARCHITECTURE.md's module table gives Metering the meter simulator, so unlike the premise

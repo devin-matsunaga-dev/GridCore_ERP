@@ -194,6 +194,41 @@ export type DepositOutcome = {
   ruleId: string;
 };
 
+/** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
+export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
+export type CustomerMatchKind = (typeof customerMatchKinds)[number];
+
+/**
+ * Mirrors `CustomerSearchHitResponse` — one result row and why it is one.
+ *
+ * The customer arrives whole, in the shape `GET /api/customers` returns them, which is what lets
+ * the registry table render a search result and a registry row with the same columns.
+ */
+export type CustomerSearchHit = {
+  customer: Customer;
+  matchedOn: CustomerMatchKind;
+  isExact: boolean;
+  /** The stored value that matched, as stored — never a normalised form. */
+  matchedValue: string;
+  serviceAccountCount: number;
+  serviceAccountNumber: string | null;
+  serviceAddress: string | null;
+  meterNumber: string | null;
+};
+
+/** Mirrors `CustomerSearchResponse` — a page of results and what the host made of the term. */
+export type CustomerSearchResult = {
+  term: string;
+  kinds: CustomerMatchKind[];
+  hits: CustomerSearchHit[];
+  /** Matching customers across every page — the host ranks before it pages, so this is a real count. */
+  total: number;
+  page: number;
+  pageSize: number;
+  /** A candidate cap was reached, so `total` is a floor rather than a count. */
+  truncated: boolean;
+};
+
 /** Mirrors `CustomerRegistrationResponse` — everything one intake produced. */
 export type CustomerRegistration = {
   customer: Customer;
@@ -211,6 +246,22 @@ export const customersApi = {
       signal,
     }),
   get: (id: string, signal?: AbortSignal) => api.get<Customer>(`/api/customers/${id}`, { signal }),
+
+  /**
+   * The CSR search box (WP-2.9) — what the registry's own search field runs when it has a term in
+   * it. Takes the same status and class filters as `list`, because it sits beside the same selects.
+   *
+   * Asks for one `registryWindow` of ranked rows and lets `useTableState` sort and page it in the
+   * browser, exactly as every other registry does. The endpoint can page on the server and the
+   * ranking is a whole-result-set operation either way; asking for the window keeps one code path
+   * through the table card, and `truncated`/`isWindowFull` are what keep the screen honest when the
+   * answer did not fit.
+   */
+  search: (filters: CustomerFilters, signal?: AbortSignal) =>
+    api.get<CustomerSearchResult>('/api/customers/search', {
+      query: { q: filters.search ?? '', ...params({ status: filters.status, class: filters.class }), pageSize: registryWindow },
+      signal,
+    }),
 
   listLocations: (filters: ServiceLocationFilters, signal?: AbortSignal) =>
     api.get<ServiceLocation[]>('/api/service-locations', {
@@ -262,6 +313,7 @@ export const customerKeys = {
   all: ['customers'] as const,
   depositRules: () => ['deposit-rules'] as const,
   list: (filters: CustomerFilters) => ['customers', 'list', filters] as const,
+  search: (filters: CustomerFilters) => ['customers', 'search', filters] as const,
   detail: (id: string) => ['customers', 'detail', id] as const,
   locations: (filters: ServiceLocationFilters) => ['service-locations', 'list', filters] as const,
   location: (id: string) => ['service-locations', 'detail', id] as const,
@@ -281,10 +333,32 @@ export function useDepositRules() {
   });
 }
 
-export function useCustomers(filters: CustomerFilters) {
+/**
+ * The registry list. Takes `enabled` because the registry screen runs this or `useCustomerSearch`
+ * and never both — an empty search field lists customers, a term in it searches them.
+ */
+export function useCustomers(filters: CustomerFilters, enabled = true) {
   return useQuery({
     queryKey: customerKeys.list(filters),
     queryFn: ({ signal }) => customersApi.list(filters, signal),
+    enabled,
+  });
+}
+
+/**
+ * The registry's search field, once it has something in it.
+ *
+ * Disabled on an empty term, which is what makes the registry page's pair of queries an either/or
+ * rather than two requests per keystroke: no term means the plain list answers, a term means this
+ * one does. `placeholderData` keeps the previous rows on screen while the next answer loads, so the
+ * table does not blank out between keystrokes.
+ */
+export function useCustomerSearch(filters: CustomerFilters, enabled: boolean) {
+  return useQuery({
+    queryKey: customerKeys.search(filters),
+    queryFn: ({ signal }) => customersApi.search(filters, signal),
+    enabled,
+    placeholderData: (previous) => previous,
   });
 }
 

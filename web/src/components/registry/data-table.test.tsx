@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import { DataTable, type Column } from './data-table';
+import { DataTable, rowButtonToMove, type Column } from './data-table';
 
 type Row = { id: string; name: string; onHand: number };
 
@@ -134,5 +134,81 @@ describe('DataTable', () => {
 
     expect(screen.queryByText('Nothing in the catalogue yet')).not.toBeInTheDocument();
     expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Arrow-key row navigation (WP-2.9). On top of Tab, never instead of it: a screen-reader user
+ * crossing the table cell by cell is unaffected, and a rep who typed in the filter above can reach
+ * the answer with two keys.
+ */
+describe('rowButtonToMove', () => {
+  const buttons = ['a', 'b', 'c'].map((name) => ({ name }) as unknown as HTMLElement);
+
+  it('enters the list from outside it', () => {
+    // Down from the filter box above the table selects the first row, which is what makes
+    // type-Down-Enter reach the best match without the mouse.
+    expect(rowButtonToMove(buttons, null, 'ArrowDown')).toBe(buttons[0]);
+  });
+
+  it('does not enter the list on the way up', () => {
+    // Up out of a filter box belongs to whatever is above it, not to the table.
+    expect(rowButtonToMove(buttons, null, 'ArrowUp')).toBeUndefined();
+  });
+
+  it('walks the rows', () => {
+    expect(rowButtonToMove(buttons, buttons[0]!, 'ArrowDown')).toBe(buttons[1]);
+    expect(rowButtonToMove(buttons, buttons[1]!, 'ArrowUp')).toBe(buttons[0]);
+  });
+
+  it('clamps rather than wrapping', () => {
+    // A table is one page of a longer register, so wrapping would leave both arrows going somewhere
+    // unexpected.
+    expect(rowButtonToMove(buttons, buttons[2]!, 'ArrowDown')).toBe(buttons[2]);
+    expect(rowButtonToMove(buttons, buttons[0]!, 'ArrowUp')).toBeUndefined();
+  });
+
+  it('jumps to the ends, but only from inside the list', () => {
+    expect(rowButtonToMove(buttons, buttons[1]!, 'Home')).toBe(buttons[0]);
+    expect(rowButtonToMove(buttons, buttons[1]!, 'End')).toBe(buttons[2]);
+    expect(rowButtonToMove(buttons, null, 'End')).toBeUndefined();
+  });
+
+  it('leaves every other key alone', () => {
+    // Typing must still reach the box the caret is in.
+    expect(rowButtonToMove(buttons, buttons[0]!, 'a')).toBeUndefined();
+    expect(rowButtonToMove(buttons, buttons[0]!, 'Enter')).toBeUndefined();
+  });
+
+  it('has nowhere to go in an empty table', () => {
+    expect(rowButtonToMove([], null, 'ArrowDown')).toBeUndefined();
+  });
+});
+
+describe('DataTable keyboard navigation', () => {
+  it('moves focus between rows with the arrow keys and activates with Enter', async () => {
+    const onRowActivate = vi.fn();
+
+    renderTable({ onRowActivate });
+
+    const [first, second] = screen.getAllByRole('button', { name: /LV connector|Pole cross-arm/ });
+
+    first!.focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(second).toHaveFocus();
+
+    await userEvent.keyboard('{ArrowUp}');
+    expect(first).toHaveFocus();
+
+    // Enter is the button's own — nothing had to reimplement activation to add the arrows.
+    await userEvent.keyboard('{Enter}');
+    expect(onRowActivate).toHaveBeenCalledWith(rows[0]);
+  });
+
+  it('leaves the arrows alone when there is no detail to open', async () => {
+    // A read-only table has no row buttons, so the keys belong to the page's own scrolling.
+    renderTable();
+
+    expect(screen.queryByRole('button', { name: /LV connector/ })).not.toBeInTheDocument();
   });
 });
