@@ -4,7 +4,7 @@
 
 ## Current position
 - **Phase:** 2 — Revenue Cycle
-- **Current WP:** **WP-2.7 complete, awaiting owner verification and squash-merge.** That closes Phase 2: next is the **`v0.3-revenue` gate** (full gate suite, `aspire update`, a live walk of the revenue cycle), then tag `v0.3-revenue`, then WP-3.1 (Work order core) on branch `feat/wp-3.1-work-order-core` off main
+- **Current WP:** **WP-2.7 complete, awaiting owner verification and squash-merge.** That closes Phase 2: next is the **`v0.3-revenue` gate** (full gate suite, `aspire update`, a live walk of the revenue cycle), then tag `v0.3-revenue`, then **Phase 2.5 — Customers Deepening** opening with WP-2.8 (Customer registration / intake wizard) on branch `feat/wp-2.8-registration-wizard` off main. Phase 3 (Ops cycle) now follows the `v0.3.5-customers` gate
 - **Current branch:** `feat/wp-2.7-revenue-e2e` (off `de746df`) — WP-2.6 was squash-merged to main as `de746df`
 - **Last tag:** `v0.2-phase1` (on `8c624b4`, 2026-08-25) — Phase 1 gate closed and verified by the owner; the tag is pushed, which also fired the GHCR release build
 
@@ -263,6 +263,16 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 - [x] WP-2.5 Payments simulator
 - [x] WP-2.6 Finance GL + journal posting
 - [x] WP-2.7 Revenue Cycle E2E + demo screen     → gate v0.3-revenue
+
+### Phase 2.5 — Customers Deepening (CSR experience)
+- [ ] WP-2.8  Customer registration / intake wizard
+- [ ] WP-2.9  CSR customer search
+- [ ] WP-2.10 Customer 360 page
+- [ ] WP-2.11 Contact & profile management
+- [ ] WP-2.12 Deposit lifecycle **[SENSITIVE]**
+- [ ] WP-2.13 Account notes / interaction log
+- [ ] WP-2.14 Customer documents
+- [ ] WP-2.15 Account transitions               → gate v0.3.5-customers
 
 ### Phase 3 — Ops & Maintenance Cycle
 - [ ] WP-3.1 Work order core + state machine
