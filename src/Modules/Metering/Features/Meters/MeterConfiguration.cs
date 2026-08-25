@@ -43,6 +43,11 @@ public sealed class MeterConfiguration : IEntityTypeConfiguration<Meter>
         builder.Property(meter => meter.Manufacturer).HasColumnName("manufacturer").HasMaxLength(Meter.ModelLength);
         builder.Property(meter => meter.Model).HasColumnName("model").HasMaxLength(Meter.ModelLength);
 
+        // Required, with no database default: a register width guessed by the schema is one nobody
+        // transcribed off the nameplate, and rollover arithmetic built on a guess is worse than
+        // arithmetic that refuses to run. The migration backfills the meters that predate it.
+        builder.Property(meter => meter.RegisterDigits).HasColumnName("register_digits").IsRequired();
+
         builder.Property(meter => meter.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -76,6 +81,7 @@ public sealed class MeterConfiguration : IEntityTypeConfiguration<Meter>
         builder.Metadata.FindNavigation(nameof(Meter.History))!
             .SetPropertyAccessMode(PropertyAccessMode.Field);
 
+        builder.Ignore(meter => meter.RegisterCapacity);
         builder.Ignore(meter => meter.IsFitted);
         builder.Ignore(meter => meter.AllowedTransitions);
         builder.Ignore(meter => meter.AllowedStatusChanges);

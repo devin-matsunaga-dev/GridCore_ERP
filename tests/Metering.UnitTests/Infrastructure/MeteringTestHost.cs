@@ -1,8 +1,11 @@
 using GridCore.Contracts.Directories;
+using GridCore.Contracts.Providers;
 using GridCore.Modules.Metering.Data;
 using GridCore.Modules.Metering.Features.Meters;
+using GridCore.Modules.Metering.Features.Readings;
 using GridCore.Modules.Metering.Features.Shared;
 using GridCore.Modules.Metering.Seeding;
+using GridCore.Modules.Metering.Simulation;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
@@ -35,7 +38,12 @@ public sealed class MeteringTestHost : IDisposable
 
     /// <param name="clock">The clock the host uses; a <see cref="FakeClock"/> keeps tests off wall time.</param>
     /// <param name="currentUser">Who is acting. Defaults to the system, as background work is.</param>
-    public MeteringTestHost(TimeProvider? clock = null, ICurrentUser? currentUser = null)
+    /// <param name="readings">
+    /// The reading provider. Defaults to the real simulator — it is deterministic and needs no
+    /// infrastructure, so a test that is not about the provider can use the thing itself; a test
+    /// that needs a particular reading supplies a <see cref="ScriptedMeterReadingProvider"/>.
+    /// </param>
+    public MeteringTestHost(TimeProvider? clock = null, ICurrentUser? currentUser = null, IMeterReadingProvider? readings = null)
     {
         _connection = new SqliteConnection("Filename=:memory:");
         _connection.Open();
@@ -47,6 +55,7 @@ public sealed class MeteringTestHost : IDisposable
         services.AddSingleton(currentUser ?? SystemUser.Instance);
         services.AddSingleton<IEventPublisher>(Events);
         services.AddSingleton<IServiceLocationDirectory>(ServiceLocations);
+        services.AddSingleton(readings ?? new SimulatedMeterReadingProvider());
 
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
@@ -57,7 +66,9 @@ public sealed class MeteringTestHost : IDisposable
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<IMeterNumberGenerator, SequentialMeterNumberGenerator>();
         services.AddScoped<IMeterService, MeterService>();
+        services.AddScoped<IMeterReadingService, MeterReadingService>();
         services.AddScoped<MetersDemoSeeder>();
+        services.AddScoped<MeterReadingsDemoSeeder>();
 
         _provider = services.BuildServiceProvider();
 
@@ -89,8 +100,39 @@ public sealed class MeteringTestHost : IDisposable
     }
 
     /// <summary>Registers a meter and hands back the record, for tests whose subject is what happens next.</summary>
-    public Task<MeterRecord> RegisterMeterAsync(string serialNumber, MeterType type = MeterType.SinglePhase) =>
-        WithMetersAsync(meters => meters.RegisterAsync(new RegisterMeterInput(serialNumber, type)));
+    public Task<MeterRecord> RegisterMeterAsync(
+        string serialNumber,
+        MeterType type = MeterType.SinglePhase,
+        int registerDigits = Meter.DefaultRegisterDigits) =>
+        WithMetersAsync(meters => meters.RegisterAsync(new RegisterMeterInput(serialNumber, type, registerDigits)));
+
+    /// <summary>Runs <paramref name="work"/> against the reading register, in its own scope.</summary>
+    public Task<TResult> WithReadingsAsync<TResult>(Func<IMeterReadingService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IMeterReadingService>()));
+    }
+
+    /// <summary>
+    /// Registers a meter and fits it at a freshly invented premise, which is the state a reading
+    /// test starts from — a reading can only be taken off a meter that is on a wall.
+    /// </summary>
+    public async Task<(MeterRecord Meter, Guid Premise)> FitMeterAsync(
+        string serialNumber,
+        decimal? installationReading = 0m,
+        MeterType type = MeterType.SinglePhase,
+        int registerDigits = Meter.DefaultRegisterDigits,
+        string locationCode = "L-000001")
+    {
+        var meter = await RegisterMeterAsync(serialNumber, type, registerDigits);
+        var premise = ServiceLocations.Add(locationCode);
+
+        var fitted = await WithMetersAsync(meters =>
+            meters.AssignAsync(meter.Meter.Id, new AssignMeterInput(premise, installationReading)));
+
+        return (fitted, premise);
+    }
 
     /// <summary>Reads back what a test wrote, on a context outside any unit of work.</summary>
     public MeteringDbContext NewMeteringContext() =>

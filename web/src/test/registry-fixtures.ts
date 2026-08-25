@@ -60,6 +60,8 @@ export function meter(overrides: Partial<Meter> = {}): Meter {
     type: 'SinglePhase',
     manufacturer: 'Sensus',
     model: 'iConA',
+    registerDigits: 5,
+    registerCapacity: 100000,
     status: 'Installed',
     isFitted: true,
     allowedTransitions: ['Faulty', 'Removed'],

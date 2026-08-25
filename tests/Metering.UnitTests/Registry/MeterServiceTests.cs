@@ -261,7 +261,7 @@ public sealed class MeterServiceTests : IDisposable
         var meter = await _host.RegisterMeterAsync("SEN-1");
 
         var corrected = await _host.WithMetersAsync(meters =>
-            meters.UpdateAsync(meter.Meter.Id, new UpdateMeterInput("SEN-1", MeterType.ThreePhase, "Itron")));
+            meters.UpdateAsync(meter.Meter.Id, new UpdateMeterInput("SEN-1", MeterType.ThreePhase, Manufacturer: "Itron")));
 
         Assert.Equal(MeterType.ThreePhase, corrected.Meter.Type);
         Assert.Equal("Itron", corrected.Meter.Manufacturer);

@@ -14,7 +14,7 @@ public sealed class MeterTests
     private static readonly RegistryActor Crew = new("technician-1", "Jesse Atalig");
 
     private static Meter NewMeter(MeterType type = MeterType.SinglePhase) =>
-        Meter.Register("MTR-000001", "SEN-4471102", type, Crew, Now, "Sensus", "iConA");
+        Meter.Register("MTR-000001", "SEN-4471102", type, Crew, Now, manufacturer: "Sensus", model: "iConA");
 
     [Fact]
     public void A_registered_meter_starts_in_stock_and_on_no_premise()
@@ -240,7 +240,7 @@ public sealed class MeterTests
         var meter = NewMeter();
 
         meter.InstallAt(premise, Crew, Now);
-        meter.UpdateDetails("ITR-9930041", MeterType.ThreePhase, "Itron", "Centron II");
+        meter.UpdateDetails("ITR-9930041", MeterType.ThreePhase, Meter.DefaultRegisterDigits, "Itron", "Centron II");
 
         Assert.Equal("ITR-9930041", meter.SerialNumber);
         Assert.Equal(MeterType.ThreePhase, meter.Type);
@@ -252,7 +252,7 @@ public sealed class MeterTests
     [Fact]
     public void Free_text_is_trimmed_and_whitespace_becomes_nothing()
     {
-        var meter = Meter.Register("MTR-000001", "  SEN-1  ", MeterType.SinglePhase, Crew, Now, "   ", " iConA ");
+        var meter = Meter.Register("MTR-000001", "  SEN-1  ", MeterType.SinglePhase, Crew, Now, manufacturer: "   ", model: " iConA ");
 
         Assert.Equal("SEN-1", meter.SerialNumber);
         Assert.Null(meter.Manufacturer);

@@ -1,4 +1,5 @@
 using FluentValidation;
+using GridCore.Modules.Metering.Features.Readings;
 
 namespace GridCore.Modules.Metering.Features.Meters;
 
@@ -17,6 +18,13 @@ public abstract class MeterDetailsValidator<TRequest> : AbstractValidator<TReque
         // is what identifies it when the utility's own plate has weathered off.
         RuleFor(request => request.SerialNumber).NotEmpty().MaximumLength(Meter.SerialNumberLength);
         RuleFor(request => request.Type).IsInEnum();
+
+        // A width outside this range is not a meter GridCore can compute a rollover for. The
+        // aggregate refuses it too — this is here so a mistyped nameplate reads as a 400 rather than
+        // reaching the register at all.
+        RuleFor(request => request.RegisterDigits)
+            .InclusiveBetween(ConsumptionCalculator.MinRegisterDigits, ConsumptionCalculator.MaxRegisterDigits);
+
         RuleFor(request => request.Manufacturer!).MaximumLength(Meter.ModelLength);
         RuleFor(request => request.Model!).MaximumLength(Meter.ModelLength);
     }

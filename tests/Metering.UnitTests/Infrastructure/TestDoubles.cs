@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Providers;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -127,5 +128,52 @@ public sealed class FakeServiceLocationDirectory : IServiceLocationDirectory
             .ToList();
 
         return Task.FromResult(serviceable);
+    }
+}
+
+/// <summary>
+/// A reading provider that returns exactly what a test told it to, so a case about the register can
+/// pin the numbers instead of predicting the simulator's.
+/// </summary>
+/// <remarks>
+/// The simulator is deterministic and needs no infrastructure, so most tests use the real one. This
+/// exists for the cases that have to state a specific dial reading — a rollover, a missing read, a
+/// value the register cannot display — and for asserting what the module asked the provider for.
+/// </remarks>
+public sealed class ScriptedMeterReadingProvider : IMeterReadingProvider
+{
+    private readonly Dictionary<Guid, decimal?> _readings = [];
+
+    /// <inheritdoc />
+    public string Name => "Scripted meter reading provider";
+
+    /// <summary>The route the module last described, so a test can assert what it was told.</summary>
+    public IReadOnlyList<MeterReadingRequest> LastRoute { get; private set; } = [];
+
+    /// <summary>Answers <paramref name="reading"/> for <paramref name="meterId"/>; null is a missing read.</summary>
+    public ScriptedMeterReadingProvider Returns(Guid meterId, decimal? reading)
+    {
+        _readings[meterId] = reading;
+
+        return this;
+    }
+
+    /// <summary>Extra results for meters that are not on the route, so the register's guard can be exercised.</summary>
+    public List<MeterReadingResult> Extra { get; } = [];
+
+    /// <inheritdoc />
+    public Task<MeterReadingBatch> ReadCycleAsync(MeterReadingCycle cycle, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(cycle);
+
+        LastRoute = cycle.Meters;
+
+        var readings = cycle.Meters
+            .Where(meter => _readings.ContainsKey(meter.MeterId))
+            .Select(meter => new MeterReadingResult(meter.MeterId, _readings[meter.MeterId], cycle.ReadAt, null))
+            .Concat(Extra)
+            .ToList();
+
+        return Task.FromResult(new MeterReadingBatch(cycle.CycleCode, cycle.ReadAt, cycle.Seed, readings));
     }
 }

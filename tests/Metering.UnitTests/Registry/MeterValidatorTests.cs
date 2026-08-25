@@ -29,7 +29,7 @@ public sealed class MeterValidatorTests
     public void A_well_formed_registration_passes() =>
         Assert.Empty(Failures(
             new RegisterMeterRequestValidator(),
-            new RegisterMeterRequest("SEN-4471102", MeterType.SinglePhase, "Sensus", "iConA", "September delivery")));
+            new RegisterMeterRequest("SEN-4471102", MeterType.SinglePhase, Manufacturer: "Sensus", Model: "iConA", Note: "September delivery")));
 
     [Fact]
     public void A_serial_number_longer_than_the_column_is_refused() =>

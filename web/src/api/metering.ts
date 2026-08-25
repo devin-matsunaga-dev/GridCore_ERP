@@ -53,6 +53,10 @@ export type Meter = {
   type: MeterType;
   manufacturer: string | null;
   model: string | null;
+  /** Whole digits the register carries before the dials roll back to zero. */
+  registerDigits: number;
+  /** What that register counts up to before it returns to zero. */
+  registerCapacity: number;
   status: MeterStatus;
   /** Whether it is on a premise and measuring supply. */
   isFitted: boolean;

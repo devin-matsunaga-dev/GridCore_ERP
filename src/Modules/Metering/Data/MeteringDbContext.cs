@@ -1,4 +1,5 @@
 using GridCore.Modules.Metering.Features.Meters;
+using GridCore.Modules.Metering.Features.Readings;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Metering.Data;
@@ -19,6 +20,13 @@ public sealed class MeteringDbContext(DbContextOptions<MeteringDbContext> option
     /// be read without loading the meter, which is what the history endpoint does.
     /// </summary>
     public DbSet<MeterHistoryEntry> MeterHistory => Set<MeterHistoryEntry>();
+
+    /// <summary>
+    /// Every reading ever taken off every meter. Append-only, and deliberately not a navigation
+    /// collection on the meter: recording one reading must not load a decade of them, and the
+    /// register that WP-2.3's bills are raised from is the one that will grow fastest in GridCore.
+    /// </summary>
+    public DbSet<MeterReading> MeterReadings => Set<MeterReading>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

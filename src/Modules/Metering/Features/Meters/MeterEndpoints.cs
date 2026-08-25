@@ -12,12 +12,18 @@ namespace GridCore.Modules.Metering.Features.Meters;
 /// <summary>Body of a request to enter a meter in the register.</summary>
 /// <param name="SerialNumber">The manufacturer's serial number stamped on the meter.</param>
 /// <param name="Type">How the meter measures the service.</param>
+/// <param name="RegisterDigits">
+/// How many whole digits its register carries. Defaults to the ordinary domestic five; a
+/// three-phase or CT-metered intake carries more, and getting it wrong is what turns a rollover
+/// into a bill for a hundred thousand units.
+/// </param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
 /// <param name="Note">Why it is being registered, for the history.</param>
 public sealed record RegisterMeterRequest(
     string SerialNumber,
     MeterType Type,
+    int RegisterDigits = Meter.DefaultRegisterDigits,
     string? Manufacturer = null,
     string? Model = null,
     string? Note = null) : IMeterDetails;
@@ -25,11 +31,13 @@ public sealed record RegisterMeterRequest(
 /// <summary>Body of a request to correct a meter's device details.</summary>
 /// <param name="SerialNumber">The manufacturer's serial number.</param>
 /// <param name="Type">How the meter measures the service.</param>
+/// <param name="RegisterDigits">How many whole digits its register carries.</param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
 public sealed record UpdateMeterRequest(
     string SerialNumber,
     MeterType Type,
+    int RegisterDigits = Meter.DefaultRegisterDigits,
     string? Manufacturer = null,
     string? Model = null) : IMeterDetails;
 
@@ -118,6 +126,8 @@ public sealed record MeterServiceLocationResponse(Guid Id, string LocationCode, 
 /// <param name="Type">How it measures the service.</param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
+/// <param name="RegisterDigits">How many whole digits its register carries.</param>
+/// <param name="RegisterCapacity">What that register counts up to before it returns to zero.</param>
 /// <param name="Status">Where it stands in its working life.</param>
 /// <param name="IsFitted">Whether it is on a premise and measuring supply.</param>
 /// <param name="AllowedTransitions">Every status the machine allows from here.</param>
@@ -140,6 +150,8 @@ public sealed record MeterResponse(
     string Type,
     string? Manufacturer,
     string? Model,
+    int RegisterDigits,
+    decimal RegisterCapacity,
     string Status,
     bool IsFitted,
     IReadOnlyList<string> AllowedTransitions,
@@ -167,6 +179,8 @@ public sealed record MeterResponse(
             meter.Type.ToString(),
             meter.Manufacturer,
             meter.Model,
+            meter.RegisterDigits,
+            meter.RegisterCapacity,
             meter.Status.ToString(),
             meter.IsFitted,
             meter.AllowedTransitions.Select(status => status.ToString()).ToList(),
@@ -247,7 +261,7 @@ public static class MeterEndpoints
                 MeterProblems.RunAsync(async () =>
                 {
                     var meter = await meters.RegisterAsync(
-                        new RegisterMeterInput(body.SerialNumber, body.Type, body.Manufacturer, body.Model, body.Note),
+                        new RegisterMeterInput(body.SerialNumber, body.Type, body.RegisterDigits, body.Manufacturer, body.Model, body.Note),
                         cancellationToken);
 
                     return Results.Created($"{RoutePrefix}/{meter.Meter.Id}", MeterResponse.From(meter));
@@ -261,7 +275,7 @@ public static class MeterEndpoints
                 MeterProblems.RunAsync(async () =>
                     Results.Ok(MeterResponse.From(await meters.UpdateAsync(
                         id,
-                        new UpdateMeterInput(body.SerialNumber, body.Type, body.Manufacturer, body.Model),
+                        new UpdateMeterInput(body.SerialNumber, body.Type, body.RegisterDigits, body.Manufacturer, body.Model),
                         cancellationToken)))))
             .RequirePermission(Permissions.Metering.Write)
             .WithValidation<UpdateMeterRequest>()

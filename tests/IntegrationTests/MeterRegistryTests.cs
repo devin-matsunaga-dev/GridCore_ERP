@@ -51,7 +51,7 @@ public sealed class MeterRegistryTests(GateFixture fixture) : IAsyncLifetime
         await using var scope = fixture.CreateScope();
 
         return (await scope.ServiceProvider.GetRequiredService<IMeterService>()
-            .RegisterAsync(new RegisterMeterInput(serialNumber, MeterType.SinglePhase, "Sensus", "iConA")))
+            .RegisterAsync(new RegisterMeterInput(serialNumber, MeterType.SinglePhase, Manufacturer: "Sensus", Model: "iConA")))
             .Meter.Id;
     }
 

@@ -64,6 +64,12 @@ public static class AuditActions
     /// <summary>A meter moved through its lifecycle without changing where it is.</summary>
     public const string MeterStatusChanged = "meter.status";
 
+    /// <summary>A reading was taken off a meter and recorded in the reading register.</summary>
+    public const string MeterReadingRecorded = "meter_reading.create";
+
+    /// <summary>A reading cycle was run against the reading provider, producing a batch of readings.</summary>
+    public const string MeterReadingCycleRun = "meter_reading.cycle";
+
     /// <summary>A utility asset was entered in the register.</summary>
     public const string AssetRegistered = "asset.create";
 
@@ -119,6 +125,20 @@ public static class AuditEntityTypes
     /// auditor asks is "what happened to this meter".
     /// </summary>
     public const string Meter = "metering.meter";
+
+    /// <summary>
+    /// A row of <c>metering.meter_readings</c>. The reading is its own entity rather than a line of
+    /// the meter's: a bill is raised from one, a dispute is about one, and an auditor asked "where
+    /// did this figure come from" is asking about the reading, not about the device.
+    /// </summary>
+    public const string MeterReading = "metering.meter_reading";
+
+    /// <summary>
+    /// A reading cycle, identified by its cycle code. Not a table: a cycle run writes many readings
+    /// in one act, and one entry naming the cycle is what an auditor actually reads back — the
+    /// readings themselves are already immutable and each stamped with who recorded it.
+    /// </summary>
+    public const string MeterReadingCycle = "metering.reading_cycle";
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";

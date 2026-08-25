@@ -20,6 +20,9 @@ public interface IMeterDetails
     /// <summary>How the meter measures the service.</summary>
     MeterType Type { get; }
 
+    /// <summary>How many whole digits its register carries, before the dials roll back to zero.</summary>
+    int RegisterDigits { get; }
+
     /// <summary>Who made it.</summary>
     string? Manufacturer { get; }
 
@@ -30,12 +33,14 @@ public interface IMeterDetails
 /// <summary>What a caller supplies to enter a meter in the register.</summary>
 /// <param name="SerialNumber">The manufacturer's serial number.</param>
 /// <param name="Type">How the meter measures the service.</param>
+/// <param name="RegisterDigits">How many whole digits its register carries.</param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
 /// <param name="Note">Why it is being registered, for the history.</param>
 public sealed record RegisterMeterInput(
     string SerialNumber,
     MeterType Type,
+    int RegisterDigits = Meter.DefaultRegisterDigits,
     string? Manufacturer = null,
     string? Model = null,
     string? Note = null) : IMeterDetails;
@@ -43,11 +48,13 @@ public sealed record RegisterMeterInput(
 /// <summary>What a caller supplies to correct a meter's device details.</summary>
 /// <param name="SerialNumber">The manufacturer's serial number.</param>
 /// <param name="Type">How the meter measures the service.</param>
+/// <param name="RegisterDigits">How many whole digits its register carries.</param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
 public sealed record UpdateMeterInput(
     string SerialNumber,
     MeterType Type,
+    int RegisterDigits = Meter.DefaultRegisterDigits,
     string? Manufacturer = null,
     string? Model = null) : IMeterDetails;
 
@@ -180,6 +187,7 @@ public sealed class MeterService(
                     input.Type,
                     RegistryActor.Of(currentUser),
                     now,
+                    input.RegisterDigits,
                     input.Manufacturer,
                     input.Model,
                     input.Note);
@@ -222,7 +230,7 @@ public sealed class MeterService(
 
                 await RequireSerialIsFreeAsync(input.SerialNumber, excluding: meter.Id, ct).ConfigureAwait(false);
 
-                meter.UpdateDetails(input.SerialNumber, input.Type, input.Manufacturer, input.Model);
+                meter.UpdateDetails(input.SerialNumber, input.Type, input.RegisterDigits, input.Manufacturer, input.Model);
 
                 audit.Record(AuditActions.MeterUpdated, AuditEntityTypes.Meter, meter.Id.ToString(), before, MeterSnapshot.Of(meter));
 
@@ -509,6 +517,7 @@ public sealed class MeterService(
 /// <param name="Type">How it measures the service.</param>
 /// <param name="Manufacturer">Who made it.</param>
 /// <param name="Model">Their model designation.</param>
+/// <param name="RegisterDigits">How many whole digits its register carries.</param>
 /// <param name="Status">Where it stands in its working life.</param>
 /// <param name="ServiceLocationId">The premise it is fitted at, where it is fitted anywhere.</param>
 /// <param name="InstalledAt">When it was last fitted.</param>
@@ -521,6 +530,7 @@ public sealed record MeterSnapshot(
     MeterType Type,
     string? Manufacturer,
     string? Model,
+    int RegisterDigits,
     MeterStatus Status,
     Guid? ServiceLocationId,
     DateTimeOffset? InstalledAt,
@@ -539,6 +549,7 @@ public sealed record MeterSnapshot(
             meter.Type,
             meter.Manufacturer,
             meter.Model,
+            meter.RegisterDigits,
             meter.Status,
             meter.ServiceLocationId,
             meter.InstalledAt,

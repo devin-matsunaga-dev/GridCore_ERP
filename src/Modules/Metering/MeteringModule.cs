@@ -1,7 +1,10 @@
 using GridCore.Modules.Metering.Data;
+using GridCore.Contracts.Providers;
 using GridCore.Modules.Metering.Features.Meters;
+using GridCore.Modules.Metering.Features.Readings;
 using GridCore.Modules.Metering.Features.Shared;
 using GridCore.Modules.Metering.Seeding;
+using GridCore.Modules.Metering.Simulation;
 using GridCore.Platform;
 using GridCore.Platform.Data;
 using GridCore.Platform.Modules;
@@ -31,6 +34,13 @@ public sealed class MeteringModule : IModule
 
         services.AddScoped<IMeterNumberGenerator, SequentialMeterNumberGenerator>();
         services.AddScoped<IMeterService, MeterService>();
+        services.AddScoped<IMeterReadingService, MeterReadingService>();
+
+        // The simulation seam. Metering owns the meter simulator (ARCHITECTURE.md's module table),
+        // so unlike the premise directory this one IS registered here — but only ever against the
+        // Contracts interface, which is what lets a production deployment swap in an AMI head-end by
+        // changing this line and nothing else (invariant 6).
+        services.AddSingleton<IMeterReadingProvider, SimulatedMeterReadingProvider>();
 
         // Note what is NOT here: IServiceLocationDirectory. This module consumes it and the
         // Customers module registers it, which is the whole point of putting the interface in
@@ -44,10 +54,13 @@ public sealed class MeteringModule : IModule
         services.AddGridCoreValidator<AssignMeterRequest, AssignMeterRequestValidator>();
         services.AddGridCoreValidator<RemoveMeterRequest, RemoveMeterRequestValidator>();
         services.AddGridCoreValidator<ChangeMeterStatusRequest, ChangeMeterStatusRequestValidator>();
+        services.AddGridCoreValidator<RecordMeterReadingRequest, RecordMeterReadingRequestValidator>();
+        services.AddGridCoreValidator<RunReadingCycleRequest, RunReadingCycleRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
         services.AddDemoSeeder<MetersDemoSeeder>();
+        services.AddDemoSeeder<MeterReadingsDemoSeeder>();
     }
 
     /// <inheritdoc />
@@ -56,5 +69,6 @@ public sealed class MeteringModule : IModule
         ArgumentNullException.ThrowIfNull(endpoints);
 
         endpoints.MapMeterEndpoints();
+        endpoints.MapMeterReadingEndpoints();
     }
 }

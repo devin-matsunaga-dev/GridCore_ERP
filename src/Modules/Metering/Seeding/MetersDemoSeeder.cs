@@ -67,7 +67,11 @@ public sealed class MetersDemoSeeder(
         // Ids are Guid v7 stamped from the instant they are created, and rows created in the same
         // instant have no defined order. A step per write keeps the register list and each history
         // stable between runs.
-        var now = clock.GetUtcNow();
+        // Fitted well over a year ago, not this second. A demo world whose meters were all installed
+        // at startup could carry no reading history at all — MeterReading.Record refuses a reading
+        // dated before the meter went on the wall — and a register whose every device was fitted in
+        // the same millisecond reads as seed data rather than as a utility.
+        var now = clock.GetUtcNow().AddDays(-FittedDaysAgo);
         var step = 0;
 
         DateTimeOffset Next() => now.AddMilliseconds(step++);
@@ -82,6 +86,7 @@ public sealed class MetersDemoSeeder(
                 device.Type,
                 Attribution,
                 Next(),
+                device.RegisterDigits,
                 device.Manufacturer,
                 device.Model,
                 device.RegisteredNote);
@@ -120,6 +125,12 @@ public sealed class MetersDemoSeeder(
     }
 
     /// <summary>
+    /// How long ago the demo meters were registered and fitted. Long enough for
+    /// <see cref="MeterReadingsDemoSeeder"/> to lay a year of reading cycles after it.
+    /// </summary>
+    private const int FittedDaysAgo = 400;
+
+    /// <summary>
     /// How many premises to ask the directory for. The demo world has ten; the cap is the
     /// directory's own page size, so this can never quietly read a partial register.
     /// </summary>
@@ -140,7 +151,7 @@ public sealed class MetersDemoSeeder(
         new("ITR-9930041", MeterType.ThreePhase, "Itron", "Centron II", LocationCode: "L-000003",
             InstallationReading: 61_204.000m, InstalledNote: "Three-phase supply, chiller load"),
 
-        new("ITR-9930112", MeterType.CurrentTransformer, "Itron", "Centron II", LocationCode: "L-000004",
+        new("ITR-9930112", MeterType.CurrentTransformer, "Itron", "Centron II", RegisterDigits: 6, LocationCode: "L-000004",
             InstallationReading: 388_115.250m, InstalledNote: "CT-metered intake, ratio witnessed by the inspector"),
 
         // Fitted and then flagged faulty: still on the wall, still holding the premise, and waiting
@@ -150,10 +161,10 @@ public sealed class MetersDemoSeeder(
             InstallationReading: 22_101.000m, InstalledNote: "New connection, meter at the property line",
             EndStatus: MeterStatus.Faulty, EndStatusReason: "Dials stopped between reads, exchange raised"),
 
-        new("LAG-2210773", MeterType.Demand, "Landis+Gyr", "E650", LocationCode: "L-000006",
+        new("LAG-2210773", MeterType.Demand, "Landis+Gyr", "E650", RegisterDigits: 7, LocationCode: "L-000006",
             InstallationReading: 1_204_880.750m, InstalledNote: "Hotel main intake, demand register commissioned"),
 
-        new("ITR-9930255", MeterType.ThreePhase, "Itron", "Centron II", LocationCode: "L-000009",
+        new("ITR-9930255", MeterType.ThreePhase, "Itron", "Centron II", RegisterDigits: 6, LocationCode: "L-000009",
             InstallationReading: 402_991.000m, InstalledNote: "Cold store, three-phase supply"),
 
         // Metered with no account open on it. A new build's supply is live and measured before
@@ -181,6 +192,11 @@ public sealed class MetersDemoSeeder(
     /// <param name="Type">How it measures the service.</param>
     /// <param name="Manufacturer">Who made it.</param>
     /// <param name="Model">Their model designation.</param>
+    /// <param name="RegisterDigits">
+    /// How many whole digits its register carries. Domestic meters keep the default five; the
+    /// commercial and CT-metered intakes below carry more, because their installation readings are
+    /// larger than a five-digit register could display at all.
+    /// </param>
     /// <param name="LocationCode">The seeded premise it is fitted at, if any.</param>
     /// <param name="InstallationReading">What the dials read as it went on.</param>
     /// <param name="InstalledNote">Why it was fitted.</param>
@@ -193,6 +209,7 @@ public sealed class MetersDemoSeeder(
         MeterType Type,
         string Manufacturer,
         string Model,
+        int RegisterDigits = Meter.DefaultRegisterDigits,
         string? LocationCode = null,
         decimal? InstallationReading = null,
         string? InstalledNote = null,

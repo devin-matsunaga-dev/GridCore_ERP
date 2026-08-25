@@ -1,3 +1,4 @@
+using GridCore.Modules.Metering.Features.Readings;
 using GridCore.Modules.Metering.Features.Shared;
 using GridCore.Platform.Registry;
 
@@ -47,6 +48,13 @@ public sealed class Meter
     /// <summary>Total digits stored for a dial reading.</summary>
     public const int DialPrecision = 18;
 
+    /// <summary>
+    /// Whole digits a register carries unless the caller says otherwise. Five is the ordinary
+    /// domestic meter: it counts to 99 999 and rolls back to zero, which a household reaches in
+    /// roughly a decade.
+    /// </summary>
+    public const int DefaultRegisterDigits = 5;
+
     private readonly List<MeterHistoryEntry> _history = [];
 
     private Meter()
@@ -77,6 +85,22 @@ public sealed class Meter
 
     /// <summary>Their model designation.</summary>
     public string? Model { get; private set; }
+
+    /// <summary>
+    /// How many whole digits this meter's register carries — what decides where the dials roll back
+    /// to zero, and therefore what a reading below the last one means.
+    /// </summary>
+    /// <remarks>
+    /// A property of the device, like the serial number: a three-phase intake and a domestic meter
+    /// do not carry the same register, and reading one as though it carried the other turns an
+    /// ordinary rollover into a bill for a hundred thousand units. Correctable through
+    /// <see cref="UpdateDetails"/>, because it is transcribed off a nameplate and nameplates are
+    /// misread — but never below what the meter is already known to have read.
+    /// </remarks>
+    public int RegisterDigits { get; private set; }
+
+    /// <summary>What the register counts up to before it returns to zero.</summary>
+    public decimal RegisterCapacity => ConsumptionCalculator.CapacityOf(RegisterDigits);
 
     /// <summary>Where the meter stands in its working life.</summary>
     public MeterStatus Status { get; private set; }
@@ -136,6 +160,7 @@ public sealed class Meter
         MeterType type,
         RegistryActor actor,
         DateTimeOffset now,
+        int registerDigits = DefaultRegisterDigits,
         string? manufacturer = null,
         string? model = null,
         string? note = null)
@@ -146,6 +171,10 @@ public sealed class Meter
         Require(serialNumber, nameof(serialNumber));
         RequireDeclared(type);
 
+        // Throws when the width is not one GridCore stores, so a meter can never be registered with
+        // a register nothing can compute a rollover against.
+        ConsumptionCalculator.CapacityOf(registerDigits);
+
         var meter = new Meter
         {
             Id = Guid.CreateVersion7(now),
@@ -154,6 +183,7 @@ public sealed class Meter
             Type = type,
             Manufacturer = RegistryText.Clean(manufacturer, ModelLength),
             Model = RegistryText.Clean(model, ModelLength),
+            RegisterDigits = registerDigits,
 
             // Always into stock. A meter that arrived already fitted is a data-migration problem,
             // not a registration — and admitting one here would let a premise be claimed without
@@ -176,13 +206,31 @@ public sealed class Meter
     /// field edits.
     /// </summary>
     /// <exception cref="MeterValidationException">A required field is missing, or the type is undeclared.</exception>
-    public void UpdateDetails(string serialNumber, MeterType type, string? manufacturer = null, string? model = null)
+    public void UpdateDetails(
+        string serialNumber,
+        MeterType type,
+        int registerDigits,
+        string? manufacturer = null,
+        string? model = null)
     {
         Require(serialNumber, nameof(serialNumber));
         RequireDeclared(type);
 
+        // Guards before the first mutation, WP-1.4's ordering rule.
+        ConsumptionCalculator.CapacityOf(registerDigits);
+
+        if (InstallationReading is { } fitted && !ConsumptionCalculator.Fits(fitted, registerDigits))
+        {
+            // Narrowing the register below what this meter is already recorded as having read would
+            // make its own installation reading impossible, and every consumption figure measured
+            // from it arithmetic on a number the register cannot display.
+            throw new MeterValidationException(
+                $"Meter {MeterNumber} was fitted reading {fitted}, which a {registerDigits}-digit register cannot display.");
+        }
+
         SerialNumber = RegistryText.Clean(serialNumber, SerialNumberLength)!;
         Type = type;
+        RegisterDigits = registerDigits;
         Manufacturer = RegistryText.Clean(manufacturer, ModelLength);
         Model = RegistryText.Clean(model, ModelLength);
     }
@@ -223,6 +271,14 @@ public sealed class Meter
             // column would have truncated a number nobody chose.
             throw new MeterValidationException(
                 $"A meter reading is stored to {DialDecimalPlaces} decimal places; '{reading}' is finer than that.");
+        }
+
+        if (installationReading is { } dials && !ConsumptionCalculator.Fits(dials, RegisterDigits))
+        {
+            // A reading the register cannot display is a transcription error, and admitting one here
+            // would put an impossible number at the head of this premise's consumption history.
+            throw new MeterValidationException(
+                $"Meter {MeterNumber} has a {RegisterDigits}-digit register and cannot read {dials}.");
         }
 
         if (!MeterTransitions.IsAllowed(Status, MeterStatus.Installed))
