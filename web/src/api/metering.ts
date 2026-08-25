@@ -98,6 +98,74 @@ function params(filters: Record<string, string | boolean | undefined>): Record<s
   ) as Record<string, string | boolean>;
 }
 
+/** Mirrors `ReadingExceptionCode`. `None` means the reading is billable as it stands. */
+export const readingExceptionCodes = ['None', 'HighUsage', 'ZeroUsage', 'MissingRead'] as const;
+export type ReadingExceptionCode = (typeof readingExceptionCodes)[number];
+
+/** Mirrors `MeterReadingResponse`. */
+export type MeterReading = {
+  id: string;
+  meterId: string;
+  serviceLocationId: string;
+  readingDate: string;
+  /** What the dials read. `null` is a missing read — a row, deliberately, not an absent one. */
+  reading: number | null;
+  source: string;
+  previousReading: number | null;
+  previousReadingDate: string | null;
+  consumption: number | null;
+  days: number | null;
+  /** Units per day — the comparable figure across periods of unequal length. */
+  dailyConsumption: number | null;
+  rolledOver: boolean;
+  exceptionCode: ReadingExceptionCode;
+  isException: boolean;
+  cycleCode: string | null;
+  note: string | null;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/** Mirrors `ReadingCycleResponse`. */
+export type ReadingCycle = {
+  cycleCode: string;
+  readAt: string;
+  /** Quote it to reproduce this run exactly. */
+  seed: number;
+  /** What produced the batch — the name the registered `IMeterReadingProvider` calls itself. */
+  provider: string;
+  recorded: number;
+  exceptions: number;
+  byExceptionCode: Record<string, number>;
+  readings: MeterReading[];
+};
+
+/** Mirrors `RegisterMeterRequest`. */
+export type RegisterMeterInput = {
+  serialNumber: string;
+  type: MeterType;
+  registerDigits?: number;
+  manufacturer?: string | null;
+  model?: string | null;
+  note?: string | null;
+};
+
+/** Mirrors `AssignMeterRequest`. */
+export type AssignMeterInput = {
+  serviceLocationId: string;
+  /** What the dials read as it went on — what the first period is measured from, not zero. */
+  installationReading?: number | null;
+  note?: string | null;
+};
+
+/** Mirrors `RunReadingCycleRequest`. */
+export type RunReadingCycleInput = {
+  cycleCode: string;
+  readAt?: string | null;
+  seed?: number;
+};
+
 export const meteringApi = {
   list: (filters: MeterFilters, signal?: AbortSignal) =>
     api.get<Meter[]>('/api/meters', {
@@ -105,6 +173,30 @@ export const meteringApi = {
       signal,
     }),
   get: (id: string, signal?: AbortSignal) => api.get<Meter>(`/api/meters/${id}`, { signal }),
+
+  register: (input: RegisterMeterInput) => api.post<Meter>('/api/meters', { json: input }),
+
+  /** Fits a meter at a premise. A meter is fitted to a PLACE, never to an account (WP-2.1). */
+  assign: (id: string, input: AssignMeterInput) =>
+    api.post<Meter>(`/api/meters/${id}/assign`, { json: input }),
+
+  /**
+   * Runs a reading cycle through the registered `IMeterReadingProvider`.
+   *
+   * A cycle reads **every fitted meter**, which is what a utility's reading run is — there is no
+   * per-meter form of it, and inventing one would be inventing a different product. So the batch
+   * this returns is genuinely the whole estate's, and a caller after one premise's reading picks
+   * it out of `readings`. The cycle code is the idempotency key: running the same one twice is a
+   * 409 naming it.
+   */
+  runCycle: (input: RunReadingCycleInput) =>
+    api.post<ReadingCycle>('/api/meter-readings/cycles', {
+      json: input,
+      // A cycle walks up to 500 meters through a simulator and writes a reading, an audit entry
+      // and an outbox row for each. That is comfortably slower than a registry read and has no
+      // business sharing their timeout.
+      timeoutMs: 60_000,
+    }),
 };
 
 export const meterKeys = {

@@ -9,6 +9,7 @@ using GridCore.Modules.WorkOrders;
 using GridCore.Platform;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
+using GridCore.Platform.Serialization;
 using GridCore.Platform.Security;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -32,6 +33,10 @@ builder.Services.AddGridCorePlatform(builder.Configuration, builder.Environment)
 
 // RFC 7807 bodies for the framework's own 401/403/404 responses, per CONVENTIONS.md.
 builder.Services.AddProblemDetails();
+
+// Enums cross the wire as names, in both directions. Beside AddProblemDetails because it is the
+// same kind of decision: what every module's HTTP surface looks like from outside.
+builder.Services.AddGridCoreJson();
 
 var modules = builder.Services.AddModules(
     builder.Configuration,

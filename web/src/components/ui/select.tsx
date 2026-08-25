@@ -5,15 +5,24 @@ import { cn } from '@/lib/utils';
 export type SelectProps = React.ComponentProps<'select'> & {
   /** Rendered as `<option>`s. Pass `children` instead for grouped or custom options. */
   options?: readonly string[];
+  /**
+   * Fills the width available instead of shrinking to the longest option.
+   *
+   * Needed because the wrapper below is what the chevron is positioned against: left as
+   * `inline-flex` it shrink-wraps, so a `w-full` on the select itself resolves against a parent
+   * that has already sized to the select's own content — and a form field that should line up
+   * with the inputs beside it renders as wide as its longest option instead.
+   */
+  fullWidth?: boolean;
 };
 
 /**
  * A native `<select>` under the card-header styling from DESIGN.md. Native on purpose: keyboard
  * behaviour, mobile pickers and screen-reader support come free, and it needs no extra dependency.
  */
-export function Select({ className, options, children, ...props }: SelectProps) {
+export function Select({ className, options, children, fullWidth = false, ...props }: SelectProps) {
   return (
-    <div className="relative inline-flex">
+    <div className={cn('relative', fullWidth ? 'flex w-full' : 'inline-flex')}>
       <select
         data-slot="select"
         className={cn(

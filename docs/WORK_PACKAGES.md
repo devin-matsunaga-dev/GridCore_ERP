@@ -86,7 +86,7 @@ Base charges + tiered rates with effective dates; generate bill from consumption
 **Verify (unit, heavy):** tiered calc across boundaries; effective-dating picks right rate; `decimal` precision exact.
 
 ### WP-2.4 — Bill adjustments + audit **[SENSITIVE]**
-Authorized credits/corrections; permission-gated; full audit trail; state transitions to Adjusted.
+Authorized credits/corrections as immutable entries against the bill; permission-gated; full audit trail. **No `Adjusted` state** — a correction is money, not a lifecycle move, so the bill keeps its status and `AdjustmentTotal` carries the change.
 **Verify:** unauthorized adjust → 403; adjustment audited with before/after.
 
 ### WP-2.5 — Payments simulator **[SENSITIVE]**

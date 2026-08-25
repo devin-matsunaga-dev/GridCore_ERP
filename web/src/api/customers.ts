@@ -119,6 +119,40 @@ function params(filters: Record<string, string | boolean | undefined>): Record<s
   ) as Record<string, string | boolean>;
 }
 
+/** Mirrors `CreateCustomerRequest`. */
+export type CreateCustomerInput = {
+  name: string;
+  class: CustomerClass;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  depositHeld?: number;
+};
+
+/** Mirrors `AddressPayload`. */
+export type AddressInput = {
+  line1: string;
+  city: string;
+  region: string;
+  country: string;
+  line2?: string | null;
+  postalCode?: string | null;
+};
+
+/** Mirrors `ServiceLocationRequest`. */
+export type CreateServiceLocationInput = {
+  address: AddressInput;
+  description?: string | null;
+  isActive?: boolean;
+};
+
+/** Mirrors `OpenServiceAccountRequest`. */
+export type OpenServiceAccountInput = {
+  customerId: string;
+  serviceLocationId: string;
+  reason?: string | null;
+};
+
 export const customersApi = {
   list: (filters: CustomerFilters, signal?: AbortSignal) =>
     api.get<Customer[]>('/api/customers', {
@@ -142,6 +176,24 @@ export const customersApi = {
     }),
   getAccount: (id: string, signal?: AbortSignal) =>
     api.get<ServiceAccount>(`/api/service-accounts/${id}`, { signal }),
+
+  // The writes. Registering a customer, a premise and the account that pairs them are three acts
+  // rather than one form, because they are three registries — and the revenue cycle is only a
+  // cycle if each of them is a step somebody can see happen.
+  create: (input: CreateCustomerInput) => api.post<Customer>('/api/customers', { json: input }),
+
+  createLocation: (input: CreateServiceLocationInput) =>
+    api.post<ServiceLocation>('/api/service-locations', { json: input }),
+
+  openAccount: (input: OpenServiceAccountInput) =>
+    api.post<ServiceAccount>('/api/service-accounts', { json: input }),
+
+  /**
+   * Energises an account. A separate act from opening one, and the billing run refuses an account
+   * that was never energised — nothing was supplied, so the units on the meter are not its units.
+   */
+  startService: (id: string, reason?: string) =>
+    api.post<ServiceAccount>(`/api/service-accounts/${id}/start`, { json: { reason } }),
 };
 
 export const customerKeys = {

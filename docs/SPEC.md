@@ -15,7 +15,7 @@ Customer records (account number, name, contacts, class residential/commercial, 
 Meter registry (meter number, serial, type, status, assigned service location). Manual readings + history. Consumption calculated from previous→current reading. **Meter simulator** generates a billing-cycle batch of realistic readings incl. high-usage / zero-usage / missing-reading exceptions. Behind `IMeterReadingProvider`.
 
 ### 3. Billing
-Rate engine: base charges + tiered consumption rates with effective dates. Bill generation from consumption. Bill states Draft/Issued/PartiallyPaid/Paid/Overdue/Cancelled-Adjusted. Adjustments (authorized credits/corrections) with audit trail.
+Rate engine: base charges + tiered consumption rates with effective dates. Bill generation from consumption. Bill states Draft/Issued/PartiallyPaid/Overdue/Paid/Cancelled. Adjustments (authorized credits/corrections) are immutable correction entries against the bill plus an audit trail — **not** a lifecycle state: a corrected bill stays where it is, and a credit that clears the balance settles it to Paid like any other.
 
 ### 4. Simulated Payments
 Sandbox provider simulating Approved/Declined/InsufficientFunds/Timeout/Refunded. Approved payment has **real internal effects**: reduces balance, updates invoice, records payment, generates accounting activity. Behind `IPaymentProvider` for later production swap.

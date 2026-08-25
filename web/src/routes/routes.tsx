@@ -5,6 +5,7 @@ import { CustomerDetailPage } from '@/features/customers/customer-detail-page';
 import { CustomersPage } from '@/features/customers/customers-page';
 import { ServiceLocationsPage } from '@/features/customers/service-locations-page';
 import { InventoryPage } from '@/features/inventory/inventory-page';
+import { RevenueCyclePage } from '@/features/billing/revenue-cycle-page';
 import { ModulePlaceholder } from './module-placeholder';
 
 /**
@@ -13,11 +14,18 @@ import { ModulePlaceholder } from './module-placeholder';
  * stays honest about what exists.
  */
 
-/** The areas WP-1.5 built. A key here replaces that route's placeholder. */
-const registryPages: Record<string, ReactElement> = {
+/**
+ * The areas that have a real screen. A key here replaces that route's placeholder.
+ *
+ * Was `registryPages` while WP-1.5's three registries were the only entries; renamed when WP-2.7
+ * added Billing & Payments, which is a workflow screen rather than a register and had no business
+ * living in a map called after the other kind.
+ */
+const builtPages: Record<string, ReactElement> = {
   '/customers': <CustomersPage />,
   '/assets': <AssetsPage />,
   '/inventory': <InventoryPage />,
+  '/billing': <RevenueCyclePage />,
 };
 
 /** Which work package fills each remaining area in — surfaced in the placeholder. */
@@ -29,7 +37,6 @@ const owners: Record<string, string> = {
   '/monitoring': 'WP-5.4',
   '/finance': 'WP-4.2',
   '/procurement': 'WP-4.1',
-  '/billing': 'WP-2.3',
   '/people': 'WP-4.5',
   '/dashboards': 'WP-4.3',
   '/reports': 'WP-4.3',
@@ -52,7 +59,7 @@ export const moduleRoutes: ModuleRoute[] = [
     .filter((item) => item.to !== '/')
     .map((item) => ({
       path: item.to,
-      element: registryPages[item.to] ?? (
+      element: builtPages[item.to] ?? (
         <ModulePlaceholder
           title={item.label}
           icon={item.icon}
@@ -64,4 +71,4 @@ export const moduleRoutes: ModuleRoute[] = [
 ];
 
 /** The destinations still waiting on their work package — what the shell tests assert against. */
-export const placeholderRoutes = moduleRoutes.filter((route) => !(route.path in registryPages));
+export const placeholderRoutes = moduleRoutes.filter((route) => !(route.path in builtPages));

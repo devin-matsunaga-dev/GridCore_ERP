@@ -43,7 +43,16 @@ export function AppShell() {
         </div>
       )}
 
-      <div className="scrollbar-subtle flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+      {/*
+        `relative` is load-bearing, not decoration. Without a positioned ancestor, an absolutely
+        positioned descendant — every `.sr-only` label and table caption in the app — has the
+        INITIAL containing block, so it is not clipped by the shell's `overflow-hidden` and it
+        extends the DOCUMENT's scrollable height to its own unscrolled flow position. On a page
+        taller than the viewport that shows up as a browser scrollbar and a band of blank white
+        below the shell. Positioning this column makes it the containing block, so those boxes
+        belong to the pane that is meant to scroll.
+      */}
+      <div className="scrollbar-subtle relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         <Topbar onOpenNavigation={() => setNavigationOpen(true)} notificationCount={3} />
 
         <main key={location.pathname} className="flex-1 p-6">
