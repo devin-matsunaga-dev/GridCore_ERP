@@ -46,6 +46,37 @@ public class BillsDemoSeederTests
         return host;
     }
 
+    /// <summary>
+    /// A demo world with two served premises, which is what the corrections need — one bill is
+    /// credited and another charged, and they are deliberately not on the same account.
+    /// </summary>
+    private static BillingTestHost ATwoAccountWorld()
+    {
+        var host = new BillingTestHost(new FakeClock(Now));
+
+        var thisMonth = new DateOnly(Now.Year, Now.Month, 1);
+
+        foreach (var ordinal in new[] { 1, 2 })
+        {
+            var premise = Guid.CreateVersion7();
+
+            host.Accounts.Add(premise, accountNumber: $"A-00000{ordinal}");
+
+            for (var cycle = BillsDemoSeeder.Cycles; cycle >= 1; cycle--)
+            {
+                var readAt = thisMonth.AddMonths(-cycle);
+
+                host.Readings.Add(
+                    premise,
+                    600m,
+                    readAt.ToString("yyyy-MM", null),
+                    new DateTimeOffset(readAt.Year, readAt.Month, 1, 9, 0, 0, TimeSpan.Zero));
+            }
+        }
+
+        return host;
+    }
+
     private static Task SeedAsync(BillingTestHost host) =>
         host.InScopeAsync(async services =>
         {
@@ -222,6 +253,71 @@ public class BillsDemoSeederTests
         await using var context = host.NewBillingContext();
 
         Assert.Equal(0, await context.Bills.CountAsync());
+    }
+
+    [Fact]
+    public async Task Two_seeded_bills_carry_a_correction_one_each_way()
+    {
+        // WP-2.4's demo data. Both go through the real Bill.Adjust, so a correction the aggregate
+        // would refuse fails here rather than shipping.
+        using var host = ATwoAccountWorld();
+
+        await SeedAsync(host);
+
+        await using var context = host.NewBillingContext();
+
+        var adjustments = await context.BillAdjustments.OrderBy(adjustment => adjustment.Id).ToListAsync();
+
+        Assert.Equal(2, adjustments.Count);
+        Assert.Equal([BillAdjustmentKind.Credit, BillAdjustmentKind.Charge], adjustments.Select(entry => entry.Kind));
+
+        // Signed the way the money moves, on a bill each, and every one saying why.
+        Assert.True(adjustments[0].Amount < 0m);
+        Assert.True(adjustments[1].Amount > 0m);
+        Assert.Distinct(adjustments.Select(entry => entry.BillId));
+        Assert.All(adjustments, entry => Assert.False(string.IsNullOrWhiteSpace(entry.Reason)));
+        Assert.All(adjustments, entry => Assert.Equal(BillsDemoSeeder.Officer.UserId, entry.ActorId));
+    }
+
+    [Fact]
+    public async Task A_corrected_demo_bill_still_prints_what_it_was_calculated_at()
+    {
+        // The point of the whole work package, in the demo world a reviewer opens: the document says
+        // what it always said, and what is owed has moved.
+        using var host = ATwoAccountWorld();
+
+        await SeedAsync(host);
+
+        await using var context = host.NewBillingContext();
+
+        var corrected = await context.Bills
+            .Include(bill => bill.Lines)
+            .Where(bill => bill.AdjustmentTotal != 0m)
+            .ToListAsync();
+
+        Assert.Equal(2, corrected.Count);
+
+        Assert.All(corrected, bill =>
+        {
+            Assert.Equal(bill.TotalAmount, Money.Total(bill.Lines.Select(line => line.Amount)));
+            Assert.NotEqual(bill.TotalAmount, bill.AmountDue);
+            Assert.True(bill.IsOutstanding);
+        });
+    }
+
+    [Fact]
+    public async Task A_demo_world_too_small_to_correct_two_bills_seeds_none()
+    {
+        // The single-account world every other test here uses. A seeder must not be the thing that
+        // decides a small demo world is a failure.
+        using var host = SeededWorld();
+
+        await SeedAsync(host);
+
+        await using var context = host.NewBillingContext();
+
+        Assert.Equal(0, await context.BillAdjustments.CountAsync());
+        Assert.NotEqual(0, await context.Bills.CountAsync());
     }
 
     [Fact]

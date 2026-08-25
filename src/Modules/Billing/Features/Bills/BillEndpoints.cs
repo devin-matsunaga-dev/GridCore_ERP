@@ -23,6 +23,12 @@ public sealed record IssueBillRequest(DateOnly? IssuedOn = null, DateOnly? DueDa
 /// <param name="Reason">Why. Required — cancelling a bill removes money the utility was owed.</param>
 public sealed record CancelBillRequest(string Reason);
 
+/// <summary>Body of a request to correct an issued bill.</summary>
+/// <param name="Kind">Which way the money moves — <c>Credit</c> off the bill, or <c>Charge</c> on to it.</param>
+/// <param name="Amount">How much, always positive. The kind carries the direction, not the sign.</param>
+/// <param name="Reason">Why. Required — this is the sensitive action invariant 5 is about.</param>
+public sealed record AdjustBillRequest(BillAdjustmentKind Kind, decimal Amount, string Reason);
+
 /// <summary>Body of a request to review overdue bills.</summary>
 /// <param name="AsOf">The day to judge against. Defaults to today.</param>
 public sealed record OverdueReviewRequest(DateOnly? AsOf = null);
@@ -60,6 +66,45 @@ public sealed record BillLineResponse(
     }
 }
 
+/// <summary>One correction to a bill, as the API returns it.</summary>
+/// <param name="Id">Identifier of the adjustment.</param>
+/// <param name="Sequence">Position in the bill's adjustment history, from 1.</param>
+/// <param name="Kind">Whether it was money off the bill or money on to it.</param>
+/// <param name="Amount">The signed change to what is owed — negative on a credit.</param>
+/// <param name="AmountDueAfter">What the bill came to once it was applied.</param>
+/// <param name="Reason">Why it was made.</param>
+/// <param name="ActorId">Subject id of whoever made it.</param>
+/// <param name="ActorName">Their name at the time.</param>
+/// <param name="RecordedAt">When it was made.</param>
+public sealed record BillAdjustmentResponse(
+    Guid Id,
+    int Sequence,
+    string Kind,
+    decimal Amount,
+    decimal AmountDueAfter,
+    string Reason,
+    string ActorId,
+    string? ActorName,
+    DateTimeOffset RecordedAt)
+{
+    /// <summary>Projects an adjustment for the wire.</summary>
+    public static BillAdjustmentResponse From(BillAdjustment adjustment)
+    {
+        ArgumentNullException.ThrowIfNull(adjustment);
+
+        return new BillAdjustmentResponse(
+            adjustment.Id,
+            adjustment.Sequence,
+            adjustment.Kind.ToString(),
+            adjustment.Amount,
+            adjustment.AmountDueAfter,
+            adjustment.Reason,
+            adjustment.ActorId,
+            adjustment.ActorName,
+            adjustment.RecordedAt);
+    }
+}
+
 /// <summary>A bill as the API returns it.</summary>
 /// <param name="Id">Identifier.</param>
 /// <param name="BillNumber">The number printed on it.</param>
@@ -83,7 +128,9 @@ public sealed record BillLineResponse(
 /// <param name="PreviousReading">The dials at the start of the period.</param>
 /// <param name="CurrentReading">The dials at the end of it.</param>
 /// <param name="Consumption">Units billed.</param>
-/// <param name="TotalAmount">What the bill comes to.</param>
+/// <param name="TotalAmount">What the bill comes to as printed. Never moves once it is calculated.</param>
+/// <param name="AdjustmentTotal">The signed sum of the corrections made to it since.</param>
+/// <param name="AmountDue">What is owed today — the printed total plus those corrections.</param>
 /// <param name="AmountPaid">How much has been paid.</param>
 /// <param name="Balance">What is still owed.</param>
 /// <param name="Status">Where the bill stands.</param>
@@ -97,6 +144,7 @@ public sealed record BillLineResponse(
 /// <param name="ActorId">Subject id of whoever raised it.</param>
 /// <param name="ActorName">Their name at the time.</param>
 /// <param name="Lines">Its lines, in order. Empty on a list, which does not load them.</param>
+/// <param name="Adjustments">Its corrections, in order. Empty on a list, for the same reason.</param>
 public sealed record BillResponse(
     Guid Id,
     string BillNumber,
@@ -121,6 +169,8 @@ public sealed record BillResponse(
     decimal? CurrentReading,
     decimal Consumption,
     decimal TotalAmount,
+    decimal AdjustmentTotal,
+    decimal AmountDue,
     decimal AmountPaid,
     decimal Balance,
     string Status,
@@ -133,7 +183,8 @@ public sealed record BillResponse(
     DateTimeOffset CreatedAt,
     string ActorId,
     string? ActorName,
-    IReadOnlyList<BillLineResponse> Lines)
+    IReadOnlyList<BillLineResponse> Lines,
+    IReadOnlyList<BillAdjustmentResponse> Adjustments)
 {
     /// <summary>Projects a bill for the wire.</summary>
     public static BillResponse From(Bill bill)
@@ -164,6 +215,8 @@ public sealed record BillResponse(
             bill.CurrentReading,
             bill.Consumption,
             bill.TotalAmount,
+            bill.AdjustmentTotal,
+            bill.AmountDue,
             bill.AmountPaid,
             bill.Balance,
             bill.Status.ToString(),
@@ -179,7 +232,8 @@ public sealed record BillResponse(
             bill.CreatedAt,
             bill.ActorId,
             bill.ActorName,
-            [.. bill.Lines.OrderBy(line => line.Sequence).Select(BillLineResponse.From)]);
+            [.. bill.Lines.OrderBy(line => line.Sequence).Select(BillLineResponse.From)],
+            [.. bill.Adjustments.OrderBy(adjustment => adjustment.Sequence).Select(BillAdjustmentResponse.From)]);
     }
 }
 
@@ -353,6 +407,29 @@ public static class BillEndpoints
             .RequirePermission(Permissions.Billing.Generate)
             .WithValidation<CancelBillRequest>()
             .WithName("CancelBill");
+
+        // THE SENSITIVE ONE. A sub-resource rather than /adjust, because an adjustment is a thing
+        // the bill now has and not merely something done to it — it is the only write in this module
+        // that creates a row somebody will later read on its own.
+        //
+        // Gated on billing.adjust, which is a genuinely different gate rather than a tidier name for
+        // the same one: WP-0.3 gave Managers billing.adjust WITHOUT billing.generate, so the caller
+        // who may credit a disputed bill is not the caller who may raise one, and vice versa is
+        // false too. The endpoint test asserts the two policies differ.
+        bills
+            .MapPost("/{id:guid}/adjustments", (
+                    [FromRoute] Guid id,
+                    AdjustBillRequest body,
+                    [FromServices] IBillService register,
+                    CancellationToken cancellationToken) =>
+                BillingProblems.RunAsync(async () =>
+                    Results.Ok(BillResponse.From(await register.AdjustAsync(
+                        id,
+                        new AdjustBillInput(body.Kind, body.Amount, body.Reason),
+                        cancellationToken)))))
+            .RequirePermission(Permissions.Billing.Adjust)
+            .WithValidation<AdjustBillRequest>()
+            .WithName("AdjustBill");
 
         // The button that makes Overdue reachable without a scheduler. WP-0.4's scheduler exists and
         // nothing is registered on it yet; a job that quietly moved bills overnight is a real feature

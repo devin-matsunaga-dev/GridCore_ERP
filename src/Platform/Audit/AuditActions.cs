@@ -82,6 +82,12 @@ public static class AuditActions
     /// <summary>A bill was withdrawn. Sensitive: it removes money the utility was owed.</summary>
     public const string BillCancelled = "bill.cancel";
 
+    /// <summary>
+    /// An issued bill was corrected by a credit or a charge. Sensitive: it changes what a customer
+    /// owes after they have been told what they owe.
+    /// </summary>
+    public const string BillAdjusted = "bill.adjust";
+
     /// <summary>Outstanding bills past their due date were reviewed and marked overdue.</summary>
     public const string BillOverdueReviewed = "bill.overdue_review";
 
@@ -163,8 +169,10 @@ public static class AuditEntityTypes
     public const string AccountRatePlan = "billing.account_rate_plan";
 
     /// <summary>
-    /// A row of <c>billing.bills</c>. Lines are audited against the bill they belong to rather than
-    /// as entities of their own: a line is written once with the bill and never moves.
+    /// A row of <c>billing.bills</c>. Lines and adjustments are audited against the bill they belong
+    /// to rather than as entities of their own: a line is written once with the bill and never
+    /// moves, and an adjustment is only meaningful as a change to what that bill is owed — the
+    /// before/after an auditor reads is the bill's, not the entry's.
     /// </summary>
     public const string Bill = "billing.bill";
 

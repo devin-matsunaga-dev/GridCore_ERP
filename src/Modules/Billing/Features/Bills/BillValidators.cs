@@ -34,6 +34,28 @@ public sealed class CancelBillRequestValidator : AbstractValidator<CancelBillReq
         RuleFor(request => request.Reason).NotEmpty().MaximumLength(Bill.ReasonLength);
 }
 
+/// <summary>Rules for correcting an issued bill.</summary>
+public sealed class AdjustBillRequestValidator : AbstractValidator<AdjustBillRequest>
+{
+    /// <summary>Builds the rules.</summary>
+    public AdjustBillRequestValidator()
+    {
+        // A body naming a kind that is not one of ours would otherwise reach the aggregate and be
+        // refused there as a 400 anyway — but only after the bill had been loaded, and with a
+        // message about the enum rather than about the field the caller got wrong.
+        RuleFor(request => request.Kind).IsInEnum();
+
+        // Positive here as well as in the aggregate. The direction is the kind, so a negative amount
+        // is a caller trying to say "credit" twice and reads as a 400 rather than as a workflow
+        // conflict.
+        RuleFor(request => request.Amount).GreaterThan(0m);
+
+        // Required, like a cancellation's. An adjustment changes what a customer owes after they
+        // have been told what they owe, and invariant 5 is the whole point of this endpoint.
+        RuleFor(request => request.Reason).NotEmpty().MaximumLength(Bill.ReasonLength);
+    }
+}
+
 /// <summary>Rules for reviewing overdue bills.</summary>
 /// <remarks>
 /// Nothing to check: the only field is an optional date, and any date is a legal thing to judge

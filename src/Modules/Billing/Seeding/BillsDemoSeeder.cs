@@ -5,6 +5,7 @@ using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Rating;
 using GridCore.Modules.Billing.Features.Shared;
+using GridCore.Platform.Monetary;
 using GridCore.Platform.Registry;
 using GridCore.Platform.Seeding;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,13 @@ namespace GridCore.Modules.Billing.Seeding;
 /// The readings and the accounts come from the two <c>Contracts</c> directories, never from a query
 /// — this module may read neither the metering nor the customers schema, and a seeder is not an
 /// exception to a boundary rule.
+/// </para>
+/// <para>
+/// <b>Two bills carry a correction</b> (WP-2.4) — one credited, one charged — so the demo opens
+/// with the sensitive action already visible in the register and in the audit trail, and with a
+/// bill whose printed total and amount owed deliberately disagree. Both go through the real
+/// <see cref="Bill.Adjust"/>, so a correction the aggregate would refuse fails at startup instead
+/// of shipping.
 /// </para>
 /// <para>
 /// <b>Nothing is paid.</b> <c>PartiallyPaid</c> and <c>Paid</c> are reachable —
@@ -71,6 +79,13 @@ public sealed class BillsDemoSeeder(
     /// <summary>Which cycle's bill is cancelled, counted from the oldest.</summary>
     private const int CancelledCycleIndex = 1;
 
+    /// <summary>
+    /// How much of a disputed bill is credited or charged, as a fraction of what is owed. A
+    /// proportion rather than a figure, so the correction cannot be larger than the bill it is made
+    /// against however the seeded consumption moves — which <see cref="Bill.Adjust"/> would refuse.
+    /// </summary>
+    private const decimal CorrectionShare = 0.25m;
+
     /// <summary>Who the seeded bills are attributed to — a stand-in colleague, holding no permissions.</summary>
     public static DemoActor Officer { get; } = new("billing", "Marisa Camacho (demo)");
 
@@ -106,6 +121,7 @@ public sealed class BillsDemoSeeder(
 
         var cycles = CycleCodes(today).ToList();
         var billedAccounts = new HashSet<Guid>();
+        var raised = new List<Bill>();
         var tariffs = new Dictionary<Guid, string>();
         var step = 0;
         var ordinal = 0;
@@ -176,11 +192,72 @@ public sealed class BillsDemoSeeder(
                 Progress(bill, index, cycles.Count, periodEnd, today, billedAccounts);
 
                 database.Bills.Add(bill);
+                raised.Add(bill);
             }
         }
 
+        Correct(raised, Next);
+
         // No SaveChanges: the runner's unit of work saves these and the seed record in one
         // transaction, which is what makes a half-billed demo cycle impossible.
+    }
+
+    /// <summary>
+    /// Corrects two of the seeded bills — one credited, one charged — through the real aggregate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two most recently billed accounts that still owe money, so the corrections sit near the
+    /// top of the register where a reviewer will see them rather than a year down the list. Bill
+    /// numbers are issued in order, so ordering by them is deterministic — unlike ordering by id,
+    /// where rows minted inside one millisecond have no defined order at all.
+    /// </para>
+    /// <para>
+    /// Two different bills rather than two corrections to one: a bill with a credit and a charge
+    /// cancelling out would show an adjustment history and an unchanged amount owed, which is the
+    /// one arrangement that teaches a reviewer nothing.
+    /// </para>
+    /// </remarks>
+    private static void Correct(IEnumerable<Bill> raised, Func<DateTimeOffset> next)
+    {
+        var candidates = raised
+            .Where(bill => bill.IsOutstanding)
+            .OrderByDescending(bill => bill.BillNumber, StringComparer.Ordinal)
+            .DistinctBy(bill => bill.ServiceAccountId)
+            .Take(2)
+            .ToList();
+
+        if (candidates.Count < 2)
+        {
+            // A demo world too small to have two outstanding bills on two accounts. Nothing to
+            // correct, and a seeder must not be the thing that decides that is a failure.
+            return;
+        }
+
+        Adjust(
+            candidates[0],
+            BillAdjustmentKind.Credit,
+            "Estimated read corrected after the customer disputed it; re-based on the following actual read.",
+            next());
+
+        Adjust(
+            candidates[1],
+            BillAdjustmentKind.Charge,
+            "Under-billed: the first tier was applied to units that fall in the second.",
+            next());
+    }
+
+    /// <summary>Applies one correction, or leaves the bill alone if the share rounds to nothing.</summary>
+    private static void Adjust(Bill bill, BillAdjustmentKind kind, string reason, DateTimeOffset at)
+    {
+        var amount = Money.Round(bill.Balance * CorrectionShare);
+
+        if (amount <= Money.Zero)
+        {
+            return;
+        }
+
+        bill.Adjust(kind, amount, reason, Attribution, at);
     }
 
     /// <summary>

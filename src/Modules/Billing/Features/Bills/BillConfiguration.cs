@@ -105,6 +105,13 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
             .HasColumnName("amount_paid")
             .HasPrecision(Bill.MoneyPrecision, Bill.MoneyScale);
 
+        // Signed, and stored rather than derived: a list does not load a bill's adjustments, and a
+        // register page that reported what was printed as what is owed would be wrong on every
+        // corrected bill. Bill.Adjust checks this against the loaded history before adding to it.
+        builder.Property(bill => bill.AdjustmentTotal)
+            .HasColumnName("adjustment_total")
+            .HasPrecision(Bill.MoneyPrecision, Bill.MoneyScale);
+
         // Stored by name: a bill read back years from now must not depend on today's enum ordering.
         builder.Property(bill => bill.Status)
             .HasColumnName("status")
@@ -123,6 +130,7 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
 
         // Derived from what is stored. Mapped, EF would want backing fields it cannot find and the
         // model would fail to build at startup rather than in a test.
+        builder.Ignore(bill => bill.AmountDue);
         builder.Ignore(bill => bill.Balance);
         builder.Ignore(bill => bill.IsOutstanding);
         builder.Ignore(bill => bill.AllowedTransitions);
@@ -137,6 +145,17 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.Metadata.FindNavigation(nameof(Bill.Lines))!.SetPropertyAccessMode(PropertyAccessMode.Field);
+
+        // The corrections made since. A navigation like the lines, and for the same reasons: there
+        // are a handful of them at most, and no path loads a bill to decide what is owed without
+        // wanting them — Bill.Adjust refuses to run without them at all.
+        builder.HasMany(bill => bill.Adjustments)
+            .WithOne()
+            .HasForeignKey(adjustment => adjustment.BillId)
+            .HasConstraintName("fk_bill_adjustments_bill")
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Metadata.FindNavigation(nameof(Bill.Adjustments))!.SetPropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(bill => bill.BillNumber).HasDatabaseName("ux_bills_bill_number").IsUnique();
         builder.HasIndex(bill => bill.CustomerId).HasDatabaseName("ix_bills_customer_id");

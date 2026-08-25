@@ -48,7 +48,14 @@ public sealed record BilledReading(
 /// <para>
 /// Lines are a navigation collection, unlike the reading register hanging off a meter (WP-2.2). A
 /// bill has a handful of lines, they are always read with it, and there is no path that loads a bill
-/// and does not want them — the opposite of a stock ledger or a decade of readings.
+/// and does not want them — the opposite of a stock ledger or a decade of readings. Its
+/// <see cref="Adjustments"/> are a navigation for the same reasons.
+/// </para>
+/// <para>
+/// <b>What was printed and what is owed are two figures.</b> <see cref="TotalAmount"/> is what the
+/// rate engine produced and never moves again; <see cref="AmountDue"/> is that plus every
+/// correction since (WP-2.4). Correcting a bill by editing its total would leave the utility unable
+/// to reproduce the document the customer is holding.
 /// </para>
 /// </remarks>
 public sealed class Bill
@@ -78,6 +85,7 @@ public sealed class Bill
     public const int QuantityScale = RateEngine.ConsumptionDecimalPlaces;
 
     private readonly List<BillLine> _lines = [];
+    private readonly List<BillAdjustment> _adjustments = [];
 
     private Bill()
     {
@@ -165,6 +173,14 @@ public sealed class Bill
     /// <summary>How much of it has been paid.</summary>
     public decimal AmountPaid { get; private set; }
 
+    /// <summary>
+    /// The signed sum of every correction made to it since — negative where credits outweigh
+    /// charges. Held on the bill rather than derived from <see cref="Adjustments"/> so a list that
+    /// does not load them still reports what is owed; <see cref="Adjust"/> checks the two agree
+    /// before it adds another.
+    /// </summary>
+    public decimal AdjustmentTotal { get; private set; }
+
     /// <summary>Where the bill stands.</summary>
     public BillStatus Status { get; private set; }
 
@@ -195,8 +211,22 @@ public sealed class Bill
     /// <summary>The lines, in order.</summary>
     public IReadOnlyList<BillLine> Lines => _lines;
 
+    /// <summary>The corrections made to it, in the order they were applied.</summary>
+    public IReadOnlyList<BillAdjustment> Adjustments => _adjustments;
+
+    /// <summary>
+    /// What the customer owes on this bill today: what was calculated, plus every correction since.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="TotalAmount"/>. The printed total keeps saying what the rate
+    /// engine produced and what the customer holds a copy of; a credit changes what is <i>owed</i>
+    /// without changing what the document <i>said</i>. Reconciling the two is exactly what the
+    /// adjustment history is for.
+    /// </remarks>
+    public decimal AmountDue => TotalAmount + AdjustmentTotal;
+
     /// <summary>What is still owed.</summary>
-    public decimal Balance => TotalAmount - AmountPaid;
+    public decimal Balance => AmountDue - AmountPaid;
 
     /// <summary>Whether the utility is still owed money on this bill.</summary>
     public bool IsOutstanding => BillTransitions.IsOutstanding(Status);
@@ -299,6 +329,7 @@ public sealed class Bill
             Consumption = calculation.Consumption,
             TotalAmount = calculation.Total,
             AmountPaid = Money.Zero,
+            AdjustmentTotal = Money.Zero,
             Status = BillStatus.Draft,
             CreatedAt = now,
             StatusChangedAt = now,
@@ -336,6 +367,120 @@ public sealed class Bill
 
         IssuedOn = issuedOn;
         DueDate = dueDate;
+    }
+
+    /// <summary>
+    /// Corrects what the bill is owed, as an entry appended to its history. The bill itself is not
+    /// rewritten and its status does not move — except where the correction settles it in full.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The sensitive one.</b> Invariant 5: the endpoint is gated on <c>billing.adjust</c> and the
+    /// service audits before/after. What lives here is the part that is billing's own business —
+    /// what may be corrected, by how much, and what it leaves owing.
+    /// </para>
+    /// <para>
+    /// <b>Only a bill somebody actually owes can be adjusted.</b> A draft is not owed by anybody, so
+    /// a wrong one is re-run or thrown away rather than credited; a paid or cancelled bill is
+    /// settled, and money moving after that is a refund, which is the Payments module's act and
+    /// Finance's entry. That is the same line <see cref="RecordPayment"/> draws.
+    /// </para>
+    /// <para>
+    /// <b>A credit larger than the balance is refused, not absorbed.</b> Crediting more than is owed
+    /// leaves money on the account, and a credit balance is Finance's to hold (WP-2.6) — a bill that
+    /// quietly swallowed the difference would leave it with no record of where it went. Word for
+    /// word the call <see cref="RecordPayment"/> makes about an overpayment.
+    /// </para>
+    /// </remarks>
+    /// <param name="kind">Which way the money moves.</param>
+    /// <param name="amount">How much, always positive — the kind carries the direction.</param>
+    /// <param name="reason">Why. Required.</param>
+    /// <param name="actor">Who is correcting it.</param>
+    /// <param name="now">The clock, for the entry's own identity and timestamp.</param>
+    /// <returns>The entry that was appended.</returns>
+    /// <exception cref="BillingWorkflowException">
+    /// The bill is not owed, or the credit is larger than its balance.
+    /// </exception>
+    /// <exception cref="BillingValidationException">
+    /// The amount is not positive or is finer than a cent, no reason was given, the kind is not one
+    /// this module knows, or the bill was loaded without its adjustment history.
+    /// </exception>
+    public BillAdjustment Adjust(
+        BillAdjustmentKind kind,
+        decimal amount,
+        string reason,
+        RegistryActor actor,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+
+        // Every guard before the first mutation — WP-1.4's ordering rule, learned there from an
+        // unexplained adjustment that moved the shelf and only then refused. The database would roll
+        // it back; the aggregate the caller is still holding would not.
+        BillAdjustment.RequireAmount(amount, BillNumber);
+
+        var signed = BillAdjustment.Signed(kind, amount);
+
+        if (RegistryText.Clean(reason, ReasonLength) is null)
+        {
+            throw new BillingValidationException($"Adjusting bill {BillNumber} needs a reason.");
+        }
+
+        if (!IsOutstanding)
+        {
+            throw new BillingWorkflowException(
+                $"Bill {BillNumber} is {Status} and is not owed, so there is nothing to adjust. "
+                + (Status is BillStatus.Draft
+                    ? "A draft is corrected by billing it again, not by crediting it."
+                    : "Money moving after a bill is settled is a refund, not an adjustment."));
+        }
+
+        if (-signed > Balance)
+        {
+            throw new BillingWorkflowException(
+                $"Bill {BillNumber} has {Balance} outstanding; a credit of {amount} is more than is owed.");
+        }
+
+        // THE HISTORY GUARD, and the reason this is not merely a running total. If the bill was
+        // loaded without its adjustments, the sum below is short and every figure this method writes
+        // afterwards would be wrong — silently, and on a document about money. Refused rather than
+        // corrected, for the reason Calculate refuses a total that disagrees with its own lines.
+        var applied = Money.Total(_adjustments.Select(adjustment => adjustment.Amount));
+
+        if (applied != AdjustmentTotal)
+        {
+            throw new BillingValidationException(
+                $"Bill {BillNumber} carries adjustments totalling {AdjustmentTotal} but only {applied} of them are loaded. "
+                + "A bill is adjusted with its whole history in hand.");
+        }
+
+        // Built before anything moves, because building it is the last thing that can fail — it is
+        // Record that refuses an actor with no subject id. Its own share of the ordering rule.
+        var adjustment = BillAdjustment.Record(
+            Id,
+            _adjustments.Count + 1,
+            kind,
+            signed,
+            AmountDue + signed,
+            reason,
+            actor,
+            now);
+
+        AdjustmentTotal += signed;
+        _adjustments.Add(adjustment);
+
+        // A credit that clears the balance settles the bill. That is not an "adjusted" lifecycle
+        // state sneaking in — the bill is genuinely no longer owed, and leaving it Issued would
+        // park a zero-balance row on the AR worklist for good. The machine still decides: Issued,
+        // PartiallyPaid and Overdue may all reach Paid, and nothing else gets here.
+        if (Balance is Money.Zero)
+        {
+            Move(BillStatus.Paid, now, reason);
+
+            PaidAt = now;
+        }
+
+        return adjustment;
     }
 
     /// <summary>

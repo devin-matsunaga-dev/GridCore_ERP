@@ -51,6 +51,70 @@ public sealed class IntegrationEventTests
     }
 
     [Fact]
+    public void Bill_adjusted_states_a_signed_change_rather_than_a_new_total()
+    {
+        // What lets Finance post a correction as a second balanced entry instead of going back and
+        // rewriting the first (invariant 3). A credit is negative; the kind is there to be read.
+        var adjusted = BillAdjusted.For(
+            Now,
+            billId: Guid.CreateVersion7(),
+            billNumber: "B-000123",
+            serviceAccountId: Guid.CreateVersion7(),
+            customerId: Guid.CreateVersion7(),
+            adjustmentId: Guid.CreateVersion7(),
+            kind: "Credit",
+            amount: -20.35m,
+            amountDue: 164.20m,
+            currency: "USD",
+            reason: "Estimated read corrected.");
+
+        Assert.Equal(-20.35m, adjusted.Amount);
+        Assert.Equal(164.20m, adjusted.AmountDue);
+        Assert.Equal("Credit", adjusted.Kind);
+        Assert.Equal(7, adjusted.EventId.Version);
+        Assert.Equal(Now, adjusted.OccurredAt);
+    }
+
+    [Fact]
+    public void An_adjustment_and_the_bill_it_corrects_are_two_different_facts()
+    {
+        // Same bill, two events, two identities — so a consumer deduplicating on EventId cannot
+        // mistake the correction for a redelivery of the issue.
+        var bill = Guid.CreateVersion7();
+
+        var issued = BillIssued.For(
+            Now,
+            bill,
+            "B-000123",
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            new DateOnly(2026, 7, 1),
+            new DateOnly(2026, 7, 31),
+            new DateOnly(2026, 8, 20),
+            184.55m,
+            "USD");
+
+        var adjusted = BillAdjusted.For(
+            Now,
+            bill,
+            "B-000123",
+            issued.ServiceAccountId,
+            issued.CustomerId,
+            Guid.CreateVersion7(),
+            "Credit",
+            -20.35m,
+            164.20m,
+            "USD",
+            "Estimated read corrected.");
+
+        Assert.Equal(issued.BillId, adjusted.BillId);
+        Assert.NotEqual(issued.EventId, adjusted.EventId);
+
+        // And the two add up: what was billed plus the correction is what is now owed.
+        Assert.Equal(issued.Amount + adjusted.Amount, adjusted.AmountDue);
+    }
+
+    [Fact]
     public void Payment_approved_carries_the_provider_reference_for_reconciliation()
     {
         var approved = PaymentApproved.For(

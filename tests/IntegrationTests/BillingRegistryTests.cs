@@ -1,3 +1,4 @@
+using GridCore.Contracts.Events;
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
@@ -10,6 +11,7 @@ using GridCore.Modules.Metering.Features.Meters;
 using GridCore.Modules.Metering.Features.Readings;
 using GridCore.Platform.Monetary;
 using GridCore.Platform.Seeding;
+using MassTransit.EntityFrameworkCoreIntegration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,7 +35,8 @@ namespace GridCore.IntegrationTests;
 /// </para>
 /// <para>
 /// This is the cross-module effect WP-2.3 adds, so CONVENTIONS.md's "new cross-module effect → one
-/// integration test" is what this file is.
+/// integration test" is what this file is. WP-2.4 adds the second one — a correction to an issued
+/// bill, staged for Finance in the same transaction as the entry and the audit row.
 /// </para>
 /// </remarks>
 [Collection(GateCollection.Name)]
@@ -41,6 +44,14 @@ namespace GridCore.IntegrationTests;
 public sealed class BillingRegistryTests(GateFixture fixture) : IAsyncLifetime
 {
     private const string Cycle = "2026-08";
+
+    /// <summary>
+    /// The credit these tests apply. Comfortably under the smallest bill the simulated cycle can
+    /// produce: every bill carries the tariff's monthly service charge, which is 12.50 on the oldest
+    /// published version and higher on every later one. A credit larger than the balance is refused,
+    /// and that guard is the fast tier's to prove.
+    /// </summary>
+    private const decimal Credit = 5.00m;
 
     /// <inheritdoc />
     public Task InitializeAsync() => fixture.ResetAsync();
@@ -276,6 +287,148 @@ public sealed class BillingRegistryTests(GateFixture fixture) : IAsyncLifetime
 
             Assert.True(await platform.AuditEntries.AnyAsync(audit =>
                 audit.Action == Platform.Audit.AuditActions.BillIssued && audit.EntityId == billId.ToString()));
+        }
+    }
+
+    [Fact]
+    public async Task Adjusting_a_bill_stages_BillAdjusted_in_the_outbox_inside_the_same_transaction()
+    {
+        // WP-2.4's cross-module effect, which is what CONVENTIONS.md asks an integration test for.
+        // Invariants 1, 2 and 5 across two schemas at once: the adjustment entry and the bill's
+        // running total are in billing, the audit entry and the outbox row are in platform, and all
+        // four commit together or not at all.
+        //
+        // Asserted on the tracked row inside the transaction rather than by counting committed rows
+        // afterwards, because the delivery service is running: a row that has already been swept off
+        // to the broker is a row a later count would miss, and the fact under test is that the
+        // publish went into the database at all rather than onto a bus.
+        var (_, meter) = await AServedPremiseAsync(
+            "Ada Residence",
+            "6 Tatachog Road",
+            "SEN-2300105",
+            installationReading: 2_000.000m);
+
+        await ARecordedReadingAsync(meter, 2_600.000m);
+
+        await using (var scope = fixture.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IMeterReadingService>()
+                .RunCycleAsync(new RunReadingCycleInput(Cycle, Seed: 4471));
+        }
+
+        Guid billId;
+        decimal printed;
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var run = await scope.ServiceProvider.GetRequiredService<IBillService>().RunAsync(new RunBillingInput(Cycle));
+
+            billId = Assert.Single(run.Bills).Id;
+            printed = run.Bills[0].TotalAmount;
+        }
+
+        await using (var scope = fixture.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IBillService>().IssueAsync(billId, new IssueBillInput());
+        }
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<Platform.Data.IUnitOfWork>();
+            var platform = scope.ServiceProvider.GetRequiredService<Platform.Data.PlatformDbContext>();
+            var bills = scope.ServiceProvider.GetRequiredService<IBillService>();
+
+            // The register opens a unit of work of its own; nested, the outer transaction IS the
+            // transaction, so what the service stages is visible here before anything commits.
+            await unitOfWork.ExecuteAsync(async token =>
+            {
+                await bills.AdjustAsync(
+                    billId,
+                    new AdjustBillInput(BillAdjustmentKind.Credit, Credit, "Estimated read corrected after the customer disputed it."),
+                    token);
+
+                var staged = Assert.Single(platform.ChangeTracker.Entries<OutboxMessage>());
+
+                Assert.Contains(nameof(BillAdjusted), staged.Entity.MessageType, StringComparison.Ordinal);
+
+                // The audit entry is in this transaction too — invariant 1 for a sensitive action.
+                Assert.Contains(
+                    platform.ChangeTracker.Entries<Platform.Audit.AuditEntry>(),
+                    audit => audit.Entity.Action == Platform.Audit.AuditActions.BillAdjusted);
+            });
+        }
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var billing = scope.ServiceProvider.GetRequiredService<BillingDbContext>();
+            var platform = scope.ServiceProvider.GetRequiredService<Platform.Data.PlatformDbContext>();
+
+            var stored = await billing.Bills
+                .AsNoTracking()
+                .Include(bill => bill.Adjustments)
+                .SingleAsync(bill => bill.Id == billId);
+
+            // numeric(18,2) round-trips the correction exactly, and the document still says what it
+            // said: the printed total is untouched and what is owed has moved.
+            Assert.Equal(printed, stored.TotalAmount);
+            Assert.Equal(-Credit, stored.AdjustmentTotal);
+            Assert.Equal(printed - Credit, stored.AmountDue);
+            Assert.Equal(-Credit, Assert.Single(stored.Adjustments).Amount);
+
+            Assert.True(await platform.AuditEntries.AnyAsync(audit =>
+                audit.Action == Platform.Audit.AuditActions.BillAdjusted && audit.EntityId == billId.ToString()));
+        }
+    }
+
+    [Fact]
+    public async Task A_bill_cannot_carry_two_adjustments_in_one_position()
+    {
+        // ux_bill_adjustments_sequence, as a database fact. The order corrections were applied in is
+        // what makes amount_due_after readable down the page; two rows claiming position 1 would
+        // leave which figure came first decided by the query plan.
+        var (_, meter) = await AServedPremiseAsync(
+            "Aldan Residence",
+            "21 Chalan Pale Arnold",
+            "SEN-2300106",
+            installationReading: 900.000m);
+
+        await ARecordedReadingAsync(meter, 1_400.000m);
+
+        await using (var scope = fixture.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IMeterReadingService>()
+                .RunCycleAsync(new RunReadingCycleInput(Cycle, Seed: 4471));
+        }
+
+        Guid billId;
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var bills = scope.ServiceProvider.GetRequiredService<IBillService>();
+
+            billId = Assert.Single((await bills.RunAsync(new RunBillingInput(Cycle))).Bills).Id;
+
+            await bills.IssueAsync(billId, new IssueBillInput());
+            await bills.AdjustAsync(billId, new AdjustBillInput(BillAdjustmentKind.Credit, Credit, "Estimated read corrected."));
+        }
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var billing = scope.ServiceProvider.GetRequiredService<BillingDbContext>();
+
+            // Inserted straight past the aggregate, exactly as a second concurrent correction would.
+            var exception = await Assert.ThrowsAsync<PostgresException>(() =>
+                billing.Database.ExecuteSqlRawAsync(
+                    """
+                    INSERT INTO "billing"."bill_adjustments"
+                        (id, bill_id, sequence, kind, amount, amount_due_after, reason, actor_id, recorded_at)
+                    VALUES ({0}, {1}, 1, 'Charge', 10.00, 0.00, 'Raced the first one.', 'system', now())
+                    """,
+                    Guid.CreateVersion7(),
+                    billId));
+
+            // 23505 — unique_violation. The database, not the code, is what guarantees it.
+            Assert.Equal("23505", exception.SqlState);
         }
     }
 

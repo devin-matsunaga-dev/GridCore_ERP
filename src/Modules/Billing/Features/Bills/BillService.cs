@@ -30,6 +30,12 @@ public sealed record IssueBillInput(DateOnly? IssuedOn = null, DateOnly? DueDate
 /// <param name="Reason">Why. Required — cancelling a bill removes money the utility was owed.</param>
 public sealed record CancelBillInput(string Reason);
 
+/// <summary>What a caller supplies to correct an issued bill.</summary>
+/// <param name="Kind">Which way the money moves — money off the bill, or money on.</param>
+/// <param name="Amount">How much, always positive. The kind carries the direction, not the sign.</param>
+/// <param name="Reason">Why. Required — this is the sensitive action invariant 5 is about.</param>
+public sealed record AdjustBillInput(BillAdjustmentKind Kind, decimal Amount, string Reason);
+
 /// <summary>What a caller supplies to review overdue bills.</summary>
 /// <param name="AsOf">The day to judge against. Defaults to today.</param>
 public sealed record OverdueReviewInput(DateOnly? AsOf = null);
@@ -123,13 +129,27 @@ public interface IBillService
     /// <exception cref="BillingWorkflowException">The bill is already settled or already cancelled.</exception>
     Task<Bill> CancelAsync(Guid billId, CancelBillInput input, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Corrects what an issued bill is owed, publishing <see cref="BillAdjusted"/> for Finance to
+    /// post against the receivable. Sensitive: gated on <c>billing.adjust</c> and audited with the
+    /// bill before and after.
+    /// </summary>
+    /// <exception cref="BillNotFoundException">There is no bill with that id.</exception>
+    /// <exception cref="BillingWorkflowException">
+    /// The bill is not owed, or the credit is larger than its balance.
+    /// </exception>
+    /// <exception cref="BillingValidationException">The correction is not one a bill can carry.</exception>
+    Task<Bill> AdjustAsync(Guid billId, AdjustBillInput input, CancellationToken cancellationToken = default);
+
     /// <summary>Moves every outstanding bill past its due date to <see cref="BillStatus.Overdue"/>.</summary>
     Task<OverdueReviewResult> ReviewOverdueAsync(OverdueReviewInput input, CancellationToken cancellationToken = default);
 
     /// <summary>The billing register, newest first. Lines are not loaded.</summary>
     Task<IReadOnlyList<Bill>> ListAsync(BillQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>One bill with its lines, or <see langword="null"/> when there is no such id.</summary>
+    /// <summary>
+    /// One bill with its lines and its adjustments, or <see langword="null"/> when there is no such id.
+    /// </summary>
     Task<Bill?> FindAsync(Guid billId, CancellationToken cancellationToken = default);
 }
 
@@ -378,6 +398,58 @@ public sealed class BillService(
     }
 
     /// <inheritdoc />
+    public Task<Bill> AdjustAsync(Guid billId, AdjustBillInput input, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        return unitOfWork.ExecuteAsync(
+            async ct =>
+            {
+                var now = clock.GetUtcNow();
+
+                var bill = await LoadAsync(billId, ct).ConfigureAwait(false);
+                var before = BillSnapshot.Of(bill);
+
+                var adjustment = bill.Adjust(input.Kind, input.Amount, input.Reason, RegistryActor.Of(currentUser), now);
+
+                // INVARIANT 5, in the shape this work package is about. The gate is on the endpoint
+                // (billing.adjust, which the Billing role and Managers hold and nobody else does);
+                // this is the other half, and the before/after is the bill rather than the entry —
+                // "what did this change about what the customer owes" is the question, and the entry
+                // on its own cannot answer it.
+                audit.Record(
+                    AuditActions.BillAdjusted,
+                    AuditEntityTypes.Bill,
+                    bill.Id.ToString(),
+                    before,
+                    BillSnapshot.Of(bill));
+
+                // Finance posted a receivable on BillIssued; this is the correction to it. Published
+                // rather than left for a later work package — unlike a cancellation, an adjustment
+                // states a signed change to a known amount, which is a fact WP-2.6 can post from
+                // without having to guess what was meant.
+                await events.PublishAsync(
+                        BillAdjusted.For(
+                            now,
+                            bill.Id,
+                            bill.BillNumber,
+                            bill.ServiceAccountId,
+                            bill.CustomerId,
+                            adjustment.Id,
+                            adjustment.Kind.ToString(),
+                            adjustment.Amount,
+                            bill.AmountDue,
+                            bill.Currency,
+                            adjustment.Reason),
+                        ct)
+                    .ConfigureAwait(false);
+
+                return bill;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<OverdueReviewResult> ReviewOverdueAsync(OverdueReviewInput input, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -473,6 +545,7 @@ public sealed class BillService(
         database.Bills
             .AsNoTracking()
             .Include(bill => bill.Lines.OrderBy(line => line.Sequence))
+            .Include(bill => bill.Adjustments.OrderBy(adjustment => adjustment.Sequence))
             .FirstOrDefaultAsync(bill => bill.Id == billId, cancellationToken);
 
     /// <summary>
@@ -531,9 +604,18 @@ public sealed class BillService(
         return null;
     }
 
+    /// <summary>
+    /// One bill, tracked, with everything a write to it needs in hand.
+    /// </summary>
+    /// <remarks>
+    /// The adjustments are not optional here: <see cref="Bill.Adjust"/> refuses to run without its
+    /// whole history, because a running total checked against half a collection is worse than no
+    /// check at all.
+    /// </remarks>
     private async Task<Bill> LoadAsync(Guid billId, CancellationToken cancellationToken) =>
         await database.Bills
             .Include(bill => bill.Lines)
+            .Include(bill => bill.Adjustments)
             .FirstOrDefaultAsync(bill => bill.Id == billId, cancellationToken)
             .ConfigureAwait(false)
         ?? throw new BillNotFoundException(billId);
@@ -572,7 +654,9 @@ public sealed class BillService(
 /// <param name="RatePlanCode">The tariff priced against.</param>
 /// <param name="RatePlanEffectiveFrom">The version of it — why these rates and not others.</param>
 /// <param name="Consumption">Units billed.</param>
-/// <param name="TotalAmount">What the bill comes to.</param>
+/// <param name="TotalAmount">What the bill comes to as printed. Never moves once it is calculated.</param>
+/// <param name="AdjustmentTotal">The signed sum of the corrections made to it since.</param>
+/// <param name="AmountDue">What is owed today — the printed total plus those corrections.</param>
 /// <param name="AmountPaid">How much has been paid.</param>
 /// <param name="DueDate">When it falls due.</param>
 public sealed record BillSnapshot(
@@ -587,6 +671,8 @@ public sealed record BillSnapshot(
     DateOnly RatePlanEffectiveFrom,
     decimal Consumption,
     decimal TotalAmount,
+    decimal AdjustmentTotal,
+    decimal AmountDue,
     decimal AmountPaid,
     DateOnly? DueDate)
 {
@@ -607,6 +693,8 @@ public sealed record BillSnapshot(
             bill.RatePlanEffectiveFrom,
             bill.Consumption,
             bill.TotalAmount,
+            bill.AdjustmentTotal,
+            bill.AmountDue,
             bill.AmountPaid,
             bill.DueDate);
     }

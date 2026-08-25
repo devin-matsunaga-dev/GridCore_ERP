@@ -5,8 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace GridCore.Modules.Billing.Data;
 
 /// <summary>
-/// The Billing module's schema: the published tariffs, who is billed on which of them, and the
-/// bills the rate engine produces. WP-2.4 adds the adjustments made to those.
+/// The Billing module's schema: the published tariffs, who is billed on which of them, the bills
+/// the rate engine produces, and the corrections made to those.
 /// </summary>
 public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options) : DbContext(options)
 {
@@ -30,7 +30,7 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options)
 
     /// <summary>
     /// Every bill raised. Append-only in spirit: a bill's lines are written once and a correction is
-    /// a new document or an adjustment (WP-2.4), never a rewritten line.
+    /// a new document or an adjustment, never a rewritten line.
     /// </summary>
     public DbSet<Bill> Bills => Set<Bill>();
 
@@ -39,6 +39,13 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options)
     /// its lines without loading the bills.
     /// </summary>
     public DbSet<BillLine> BillLines => Set<BillLine>();
+
+    /// <summary>
+    /// Every correction made to a bill since it was issued. Append-only for real, not merely in
+    /// spirit: an adjustment is never edited or removed, and what a customer owes today is the
+    /// bill's printed total plus the sum of these.
+    /// </summary>
+    public DbSet<BillAdjustment> BillAdjustments => Set<BillAdjustment>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

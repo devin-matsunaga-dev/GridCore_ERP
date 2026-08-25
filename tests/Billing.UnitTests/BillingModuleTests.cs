@@ -76,6 +76,7 @@ public class BillingModuleTests
                 typeof(RunBillingRequest),
                 typeof(IssueBillRequest),
                 typeof(CancelBillRequest),
+                typeof(AdjustBillRequest),
                 typeof(OverdueReviewRequest),
                 typeof(AssignRatePlanRequest),
             },

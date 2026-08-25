@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GridCore.Contracts.Events;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -25,6 +26,10 @@ public class BillServiceTests
         new(new FakeClock(Now), new FakeCurrentUser("auth0|officer", "A billing officer"));
 
     private static Guid Premise() => Guid.CreateVersion7();
+
+    /// <summary>One money field out of an audit snapshot, read as a decimal rather than matched as text.</summary>
+    private static decimal MoneyIn(string json, string field) =>
+        JsonDocument.Parse(json).RootElement.GetProperty(field).GetDecimal();
 
     [Fact]
     public async Task A_run_raises_one_draft_bill_per_billable_reading()
@@ -533,6 +538,202 @@ public class BillServiceTests
         await using var context = host.NewPlatformContext();
 
         Assert.True(await context.AuditEntries.AnyAsync(audit => audit.Action == AuditActions.BillCancelled));
+    }
+
+    /// <summary>An issued bill, ready to be corrected, and the host that raised it.</summary>
+    private static async Task<Bill> AnIssuedBillAsync(BillingTestHost host)
+    {
+        var premise = Premise();
+
+        host.Accounts.Add(premise);
+        host.Readings.Add(premise, 750m, Cycle, ReadAt);
+
+        var run = await host.WithBillsAsync(bills => bills.RunAsync(new RunBillingInput(Cycle)));
+
+        return await host.WithBillsAsync(bills => bills.IssueAsync(run.Bills[0].Id, new IssueBillInput()));
+    }
+
+    [Fact]
+    public async Task Adjusting_a_bill_writes_the_entry_and_leaves_the_document_alone()
+    {
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+        var printed = issued.TotalAmount;
+
+        var adjusted = await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        Assert.Equal(printed, adjusted.TotalAmount);
+        Assert.Equal(printed - 20m, adjusted.AmountDue);
+
+        // Committed, not merely built. The entry, the bill's running total and the audit row are one
+        // transaction — three contexts, two schemas.
+        await using var context = host.NewBillingContext();
+
+        var stored = await context.Bills
+            .Include(bill => bill.Adjustments)
+            .SingleAsync(bill => bill.Id == issued.Id);
+
+        Assert.Equal(printed, stored.TotalAmount);
+        Assert.Equal(-20m, stored.AdjustmentTotal);
+        Assert.Equal(printed - 20m, stored.AmountDue);
+
+        var entry = Assert.Single(stored.Adjustments);
+
+        Assert.Equal(BillAdjustmentKind.Credit, entry.Kind);
+        Assert.Equal(-20m, entry.Amount);
+        Assert.Equal(printed - 20m, entry.AmountDueAfter);
+        Assert.Equal("Estimated read corrected.", entry.Reason);
+        Assert.Equal("auth0|officer", entry.ActorId);
+    }
+
+    [Fact]
+    public async Task Adjusting_a_bill_publishes_BillAdjusted_for_Finance()
+    {
+        // Finance posted a receivable on BillIssued; this is the correction to it. A signed change
+        // to a known amount, so WP-2.6 can post a balanced entry from it without guessing.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+
+        var adjusted = await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        var @event = host.Events.Single<BillAdjusted>();
+
+        Assert.Equal(adjusted.Id, @event.BillId);
+        Assert.Equal(adjusted.BillNumber, @event.BillNumber);
+        Assert.Equal(adjusted.ServiceAccountId, @event.ServiceAccountId);
+        Assert.Equal(adjusted.CustomerId, @event.CustomerId);
+        Assert.Equal(adjusted.Adjustments[0].Id, @event.AdjustmentId);
+        Assert.Equal("Credit", @event.Kind);
+        Assert.Equal(-20m, @event.Amount);
+        Assert.Equal(adjusted.AmountDue, @event.AmountDue);
+        Assert.Equal(adjusted.Currency, @event.Currency);
+        Assert.Equal("Estimated read corrected.", @event.Reason);
+    }
+
+    [Fact]
+    public async Task Adjusting_is_audited_with_what_was_owed_before_and_after()
+    {
+        // The work package's second verification in as many words: the adjustment is audited with
+        // before/after. Invariant 5's other half — the gate is on the endpoint, this is the record.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+
+        await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        await using var context = host.NewPlatformContext();
+
+        var entry = await context.AuditEntries.SingleAsync(audit => audit.Action == AuditActions.BillAdjusted);
+
+        Assert.Equal(AuditEntityTypes.Bill, entry.EntityType);
+        Assert.Equal(issued.Id.ToString(), entry.EntityId);
+        Assert.Equal("auth0|officer", entry.UserId);
+
+        // The money moved, and both figures are in the entry: what was owed, and what is owed now.
+        Assert.Equal(issued.TotalAmount, MoneyIn(entry.BeforeJson!, "amountDue"));
+        Assert.Equal(issued.TotalAmount - 20m, MoneyIn(entry.AfterJson!, "amountDue"));
+        Assert.Equal(GridCore.Platform.Monetary.Money.Zero, MoneyIn(entry.BeforeJson!, "adjustmentTotal"));
+        Assert.Equal(-20m, MoneyIn(entry.AfterJson!, "adjustmentTotal"));
+
+        // And the document itself did not: the printed total is the same on both sides.
+        Assert.Equal(issued.TotalAmount, MoneyIn(entry.BeforeJson!, "totalAmount"));
+        Assert.Equal(issued.TotalAmount, MoneyIn(entry.AfterJson!, "totalAmount"));
+    }
+
+    [Fact]
+    public async Task A_refused_adjustment_writes_nothing_and_publishes_nothing()
+    {
+        // The failure path through the whole stack rather than just the aggregate: the credit is
+        // larger than the balance, so the unit of work rolls back and the outbox row goes with it.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+
+        await Assert.ThrowsAsync<BillingWorkflowException>(() =>
+            host.WithBillsAsync(bills => bills.AdjustAsync(
+                issued.Id,
+                new AdjustBillInput(BillAdjustmentKind.Credit, issued.TotalAmount + 1m, "Goodwill."))));
+
+        await using var billing = host.NewBillingContext();
+
+        Assert.Empty(await billing.BillAdjustments.ToListAsync());
+        Assert.Equal(Money.Zero, (await billing.Bills.SingleAsync(bill => bill.Id == issued.Id)).AdjustmentTotal);
+
+        await using var platform = host.NewPlatformContext();
+
+        Assert.False(await platform.AuditEntries.AnyAsync(audit => audit.Action == AuditActions.BillAdjusted));
+
+        // BillIssued from the setup, and nothing since.
+        Assert.Single(host.Events.Published);
+    }
+
+    [Fact]
+    public async Task A_second_adjustment_is_applied_on_top_of_the_first()
+    {
+        // The reason LoadAsync includes the adjustments: Bill.Adjust checks its running total
+        // against the whole history before adding to it, so a bill loaded without one would be
+        // refused rather than silently mis-totalled.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+        var printed = issued.TotalAmount;
+
+        await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        var adjusted = await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Charge, 5m, "Re-read came back higher than the estimate.")));
+
+        Assert.Equal([1, 2], adjusted.Adjustments.Select(adjustment => adjustment.Sequence));
+        Assert.Equal(printed - 15m, adjusted.AmountDue);
+        Assert.Equal(2, host.Events.Published.OfType<BillAdjusted>().Count());
+    }
+
+    [Fact]
+    public async Task A_corrected_bill_is_read_back_with_its_history()
+    {
+        // What a detail page renders. A list deliberately does not load them — but it still reports
+        // what is owed, which is why the running total is a column rather than a projection.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+
+        await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        var found = await host.WithBillsAsync(bills => bills.FindAsync(issued.Id));
+
+        Assert.NotNull(found);
+        Assert.Single(found.Adjustments);
+        Assert.Equal(issued.TotalAmount - 20m, found.AmountDue);
+
+        var listed = Assert.Single(await host.WithBillsAsync(bills => bills.ListAsync(new BillQuery())));
+
+        Assert.Empty(listed.Adjustments);
+        Assert.Equal(issued.TotalAmount - 20m, listed.AmountDue);
+        Assert.Equal(issued.TotalAmount, listed.TotalAmount);
+    }
+
+    [Fact]
+    public async Task Adjusting_a_bill_that_does_not_exist_is_a_404()
+    {
+        using var host = NewHost();
+
+        await Assert.ThrowsAsync<BillNotFoundException>(() =>
+            host.WithBillsAsync(bills => bills.AdjustAsync(
+                Guid.CreateVersion7(),
+                new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected."))));
     }
 
     [Fact]

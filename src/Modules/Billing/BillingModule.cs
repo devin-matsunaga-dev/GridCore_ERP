@@ -44,6 +44,7 @@ public sealed class BillingModule : IModule
         services.AddGridCoreValidator<RunBillingRequest, RunBillingRequestValidator>();
         services.AddGridCoreValidator<IssueBillRequest, IssueBillRequestValidator>();
         services.AddGridCoreValidator<CancelBillRequest, CancelBillRequestValidator>();
+        services.AddGridCoreValidator<AdjustBillRequest, AdjustBillRequestValidator>();
         services.AddGridCoreValidator<OverdueReviewRequest, OverdueReviewRequestValidator>();
         services.AddGridCoreValidator<AssignRatePlanRequest, AssignRatePlanRequestValidator>();
 

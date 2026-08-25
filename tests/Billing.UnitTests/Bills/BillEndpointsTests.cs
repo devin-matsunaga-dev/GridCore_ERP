@@ -77,14 +77,46 @@ public sealed class BillEndpointsTests
     }
 
     [Fact]
-    public void Adjusting_a_bill_is_not_reachable_yet() =>
-        // billing.adjust exists (WP-0.3) and WP-2.4 owns the endpoint behind it. Nothing here claims
-        // it, so a permission granted to Managers and the Billing role opens nothing until then.
-        Assert.DoesNotContain(
-            MappedEndpoints()
-                .SelectMany(endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>())
-                .Select(authorize => authorize.Policy),
-            policy => policy == PermissionPolicy.NameFor(Permissions.Billing.Adjust));
+    public void Correcting_a_bill_is_gated_on_the_adjust_permission() =>
+        // THE FAILURE PATH THIS WORK PACKAGE IS ABOUT, in the shape the routing layer enforces it: a
+        // caller holding billing.read and even billing.generate is refused with 403 here, without
+        // the handler running. WP-0.3 granted billing.adjust to the Billing role, to Managers and to
+        // Administrator, and to nobody else.
+        Assert.Equal(
+            PermissionPolicy.NameFor(Permissions.Billing.Adjust),
+            PolicyOf(EndpointAt("/api/bills/{id:guid}/adjustments", "POST")));
+
+    [Fact]
+    public void Correcting_a_bill_is_a_different_gate_from_raising_one()
+    {
+        // Not a tidier name for the same permission. WP-0.3 gave Managers billing.adjust WITHOUT
+        // billing.generate and the Billing role both, so the caller who may credit a disputed bill
+        // is not necessarily the caller who may raise one — asserting the policies merely differ is
+        // what stops a later refactor collapsing them into one.
+        Assert.NotEqual(
+            PolicyOf(EndpointAt("/api/bills/runs", "POST")),
+            PolicyOf(EndpointAt("/api/bills/{id:guid}/adjustments", "POST")));
+
+        Assert.NotEqual(
+            PolicyOf(EndpointAt("/api/bills/{id:guid}", "GET")),
+            PolicyOf(EndpointAt("/api/bills/{id:guid}/adjustments", "POST")));
+    }
+
+    [Fact]
+    public void Adjusting_is_the_only_thing_the_adjust_permission_opens()
+    {
+        // The shape WP-1.4 asserted for inventory.adjust, and for the same reason: an ordinary
+        // endpoint quietly re-gated on billing.adjust would hand the sensitive permission a second
+        // door, and one gated back down to billing.generate would leave the permission opening
+        // nothing at all. Both are caught here.
+        var behindAdjust = MappedEndpoints()
+            .Where(endpoint => endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()
+                .Any(authorize => authorize.Policy == PermissionPolicy.NameFor(Permissions.Billing.Adjust)))
+            .Select(endpoint => endpoint.RoutePattern.RawText)
+            .ToList();
+
+        Assert.Equal(["/api/bills/{id:guid}/adjustments"], behindAdjust);
+    }
 
     [Fact]
     public void No_billing_endpoint_opts_out_of_authentication() =>
@@ -102,10 +134,25 @@ public sealed class BillEndpointsTests
             permission => Assert.True(permission is not null && Permissions.All.Contains(permission)));
 
     [Fact]
+    public void An_adjustment_is_a_sub_resource_rather_than_an_edit_to_the_bill()
+    {
+        // A correction appends an entry; it never rewrites the document. A PUT or a PATCH that could
+        // set a bill's total would be the one route round both the state machine and the adjustment
+        // history that explains what a customer owes.
+        var writes = MappedEndpoints()
+            .Where(endpoint => endpoint.RoutePattern.RawText!.StartsWith("/api/bills", StringComparison.Ordinal))
+            .Where(endpoint => endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods
+                .Any(method => method is "PUT" or "PATCH"));
+
+        Assert.Empty(writes);
+    }
+
+    [Fact]
     public void Nothing_in_the_billing_register_can_be_deleted() =>
         // No DELETE here either. A bill is a document the utility has to be able to reproduce and
         // defend years later; withdrawing one is a Cancelled status with a reason, which keeps
-        // saying what it said.
+        // saying what it said, and an adjustment made in error is reversed by the opposite entry
+        // rather than removed.
         Assert.DoesNotContain(
             MappedEndpoints(),
             endpoint => endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods.Contains(HttpMethods.Delete));
