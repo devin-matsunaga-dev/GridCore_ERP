@@ -35,18 +35,30 @@ public sealed class RatePlanConfiguration : IEntityTypeConfiguration<RatePlan>
         builder.Property(plan => plan.EffectiveFrom).HasColumnName("effective_from");
         builder.Property(plan => plan.IsDefault).HasColumnName("is_default");
 
+        // Derived from the code and the effective date. Mapped, EF would want a backing field it
+        // cannot find and the model would fail to build at startup rather than in a test.
+        builder.Ignore(plan => plan.VersionKey);
+
         builder.HasMany(plan => plan.Tiers)
             .WithOne()
             .HasForeignKey(tier => tier.RatePlanId)
             .HasConstraintName("fk_rate_plan_tiers_rate_plans")
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(plan => plan.Code).HasDatabaseName("ux_rate_plans_code").IsUnique();
+        // A CODE AND A DATE, not a code (WP-2.3). A tariff is republished whenever its prices
+        // change and the versions have to coexist, so what cannot be duplicated is one code taking
+        // effect twice on the same day. Unique on the code alone — which is what WP-0.8 shipped,
+        // when there was one version of each — would make repricing impossible.
+        builder.HasIndex(plan => new { plan.Code, plan.EffectiveFrom })
+            .HasDatabaseName("ux_rate_plans_code_effective")
+            .IsUnique();
 
-        // "The default plan" cannot be two plans, so the database says so rather than the code
-        // hoping so. Filtered, because every other plan is legitimately not the default.
-        builder.HasIndex(plan => plan.IsDefault)
-            .HasDatabaseName("ux_rate_plans_default")
+        // "The default plan" cannot be two plans ON ONE DAY, so the database says so rather than the
+        // code hoping so. Filtered, because every other plan is legitimately not the default; keyed
+        // on the effective date as well, because every version of the default tariff carries the
+        // flag — repricing the default must not leave the utility without one.
+        builder.HasIndex(plan => new { plan.IsDefault, plan.EffectiveFrom })
+            .HasDatabaseName("ux_rate_plans_default_effective")
             .IsUnique()
             .HasFilter("is_default");
 

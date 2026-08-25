@@ -54,6 +54,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
+        services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
         _provider = services.BuildServiceProvider();
 
@@ -106,6 +107,18 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IServiceLocationDirectory>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the service account registry <i>as another module sees
+    /// it</i> — the seam Billing (WP-2.3) raises every bill through, resolved from the container
+    /// exactly as Billing resolves it.
+    /// </summary>
+    public Task<TResult> WithAccountDirectoryAsync<TResult>(Func<IServiceAccountDirectory, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IServiceAccountDirectory>()));
     }
 
     /// <summary>Reads back what a test wrote, on a context outside any unit of work.</summary>

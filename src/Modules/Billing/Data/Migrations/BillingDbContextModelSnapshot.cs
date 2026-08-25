@@ -23,6 +23,288 @@ namespace GridCore.Modules.Billing.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.Bills.Bill", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<decimal>("AmountPaid")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount_paid");
+
+                    b.Property<string>("BillNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("bill_number");
+
+                    b.Property<decimal>("Consumption")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("consumption");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<decimal?>("CurrentReading")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("current_reading");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("customer_name");
+
+                    b.Property<string>("CycleCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("cycle_code");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<DateOnly?>("IssuedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("issued_on");
+
+                    b.Property<Guid>("MeterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meter_id");
+
+                    b.Property<string>("MeterNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("meter_number");
+
+                    b.Property<Guid>("MeterReadingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meter_reading_id");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<DateOnly>("PeriodEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start");
+
+                    b.Property<decimal?>("PreviousReading")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("previous_reading");
+
+                    b.Property<string>("RatePlanCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("rate_plan_code");
+
+                    b.Property<DateOnly>("RatePlanEffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("rate_plan_effective_from");
+
+                    b.Property<Guid>("RatePlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rate_plan_id");
+
+                    b.Property<string>("RatePlanName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("rate_plan_name");
+
+                    b.Property<Guid>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.Property<Guid>("ServiceLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_location_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_changed_at");
+
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("status_reason");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<string>("UnitOfMeasure")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("unit_of_measure");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bills");
+
+                    b.HasIndex("BillNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bills_bill_number");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_bills_customer_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_bills_status");
+
+                    b.HasIndex("ServiceAccountId", "CycleCode")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bills_account_cycle");
+
+                    b.ToTable("bills", "billing");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.Bills.BillLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("BillId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bill_id");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<decimal?>("RatePerUnit")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("rate_per_unit");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<int?>("TierSequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("tier_sequence");
+
+                    b.Property<decimal?>("Units")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)")
+                        .HasColumnName("units");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bill_lines");
+
+                    b.HasIndex("BillId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("ux_bill_lines_sequence");
+
+                    b.ToTable("bill_lines", "billing");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.RatePlans.AccountRatePlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at");
+
+                    b.Property<DateTimeOffset?>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<string>("RatePlanCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("rate_plan_code");
+
+                    b.Property<Guid>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_account_rate_plans");
+
+                    b.HasIndex("ServiceAccountId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_account_rate_plans_account");
+
+                    b.ToTable("account_rate_plans", "billing");
+                });
+
             modelBuilder.Entity("GridCore.Modules.Billing.Features.RatePlans.RatePlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -76,13 +358,13 @@ namespace GridCore.Modules.Billing.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_rate_plans");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("Code", "EffectiveFrom")
                         .IsUnique()
-                        .HasDatabaseName("ux_rate_plans_code");
+                        .HasDatabaseName("ux_rate_plans_code_effective");
 
-                    b.HasIndex("IsDefault")
+                    b.HasIndex("IsDefault", "EffectiveFrom")
                         .IsUnique()
-                        .HasDatabaseName("ux_rate_plans_default")
+                        .HasDatabaseName("ux_rate_plans_default_effective")
                         .HasFilter("is_default");
 
                     b.ToTable("rate_plans", "billing");
@@ -90,10 +372,10 @@ namespace GridCore.Modules.Billing.Data.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7eb4-b30b-55d2b561d9bb"),
+                            Id = new Guid("01a03111-1c00-751c-a792-94a84d62db9a"),
                             Code = "RES-STD",
                             Currency = "USD",
-                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
                             IsDefault = true,
                             MonthlyServiceCharge = 12.50m,
                             Name = "Residential standard",
@@ -102,13 +384,25 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7440-82af-b70efb8671c9"),
+                            Id = new Guid("01a03111-1c00-7b1b-a2bb-cd85284d214f"),
                             Code = "COM-STD",
                             Currency = "USD",
-                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
                             IsDefault = false,
                             MonthlyServiceCharge = 45.00m,
                             Name = "Commercial standard",
+                            ServiceType = "Electricity",
+                            UnitOfMeasure = "kWh"
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03111-1c00-7c54-a54e-2d4921568a7c"),
+                            Code = "RES-STD",
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 7, 1),
+                            IsDefault = true,
+                            MonthlyServiceCharge = 13.75m,
+                            Name = "Residential standard",
                             ServiceType = "Electricity",
                             UnitOfMeasure = "kWh"
                         });
@@ -151,42 +445,75 @@ namespace GridCore.Modules.Billing.Data.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7545-8b53-76122bf03982"),
+                            Id = new Guid("01a03111-1c00-7c16-96c8-173e40ae8222"),
                             RatePerUnit = 0.1145m,
-                            RatePlanId = new Guid("01a03111-1c00-7eb4-b30b-55d2b561d9bb"),
+                            RatePlanId = new Guid("01a03111-1c00-751c-a792-94a84d62db9a"),
                             Sequence = 1,
                             UpToUnits = 500m
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-723d-bcd7-80ea4ecbf39c"),
+                            Id = new Guid("01a03111-1c00-7c1b-bc31-49b94fcf81a8"),
                             RatePerUnit = 0.1385m,
-                            RatePlanId = new Guid("01a03111-1c00-7eb4-b30b-55d2b561d9bb"),
+                            RatePlanId = new Guid("01a03111-1c00-751c-a792-94a84d62db9a"),
                             Sequence = 2,
                             UpToUnits = 1000m
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7b3f-85a9-3f4876dbe728"),
+                            Id = new Guid("01a03111-1c00-7bdb-958f-15b5c5a3cc68"),
                             RatePerUnit = 0.1620m,
-                            RatePlanId = new Guid("01a03111-1c00-7eb4-b30b-55d2b561d9bb"),
+                            RatePlanId = new Guid("01a03111-1c00-751c-a792-94a84d62db9a"),
                             Sequence = 3
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7ddb-9d30-63f09b9c7610"),
+                            Id = new Guid("01a03111-1c00-73e3-9a13-986fb86fc536"),
                             RatePerUnit = 0.1290m,
-                            RatePlanId = new Guid("01a03111-1c00-7440-82af-b70efb8671c9"),
+                            RatePlanId = new Guid("01a03111-1c00-7b1b-a2bb-cd85284d214f"),
                             Sequence = 1,
                             UpToUnits = 2000m
                         },
                         new
                         {
-                            Id = new Guid("01a03111-1c00-7c6f-9b8c-d303bdc8e7c9"),
+                            Id = new Guid("01a03111-1c00-74fb-bae8-d5da5f7394c3"),
                             RatePerUnit = 0.1105m,
-                            RatePlanId = new Guid("01a03111-1c00-7440-82af-b70efb8671c9"),
+                            RatePlanId = new Guid("01a03111-1c00-7b1b-a2bb-cd85284d214f"),
                             Sequence = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03111-1c00-7002-806d-6835aacf0b0c"),
+                            RatePerUnit = 0.1225m,
+                            RatePlanId = new Guid("01a03111-1c00-7c54-a54e-2d4921568a7c"),
+                            Sequence = 1,
+                            UpToUnits = 500m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03111-1c00-7d31-98e9-32d3927853be"),
+                            RatePerUnit = 0.1480m,
+                            RatePlanId = new Guid("01a03111-1c00-7c54-a54e-2d4921568a7c"),
+                            Sequence = 2,
+                            UpToUnits = 1000m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03111-1c00-7ffe-a8fb-2c329fdfad51"),
+                            RatePerUnit = 0.1735m,
+                            RatePlanId = new Guid("01a03111-1c00-7c54-a54e-2d4921568a7c"),
+                            Sequence = 3
                         });
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.Bills.BillLine", b =>
+                {
+                    b.HasOne("GridCore.Modules.Billing.Features.Bills.Bill", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("BillId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bill_lines_bill");
                 });
 
             modelBuilder.Entity("GridCore.Modules.Billing.Features.RatePlans.RatePlanTier", b =>
@@ -197,6 +524,11 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_rate_plan_tiers_rate_plans");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.Bills.Bill", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("GridCore.Modules.Billing.Features.RatePlans.RatePlan", b =>

@@ -27,19 +27,25 @@ public sealed class RatePlanTier
     public decimal RatePerUnit { get; private init; }
 
     /// <summary>
-    /// Builds a reference tier. The id is derived from the plan code and the sequence, so the
-    /// migration seeds the same rows every time it is generated.
+    /// Builds a reference tier. The id is derived from the plan <i>version</i> key and the sequence,
+    /// so the migration seeds the same rows every time it is generated — and so two versions of one
+    /// tariff do not derive the same ids for their tiers.
     /// </summary>
+    /// <param name="planVersionKey">The owning version's <see cref="RatePlan.VersionKey"/>.</param>
+    /// <param name="ratePlanId">The owning version's id.</param>
+    /// <param name="sequence">Position in the plan, from 1.</param>
+    /// <param name="upToUnits">Where this tier stops, or <see langword="null"/> for the last one.</param>
+    /// <param name="ratePerUnit">Price of one unit inside it.</param>
     /// <exception cref="ArgumentException">The sequence, bound or rate is out of range.</exception>
-    public static RatePlanTier Reference(string planCode, Guid ratePlanId, int sequence, decimal? upToUnits, decimal ratePerUnit)
+    public static RatePlanTier Reference(string planVersionKey, Guid ratePlanId, int sequence, decimal? upToUnits, decimal ratePerUnit)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(planCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(planVersionKey);
         ArgumentOutOfRangeException.ThrowIfLessThan(sequence, 1);
 
         if (upToUnits is <= 0m)
         {
             throw new ArgumentException(
-                $"Tier {sequence} of rate plan '{planCode}' ends at {upToUnits}, which covers no consumption.",
+                $"Tier {sequence} of rate plan '{planVersionKey}' ends at {upToUnits}, which covers no consumption.",
                 nameof(upToUnits));
         }
 
@@ -48,13 +54,13 @@ public sealed class RatePlanTier
         if (ratePerUnit < 0m)
         {
             throw new ArgumentException(
-                $"Tier {sequence} of rate plan '{planCode}' has a negative rate ({ratePerUnit}).",
+                $"Tier {sequence} of rate plan '{planVersionKey}' has a negative rate ({ratePerUnit}).",
                 nameof(ratePerUnit));
         }
 
         return new RatePlanTier
         {
-            Id = ReferenceId.For(DefaultRatePlans.AuthoredAt, $"{planCode}#{sequence}"),
+            Id = ReferenceId.For(DefaultRatePlans.AuthoredAt, $"{planVersionKey}#{sequence}"),
             RatePlanId = ratePlanId,
             Sequence = sequence,
             UpToUnits = upToUnits,

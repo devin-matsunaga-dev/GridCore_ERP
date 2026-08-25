@@ -70,6 +70,21 @@ public static class AuditActions
     /// <summary>A reading cycle was run against the reading provider, producing a batch of readings.</summary>
     public const string MeterReadingCycleRun = "meter_reading.cycle";
 
+    /// <summary>A service account was put on a rate plan, or moved to another one.</summary>
+    public const string AccountRatePlanAssigned = "account_rate_plan.assign";
+
+    /// <summary>A billing run priced a reading cycle, producing draft bills.</summary>
+    public const string BillingRunExecuted = "billing_run.execute";
+
+    /// <summary>A bill was issued to the customer, and Finance posted the receivable.</summary>
+    public const string BillIssued = "bill.issue";
+
+    /// <summary>A bill was withdrawn. Sensitive: it removes money the utility was owed.</summary>
+    public const string BillCancelled = "bill.cancel";
+
+    /// <summary>Outstanding bills past their due date were reviewed and marked overdue.</summary>
+    public const string BillOverdueReviewed = "bill.overdue_review";
+
     /// <summary>A utility asset was entered in the register.</summary>
     public const string AssetRegistered = "asset.create";
 
@@ -139,6 +154,32 @@ public static class AuditEntityTypes
     /// readings themselves are already immutable and each stamped with who recorded it.
     /// </summary>
     public const string MeterReadingCycle = "metering.reading_cycle";
+
+    /// <summary>
+    /// A row of <c>billing.account_rate_plans</c>, identified by the <b>service account</b> it is
+    /// about. That is what somebody asks after — "what is this customer billed on, and who put them
+    /// there" — and the assignment row's own id is an implementation detail of holding the answer.
+    /// </summary>
+    public const string AccountRatePlan = "billing.account_rate_plan";
+
+    /// <summary>
+    /// A row of <c>billing.bills</c>. Lines are audited against the bill they belong to rather than
+    /// as entities of their own: a line is written once with the bill and never moves.
+    /// </summary>
+    public const string Bill = "billing.bill";
+
+    /// <summary>
+    /// A billing run, identified by the reading cycle it priced. Not a table: a run raises many
+    /// bills in one act, and one entry naming the cycle is what an auditor reads back — each bill is
+    /// already its own row stamped with who raised it.
+    /// </summary>
+    public const string BillingRun = "billing.billing_run";
+
+    /// <summary>
+    /// An overdue review, identified by the day it judged against. Not a table either, and one entry
+    /// for the same reason a billing run gets one.
+    /// </summary>
+    public const string BillOverdueReview = "billing.overdue_review";
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";

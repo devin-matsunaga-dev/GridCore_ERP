@@ -1,3 +1,4 @@
+using GridCore.Contracts.Directories;
 using GridCore.Modules.Metering.Data;
 using GridCore.Contracts.Providers;
 using GridCore.Modules.Metering.Features.Meters;
@@ -35,6 +36,11 @@ public sealed class MeteringModule : IModule
         services.AddScoped<IMeterNumberGenerator, SequentialMeterNumberGenerator>();
         services.AddScoped<IMeterService, MeterService>();
         services.AddScoped<IMeterReadingService, MeterReadingService>();
+
+        // The reading register as the rest of GridCore reads it (WP-2.3). Billing bills from
+        // readings and may not touch this schema, so it takes IMeterReadingDirectory from Contracts
+        // and this module — the only one that knows both halves — registers the implementation.
+        services.AddScoped<IMeterReadingDirectory, MeterReadingDirectory>();
 
         // The simulation seam. Metering owns the meter simulator (ARCHITECTURE.md's module table),
         // so unlike the premise directory this one IS registered here — but only ever against the

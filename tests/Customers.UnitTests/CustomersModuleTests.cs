@@ -37,6 +37,30 @@ public class CustomersModuleTests
     }
 
     [Fact]
+    public void Both_registries_this_module_publishes_are_registered_through_Contracts()
+    {
+        // The two cross-module read seams Customers owns: the premise directory (WP-2.1, consumed by
+        // Metering) and the service account directory (WP-2.3, consumed by Billing). This module is
+        // the only place that knows both halves of each, so it registers them — always against the
+        // Contracts interface, never the concrete type, or a consumer could hold this module's EF
+        // context by another name.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(ServiceLocationDirectory),
+            Assert.Single(services, service => service.ServiceType == typeof(Contracts.Directories.IServiceLocationDirectory))
+                .ImplementationType);
+
+        Assert.Equal(
+            typeof(ServiceAccountDirectory),
+            Assert.Single(services, service => service.ServiceType == typeof(Contracts.Directories.IServiceAccountDirectory))
+                .ImplementationType);
+
+        Assert.False(Registers<ServiceLocationDirectory>(services));
+        Assert.False(Registers<ServiceAccountDirectory>(services));
+    }
+
+    [Fact]
     public void The_module_name_is_the_schema_its_context_owns() =>
         // They are the same thing, and ModuleRegistration rejects two modules claiming one schema —
         // so a divergence here would show up as a module silently writing into another's tables.

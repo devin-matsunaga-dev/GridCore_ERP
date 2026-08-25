@@ -52,6 +52,21 @@ public class MeteringModuleTests
     }
 
     [Fact]
+    public void The_reading_register_is_published_to_other_modules_through_Contracts()
+    {
+        // WP-2.3's seam. Billing bills from readings and may not read this schema, so Metering — the
+        // only module that knows both halves — registers the implementation against the Contracts
+        // interface, exactly as Customers does for the premise directory.
+        var directory = Assert.Single(Composed(), service => service.ServiceType == typeof(IMeterReadingDirectory));
+
+        Assert.Equal(typeof(MeterReadingDirectory), directory.ImplementationType);
+
+        // And never as the concrete type: a caller that could resolve MeterReadingDirectory would be
+        // a caller holding this module's EF context by another name.
+        Assert.DoesNotContain(Composed(), service => service.ServiceType == typeof(MeterReadingDirectory));
+    }
+
+    [Fact]
     public void The_meter_simulator_is_registered_only_behind_the_provider_interface()
     {
         // ARCHITECTURE.md's module table gives Metering the meter simulator, so unlike the premise

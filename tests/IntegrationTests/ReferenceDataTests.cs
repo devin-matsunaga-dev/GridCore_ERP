@@ -53,11 +53,25 @@ public sealed class ReferenceDataTests(GateFixture fixture) : IAsyncLifetime
         var billing = scope.ServiceProvider.GetRequiredService<BillingDbContext>();
         var inventory = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
 
-        var plan = await billing.RatePlans.Include(plan => plan.Tiers).SingleAsync(plan => plan.IsDefault);
+        // The default tariff is now a tariff with two published versions, so "the default" is a
+        // question with a date on it (WP-2.3). Both are seeded; the one in force today is the later.
+        var versions = await billing.RatePlans
+            .Include(plan => plan.Tiers)
+            .Where(plan => plan.IsDefault)
+            .ToListAsync();
 
-        Assert.Equal(DefaultRatePlans.ResidentialStandard, plan.Code);
-        Assert.Equal(12.50m, plan.MonthlyServiceCharge);
+        Assert.Equal(2, versions.Count);
+        Assert.All(versions, version => Assert.Equal(DefaultRatePlans.ResidentialStandard, version.Code));
+
+        var plan = RatePlanSelector.InForceOn(versions, DefaultRatePlans.ResidentialRevisionFrom)!;
+
+        Assert.Equal(13.75m, plan.MonthlyServiceCharge);
         Assert.Equal(3, plan.Tiers.Count);
+
+        // And the version before the repricing is still there, still charging what it charged.
+        Assert.Equal(
+            12.50m,
+            RatePlanSelector.InForceOn(versions, DefaultRatePlans.ResidentialRevisionFrom.AddDays(-1))!.MonthlyServiceCharge);
 
         Assert.Equal(
             DefaultWarehouses.All.Select(warehouse => warehouse.Code).Order(StringComparer.Ordinal),

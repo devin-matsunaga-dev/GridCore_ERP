@@ -67,6 +67,7 @@ public sealed class MeteringTestHost : IDisposable
         services.AddScoped<IMeterNumberGenerator, SequentialMeterNumberGenerator>();
         services.AddScoped<IMeterService, MeterService>();
         services.AddScoped<IMeterReadingService, MeterReadingService>();
+        services.AddScoped<IMeterReadingDirectory, MeterReadingDirectory>();
         services.AddScoped<MetersDemoSeeder>();
         services.AddScoped<MeterReadingsDemoSeeder>();
 

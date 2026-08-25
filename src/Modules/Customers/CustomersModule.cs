@@ -42,6 +42,12 @@ public sealed class CustomersModule : IModule
         // halves, and a consumer never learns a customers schema exists.
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
 
+        // The service account registry as the rest of GridCore reads it (WP-2.3). Billing raises a
+        // bill against "the account open at the premise this meter is on" — a derivation WP-2.1
+        // named and this is what answers it, without Billing learning that a customers schema
+        // exists. Registered here for the same reason the premise directory is.
+        services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
+
         // Edge validation. Registered one by one rather than by scanning, so the composition stays
         // greppable — the same reason Program.cs lists the modules.
         services.AddGridCoreValidator<CreateCustomerRequest, CreateCustomerRequestValidator>();
