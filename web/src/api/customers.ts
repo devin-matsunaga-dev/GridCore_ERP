@@ -153,6 +153,57 @@ export type OpenServiceAccountInput = {
   reason?: string | null;
 };
 
+/** Mirrors `DepositRuleResponse` — the class-based schedule, reference data on the host. */
+export type DepositRule = {
+  customerClass: CustomerClass;
+  amount: number;
+  description: string;
+  ruleId: string;
+};
+
+/** Mirrors `NewPremiseRequest`. */
+export type NewPremiseInput = {
+  address: AddressInput;
+  description?: string | null;
+};
+
+/** Mirrors `IntakePremiseRequest` — exactly one of the two, which the host refuses otherwise. */
+export type IntakePremiseInput = {
+  newPremise?: NewPremiseInput;
+  serviceLocationId?: string;
+};
+
+/** Mirrors `RegisterCustomerIntakeRequest` — the wizard's single commit. */
+export type CustomerIntakeInput = {
+  name: string;
+  class: CustomerClass;
+  premise: IntakePremiseInput;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  depositCollected?: number;
+  startService?: boolean;
+  reason?: string | null;
+};
+
+/** Mirrors `DepositOutcomeResponse`. */
+export type DepositOutcome = {
+  customerClass: CustomerClass;
+  assessedAmount: number;
+  collectedAmount: number;
+  ruleId: string;
+};
+
+/** Mirrors `CustomerRegistrationResponse` — everything one intake produced. */
+export type CustomerRegistration = {
+  customer: Customer;
+  location: ServiceLocation;
+  /** False when the intake opened the account at a premise already on the books. */
+  locationWasRegistered: boolean;
+  account: ServiceAccount;
+  deposit: DepositOutcome;
+};
+
 export const customersApi = {
   list: (filters: CustomerFilters, signal?: AbortSignal) =>
     api.get<Customer[]>('/api/customers', {
@@ -194,10 +245,22 @@ export const customersApi = {
    */
   startService: (id: string, reason?: string) =>
     api.post<ServiceAccount>(`/api/service-accounts/${id}/start`, { json: { reason } }),
+
+  /** The deposit schedule. Reference data on the host, so it is safe to cache for a session. */
+  depositRules: (signal?: AbortSignal) => api.get<DepositRule[]>('/api/deposit-rules', { signal }),
+
+  /**
+   * The intake wizard's one commit (WP-2.8). Deliberately NOT the three calls above in sequence:
+   * the customer, the premise and the account are written in a single host-side transaction, so a
+   * wizard abandoned or refused part-way leaves nothing behind.
+   */
+  register: (input: CustomerIntakeInput) =>
+    api.post<CustomerRegistration>('/api/customer-registrations', { json: input }),
 };
 
 export const customerKeys = {
   all: ['customers'] as const,
+  depositRules: () => ['deposit-rules'] as const,
   list: (filters: CustomerFilters) => ['customers', 'list', filters] as const,
   detail: (id: string) => ['customers', 'detail', id] as const,
   locations: (filters: ServiceLocationFilters) => ['service-locations', 'list', filters] as const,
@@ -205,6 +268,18 @@ export const customerKeys = {
   accounts: (filters: ServiceAccountFilters) => ['service-accounts', 'list', filters] as const,
   account: (id: string) => ['service-accounts', 'detail', id] as const,
 };
+
+/**
+ * The deposit schedule. Reference data — it changes by migration, never by a screen — so it is held
+ * for the session rather than re-fetched as the wizard's class select moves.
+ */
+export function useDepositRules() {
+  return useQuery({
+    queryKey: customerKeys.depositRules(),
+    queryFn: ({ signal }) => customersApi.depositRules(signal),
+    staleTime: Infinity,
+  });
+}
 
 export function useCustomers(filters: CustomerFilters) {
   return useQuery({

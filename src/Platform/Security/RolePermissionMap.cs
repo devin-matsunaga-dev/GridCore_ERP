@@ -17,6 +17,12 @@ public static class RolePermissionMap
             [GridCoreRoles.CustomerService] = Set(
                 Permissions.Customers.Read,
                 Permissions.Customers.Write,
+
+                // The front office is where a deposit is taken — at intake, over the counter. It is
+                // a separate grant from customers.write on purpose (WP-2.8): the two travel together
+                // for this role and for no other, which is the only way the distinction can be seen.
+                Permissions.Customers.Deposit,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
@@ -37,6 +43,11 @@ public static class RolePermissionMap
 
             [GridCoreRoles.Finance] = Set(
                 Permissions.Customers.Read,
+
+                // Finance holds it without customers.write: a deposit is money, and the refunds and
+                // applications WP-2.12 builds are Finance's work, not an edit to a customer record.
+                Permissions.Customers.Deposit,
+
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
                 Permissions.Payments.Refund,

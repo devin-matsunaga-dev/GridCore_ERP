@@ -50,6 +50,8 @@ public class RolePermissionMapTests
     [InlineData(GridCoreRoles.Supervisor, Permissions.WorkOrders.Assign)]
     [InlineData(GridCoreRoles.Technician, Permissions.WorkOrders.Complete)]
     [InlineData(GridCoreRoles.CustomerService, Permissions.Payments.Record)]
+    [InlineData(GridCoreRoles.CustomerService, Permissions.Customers.Deposit)]
+    [InlineData(GridCoreRoles.Finance, Permissions.Customers.Deposit)]
     public void A_role_holds_the_permission_its_job_needs(string role, string permission)
     {
         Assert.True(RolePermissionMap.HasPermission([role], permission));
@@ -61,6 +63,8 @@ public class RolePermissionMapTests
     [InlineData(GridCoreRoles.Warehouse, Permissions.Customers.Write)]
     [InlineData(GridCoreRoles.Manager, Permissions.Platform.Admin)]
     [InlineData(GridCoreRoles.Supervisor, Permissions.Inventory.Adjust)]
+    [InlineData(GridCoreRoles.Billing, Permissions.Customers.Deposit)]
+    [InlineData(GridCoreRoles.Manager, Permissions.Customers.Deposit)]
     public void A_role_is_denied_a_permission_outside_its_job(string role, string permission)
     {
         Assert.False(RolePermissionMap.HasPermission([role], permission));
@@ -74,6 +78,20 @@ public class RolePermissionMapTests
             .ToList();
 
         Assert.Equal([GridCoreRoles.Administrator], holders);
+    }
+
+    [Fact]
+    public void Taking_a_deposit_is_a_narrower_grant_than_writing_to_the_registry()
+    {
+        // WP-2.8's whole reason for a permission of its own. The two travel together for the front
+        // office and for nobody else: Finance may take a deposit without being able to edit a
+        // customer, and a Manager may read the registry without being able to take money at all —
+        // so a test that a deposit was refused is testing the deposit gate and not customers.write.
+        var writers = GridCoreRoles.All.Where(role => RolePermissionMap.HasPermission([role], Permissions.Customers.Write));
+        var takers = GridCoreRoles.All.Where(role => RolePermissionMap.HasPermission([role], Permissions.Customers.Deposit));
+
+        Assert.Equal([GridCoreRoles.Administrator, GridCoreRoles.CustomerService], writers);
+        Assert.Equal([GridCoreRoles.Administrator, GridCoreRoles.CustomerService, GridCoreRoles.Finance], takers);
     }
 
     [Fact]

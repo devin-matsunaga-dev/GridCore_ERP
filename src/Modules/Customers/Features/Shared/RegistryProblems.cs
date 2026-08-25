@@ -5,8 +5,8 @@ namespace GridCore.Modules.Customers.Features.Shared;
 
 /// <summary>
 /// Turns the registry failures into the RFC 7807 statuses CONVENTIONS.md prescribes: 400
-/// validation, 404 missing, 409 workflow conflict. Shared by both slices so a customer and a
-/// service location cannot drift into answering the same failure differently.
+/// validation, 403 permission, 404 missing, 409 workflow conflict. Shared by every slice so a
+/// customer and a service location cannot drift into answering the same failure differently.
 /// </summary>
 public static class RegistryProblems
 {
@@ -30,6 +30,10 @@ public static class RegistryProblems
         catch (ServiceAccountNotFoundException exception)
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service account not found");
+        }
+        catch (RegistryPermissionException exception)
+        {
+            return Problem(exception, StatusCodes.Status403Forbidden, "Not permitted");
         }
         catch (RegistryWorkflowException exception)
         {

@@ -18,6 +18,14 @@ public static class Permissions
 
         /// <summary>Create and edit customers, locations and service accounts.</summary>
         public const string Write = "customers.write";
+
+        /// <summary>
+        /// Assess and collect a security deposit (WP-2.8). Deliberately narrower than
+        /// <see cref="Write"/>: opening an account and taking money for it are two different jobs,
+        /// and a clerk who may register a customer is not automatically a clerk who may take a
+        /// deposit off them. WP-2.12's lifecycle — hold, apply, refund — gates on this too.
+        /// </summary>
+        public const string Deposit = "customers.deposit";
     }
 
     /// <summary>Meters, readings and consumption.</summary>

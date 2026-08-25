@@ -15,8 +15,15 @@ public sealed class FakeClock(DateTimeOffset now) : TimeProvider
     public void Advance(TimeSpan by) => _now = _now.Add(by);
 }
 
-/// <summary>A caller with an explicit identity, so tests never build a token.</summary>
-public sealed class FakeCurrentUser(string userId, string? userName = null) : ICurrentUser
+/// <summary>
+/// A caller with an explicit identity, so tests never build a token.
+/// </summary>
+/// <remarks>
+/// Holds every permission unless a test names the ones it holds. That default is what the registry
+/// tests were written against — they are about the registry, not about authorization — while an
+/// intake test that has to prove a deposit is refused hands over a narrowed set instead.
+/// </remarks>
+public sealed class FakeCurrentUser(string userId, string? userName = null, IReadOnlySet<string>? permissions = null) : ICurrentUser
 {
     /// <inheritdoc />
     public string UserId { get; } = userId;
@@ -25,7 +32,11 @@ public sealed class FakeCurrentUser(string userId, string? userName = null) : IC
     public string? UserName { get; } = userName ?? userId;
 
     /// <inheritdoc />
-    public bool HasPermission(string permission) => true;
+    public bool HasPermission(string permission) => permissions?.Contains(permission) ?? true;
+
+    /// <summary>A caller holding exactly <paramref name="permissions"/> and nothing else.</summary>
+    public static FakeCurrentUser Holding(params string[] permissions) =>
+        new("auth0|cs-agent", "Ana Cruz", permissions.ToHashSet(StringComparer.Ordinal));
 }
 
 /// <summary>

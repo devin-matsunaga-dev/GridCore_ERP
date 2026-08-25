@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -37,6 +38,11 @@ public sealed class CustomersModule : IModule
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
 
+        // Intake (WP-2.8). The deposit schedule is read-only reference data; the registration
+        // service composes the three registries above inside one unit of work.
+        services.AddScoped<IDepositRuleService, DepositRuleService>();
+        services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
+
         // The premise registry as the rest of GridCore reads it (WP-2.1). Registered against the
         // Contracts interface rather than the concrete type: this is the one place that knows both
         // halves, and a consumer never learns a customers schema exists.
@@ -56,6 +62,7 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<ServiceLocationRequest, ServiceLocationRequestValidator>();
         services.AddGridCoreValidator<OpenServiceAccountRequest, OpenServiceAccountRequestValidator>();
         services.AddGridCoreValidator<ServiceAccountTransitionRequest, ServiceAccountTransitionRequestValidator>();
+        services.AddGridCoreValidator<RegisterCustomerIntakeRequest, RegisterCustomerIntakeRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -71,5 +78,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapCustomerEndpoints();
         endpoints.MapServiceLocationEndpoints();
         endpoints.MapServiceAccountEndpoints();
+        endpoints.MapRegistrationEndpoints();
     }
 }

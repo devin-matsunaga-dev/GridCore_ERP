@@ -31,6 +31,9 @@ public static class AuditActions
     /// <summary>A customer moved to another status.</summary>
     public const string CustomerStatusChanged = "customer.status";
 
+    /// <summary>A security deposit was assessed and collected from a customer.</summary>
+    public const string CustomerDepositCollected = "customer.deposit";
+
     /// <summary>A service location was registered.</summary>
     public const string ServiceLocationCreated = "service_location.create";
 

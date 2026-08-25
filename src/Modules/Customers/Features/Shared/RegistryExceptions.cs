@@ -38,6 +38,17 @@ public sealed class ServiceAccountNotFoundException(Guid id)
 public sealed class RegistryWorkflowException(string message) : RegistryException(message);
 
 /// <summary>
+/// The caller may not do this, though they were allowed through the door. Surfaces as 403.
+/// </summary>
+/// <remarks>
+/// The endpoint's own <c>RequirePermission</c> gate covers a whole route; this covers an act that
+/// only <i>part</i> of a request performs — collecting a deposit on an intake (WP-2.8) — which
+/// routing cannot see because it depends on what is in the body. Thrown by the service, never
+/// assumed by the endpoint, exactly as <c>ApprovalPermissionException</c> is.
+/// </remarks>
+public sealed class RegistryPermissionException(string message) : RegistryException(message);
+
+/// <summary>
 /// The thing as described could not be registered. Surfaces as 400. Edge validation catches most of
 /// these first; this is the aggregate's own guard, which also protects a seeder or a later module
 /// calling the service directly.

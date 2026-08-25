@@ -3,6 +3,7 @@ import { navigationItems } from '@/components/shell/navigation';
 import { AssetsPage } from '@/features/assets/assets-page';
 import { CustomerDetailPage } from '@/features/customers/customer-detail-page';
 import { CustomersPage } from '@/features/customers/customers-page';
+import { CustomerRegistrationPage } from '@/features/customers/registration/customer-registration-page';
 import { ServiceLocationsPage } from '@/features/customers/service-locations-page';
 import { InventoryPage } from '@/features/inventory/inventory-page';
 import { RevenueCyclePage } from '@/features/billing/revenue-cycle-page';
@@ -51,6 +52,9 @@ export type ModuleRoute = { path: string; element: ReactElement };
  */
 const childRoutes: ModuleRoute[] = [
   { path: '/customers/locations', element: <ServiceLocationsPage /> },
+  // Ahead of the detail route in the file for a reader's sake only: React Router ranks a static
+  // segment above a dynamic one, so `/customers/new` never reaches `:customerId` whatever the order.
+  { path: '/customers/new', element: <CustomerRegistrationPage /> },
   { path: '/customers/:customerId', element: <CustomerDetailPage /> },
 ];
 

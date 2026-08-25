@@ -95,12 +95,15 @@ public sealed class ServiceAccountService(
             {
                 var now = clock.GetUtcNow();
 
-                var customer = await database.Customers
-                    .FirstOrDefaultAsync(candidate => candidate.Id == input.CustomerId, ct).ConfigureAwait(false)
+                // FindAsync, not a query: a lookup by primary key checks the change tracker before
+                // it touches the database, and the intake wizard (WP-2.8) opens an account against a
+                // customer and a premise added moments earlier in this same transaction — neither of
+                // which any SQL query can see until it commits. A query here would answer "no such
+                // customer" for a customer that is right there in the context.
+                var customer = await database.Customers.FindAsync([input.CustomerId], ct).ConfigureAwait(false)
                     ?? throw new CustomerNotFoundException(input.CustomerId);
 
-                var location = await database.ServiceLocations
-                    .FirstOrDefaultAsync(candidate => candidate.Id == input.ServiceLocationId, ct).ConfigureAwait(false)
+                var location = await database.ServiceLocations.FindAsync([input.ServiceLocationId], ct).ConfigureAwait(false)
                     ?? throw new ServiceLocationNotFoundException(input.ServiceLocationId);
 
                 if (!OpenableCustomerStatuses.Contains(customer.Status))
@@ -278,9 +281,14 @@ public sealed class ServiceAccountService(
             {
                 var now = clock.GetUtcNow();
 
-                var account = await database.ServiceAccounts
-                    .Include(candidate => candidate.History)
-                    .FirstOrDefaultAsync(candidate => candidate.Id == id, ct).ConfigureAwait(false)
+                // The change tracker first, for the same reason OpenAsync uses FindAsync: an account
+                // opened moments earlier in this transaction (the intake wizard, WP-2.8, energising
+                // supply as part of the intake) is not visible to any query until it commits, and it
+                // is already carrying the opening history line the Include would have fetched.
+                var account = database.ServiceAccounts.Local.FirstOrDefault(candidate => candidate.Id == id)
+                    ?? await database.ServiceAccounts
+                        .Include(candidate => candidate.History)
+                        .FirstOrDefaultAsync(candidate => candidate.Id == id, ct).ConfigureAwait(false)
                     ?? throw new ServiceAccountNotFoundException(id);
 
                 var before = ServiceAccountSnapshot.Of(account);

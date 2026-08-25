@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react';
+import { UserPlus, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -14,6 +14,7 @@ import { ClearFilters, FilterBar, FilterSelect, SearchField } from '@/components
 import { PageHeader } from '@/components/registry/page-header';
 import { RegistryTableCard } from '@/components/registry/registry-table-card';
 import { TabNav } from '@/components/registry/tab-nav';
+import { Button } from '@/components/ui/button';
 import type { Column } from '@/components/registry/data-table';
 import { useTableState } from '@/components/registry/table-state';
 import { StatusPill } from '@/components/ui/status';
@@ -46,7 +47,17 @@ export function CustomersPage() {
       <PageHeader
         title="Customers"
         subtitle="Everyone the utility bills, and where they are served."
-        actions={<TabNav items={customersTabs} />}
+        actions={
+          <>
+            <TabNav items={customersTabs} />
+            {/* The intake wizard's way in. An action rather than a third tab: registering somebody
+                is something a clerk does, not a register they browse. */}
+            <Button onClick={() => void navigate('/customers/new')}>
+              <UserPlus aria-hidden="true" />
+              Register customer
+            </Button>
+          </>
+        }
       />
 
       <RegistryTableCard

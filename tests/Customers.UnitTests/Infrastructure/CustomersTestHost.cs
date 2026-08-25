@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -53,6 +54,8 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IServiceLocationService, ServiceLocationService>();
         services.AddScoped<IServiceAccountService, ServiceAccountService>();
+        services.AddScoped<IDepositRuleService, DepositRuleService>();
+        services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -99,6 +102,26 @@ public sealed class CustomersTestHost : IDisposable
     }
 
     /// <summary>
+    /// Runs <paramref name="work"/> against the intake wizard's one commit, in its own scope — the
+    /// same scope every registry it composes resolves from, which is what makes the nested units of
+    /// work one transaction.
+    /// </summary>
+    public Task<TResult> WithIntakeAsync<TResult>(Func<ICustomerRegistrationService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerRegistrationService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the deposit schedule, in its own scope.</summary>
+    public Task<TResult> WithDepositRulesAsync<TResult>(Func<IDepositRuleService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IDepositRuleService>()));
+    }
+
+    /// <summary>
     /// Runs <paramref name="work"/> against the premise registry <i>as another module sees it</i> —
     /// the cross-module read seam, resolved from the container exactly as Metering resolves it.
     /// </summary>
@@ -137,7 +160,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>
     /// Creates both schemas. <c>EnsureCreated</c> cannot do this: it returns false once the
-    /// database exists, so the second context's tables would silently never be created.
+    /// database exists, so the second context's tables would silently never be created. It also
+    /// emits the configurations' <c>HasData</c> inserts, which is how the shipped deposit schedule
+    /// (WP-2.8) reaches the fast tier without a migration — an intake cannot assess without it.
     /// </summary>
     private void CreateTables()
     {

@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,12 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
 
     /// <summary>A customer taking service at a premise — the join, with its own lifecycle.</summary>
     public DbSet<ServiceAccount> ServiceAccounts => Set<ServiceAccount>();
+
+    /// <summary>
+    /// What a customer of each class is asked for as a security deposit. Reference data shipped by
+    /// migration (invariant 8), not a seeder and not a constant in the domain — WP-2.8.
+    /// </summary>
+    public DbSet<DepositRule> DepositRules => Set<DepositRule>();
 
     /// <summary>
     /// Every transition an account has been through. Exposed as a set of its own so the history of
