@@ -91,6 +91,20 @@ public static class AuditActions
     /// <summary>Outstanding bills past their due date were reviewed and marked overdue.</summary>
     public const string BillOverdueReviewed = "bill.overdue_review";
 
+    /// <summary>
+    /// An approved payment was applied to a bill, reducing what is owed. Recorded against
+    /// <c>system</c>: this happens in a consumer rather than at somebody's keyboard, and the clerk
+    /// who took the money is named on the payment's own entry.
+    /// </summary>
+    public const string BillPaymentRecorded = "bill.payment";
+
+    /// <summary>
+    /// A payment was taken from a customer and put to the payment provider. Recorded whatever the
+    /// provider answered — a run of declines on one account is exactly what somebody comes looking
+    /// for, and a trail holding only the successes could not answer them.
+    /// </summary>
+    public const string PaymentTaken = "payment.take";
+
     /// <summary>A utility asset was entered in the register.</summary>
     public const string AssetRegistered = "asset.create";
 
@@ -188,6 +202,13 @@ public static class AuditEntityTypes
     /// for the same reason a billing run gets one.
     /// </summary>
     public const string BillOverdueReview = "billing.overdue_review";
+
+    /// <summary>
+    /// A row of <c>payments.payments</c>. The attempt is its own entity rather than a line of the
+    /// bill's: a receipt is issued for one, a chargeback is about one, and an auditor asking "where
+    /// did this money come from" is asking about the payment, not about the document it settled.
+    /// </summary>
+    public const string Payment = "payments.payment";
 
     /// <summary>A row of <c>assets.assets</c>.</summary>
     public const string Asset = "assets.asset";

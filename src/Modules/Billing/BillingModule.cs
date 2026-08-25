@@ -1,3 +1,4 @@
+using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -5,6 +6,7 @@ using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
 using GridCore.Platform;
 using GridCore.Platform.Data;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Validation;
 using Microsoft.AspNetCore.Routing;
@@ -33,6 +35,16 @@ public sealed class BillingModule : IModule
         services.AddScoped<IBillNumberGenerator, SequentialBillNumberGenerator>();
         services.AddScoped<IRatePlanService, RatePlanService>();
         services.AddScoped<IBillService, BillService>();
+
+        // The billing register as the rest of GridCore reads it (WP-2.5). Payments takes money
+        // against bills and may not touch this schema, so it takes IBillDirectory from Contracts
+        // and this module — the only one that knows both halves — registers the implementation.
+        services.AddScoped<IBillDirectory, BillDirectory>();
+
+        // Billing's first consumer. It published BillIssued from WP-2.3 and BillAdjusted from
+        // WP-2.4; this is the other direction — Payments states that money arrived, and reducing
+        // what the document is owed is this module's own work.
+        services.AddEventConsumer<PaymentApprovedConsumer>();
 
         // Note what is NOT here: IMeterReadingDirectory and IServiceAccountDirectory. This module
         // consumes both and Metering and Customers register them, which is the whole point of

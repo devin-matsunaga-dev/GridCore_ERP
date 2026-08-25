@@ -1,9 +1,8 @@
 using GridCore.Contracts.Directories;
-using GridCore.Modules.Billing.Data;
-using GridCore.Modules.Billing.Features.Bills;
-using GridCore.Modules.Billing.Features.RatePlans;
-using GridCore.Modules.Billing.Features.Shared;
-using GridCore.Modules.Billing.Seeding;
+using GridCore.Contracts.Providers;
+using GridCore.Modules.Payments.Data;
+using GridCore.Modules.Payments.Features.Payments;
+using GridCore.Modules.Payments.Features.Shared;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
@@ -15,28 +14,29 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace GridCore.Modules.Billing.UnitTests.Infrastructure;
+namespace GridCore.Modules.Payments.UnitTests.Infrastructure;
 
 /// <summary>
-/// The billing schema and the platform schema on one SQLite in-memory connection — the fast-tier
+/// The payments schema and the platform schema on one SQLite in-memory connection — the fast-tier
 /// equivalent of the shared Postgres connection the host gives a request. That is what lets these
-/// tests assert the thing that actually matters about issuing a bill: the bill row, its audit entry
-/// and its <c>BillIssued</c> event all belong to one transaction (CONVENTIONS.md rule C).
+/// tests assert the thing that actually matters about taking money: the payment row, its audit
+/// entry and its <c>PaymentApproved</c> event all belong to one transaction (CONVENTIONS.md rule
+/// C).
 /// </summary>
 /// <remarks>
-/// The customers and metering schemas are deliberately <b>absent</b>. Billing reads accounts through
-/// <see cref="IServiceAccountDirectory"/> and readings through <see cref="IMeterReadingDirectory"/>,
-/// so the two fakes stand in for two whole modules and their databases — which is the point of the
-/// seams, and the reason a billing run can be tested in milliseconds.
+/// The billing and customers schemas are deliberately <b>absent</b>. Payments reads bills through
+/// <see cref="IBillDirectory"/> and accounts through <see cref="IServiceAccountDirectory"/>, so the
+/// two fakes stand in for two whole modules and their databases — which is the point of the seams,
+/// and the reason a payment can be tested in milliseconds.
 /// </remarks>
-public sealed class BillingTestHost : IDisposable
+public sealed class PaymentsTestHost : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly ServiceProvider _provider;
 
     /// <param name="clock">The clock the host uses; a <see cref="FakeClock"/> keeps tests off wall time.</param>
     /// <param name="currentUser">Who is acting. Defaults to the system, as background work is.</param>
-    public BillingTestHost(TimeProvider? clock = null, ICurrentUser? currentUser = null)
+    public PaymentsTestHost(TimeProvider? clock = null, ICurrentUser? currentUser = null)
     {
         _connection = new SqliteConnection("Filename=:memory:");
         _connection.Open();
@@ -47,28 +47,19 @@ public sealed class BillingTestHost : IDisposable
         services.AddSingleton(clock ?? TimeProvider.System);
         services.AddSingleton(currentUser ?? SystemUser.Instance);
         services.AddSingleton<IEventPublisher>(Events);
+        services.AddSingleton<IPaymentProvider>(Provider);
+        services.AddSingleton<IBillDirectory>(Bills);
         services.AddSingleton<IServiceAccountDirectory>(Accounts);
-        services.AddSingleton<IMeterReadingDirectory>(Readings);
 
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
         services.AddGridCoreDbContext<PlatformDbContext>((builder, connection) => builder.UseSqlite(connection));
-        services.AddGridCoreDbContext<BillingDbContext>((builder, connection) => builder.UseSqlite(connection));
+        services.AddGridCoreDbContext<PaymentsDbContext>((builder, connection) => builder.UseSqlite(connection));
 
         services.AddScoped<IAuditLog, AuditLog>();
-
-        // The consume path, as the platform registers it. Billing gained its first consumer in
-        // WP-2.5, and what a test needs to prove about it — one balance change per approval, however
-        // often the broker redelivers — is the real dedupe store over the real unit of work, not a
-        // stub of either.
-        services.AddScoped<IMessageDeduplicator, MessageDeduplicator>();
-        services.AddScoped<IdempotentEventHandler>();
-
-        services.AddScoped<IBillNumberGenerator, SequentialBillNumberGenerator>();
-        services.AddScoped<IRatePlanService, RatePlanService>();
-        services.AddScoped<IBillService, BillService>();
-        services.AddScoped<BillsDemoSeeder>();
+        services.AddScoped<IPaymentNumberGenerator, SequentialPaymentNumberGenerator>();
+        services.AddScoped<IPaymentService, PaymentService>();
 
         _provider = services.BuildServiceProvider();
 
@@ -78,11 +69,14 @@ public sealed class BillingTestHost : IDisposable
     /// <summary>Everything the register published while the test ran.</summary>
     public RecordingEventPublisher Events { get; } = new();
 
+    /// <summary>The provider whose answers the test chooses.</summary>
+    public StubPaymentProvider Provider { get; } = new();
+
+    /// <summary>The bills the register is allowed to see.</summary>
+    public FakeBillDirectory Bills { get; } = new();
+
     /// <summary>The service accounts the register is allowed to see.</summary>
     public FakeServiceAccountDirectory Accounts { get; } = new();
-
-    /// <summary>The readings the register is allowed to bill.</summary>
-    public FakeMeterReadingDirectory Readings { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -94,25 +88,31 @@ public sealed class BillingTestHost : IDisposable
         return await work(scope.ServiceProvider);
     }
 
-    /// <summary>Runs <paramref name="work"/> against the billing register, in its own scope.</summary>
-    public Task<TResult> WithBillsAsync<TResult>(Func<IBillService, Task<TResult>> work)
+    /// <summary>Runs <paramref name="work"/> against the payments register, in its own scope.</summary>
+    public Task<TResult> WithPaymentsAsync<TResult>(Func<IPaymentService, Task<TResult>> work)
     {
         ArgumentNullException.ThrowIfNull(work);
 
-        return InScopeAsync(services => work(services.GetRequiredService<IBillService>()));
+        return InScopeAsync(services => work(services.GetRequiredService<IPaymentService>()));
     }
 
-    /// <summary>Runs <paramref name="work"/> against the tariff catalogue, in its own scope.</summary>
-    public Task<TResult> WithTariffsAsync<TResult>(Func<IRatePlanService, Task<TResult>> work)
+    /// <summary>
+    /// Adds an account and an outstanding bill on it, which is what nearly every test needs first.
+    /// </summary>
+    public (ServiceAccountSummary Account, BillSummary Bill) AnOutstandingBill(
+        decimal amountDue = 120.00m,
+        decimal amountPaid = 0m,
+        string status = "Issued")
     {
-        ArgumentNullException.ThrowIfNull(work);
+        var account = Accounts.Add();
+        var bill = Bills.Add(account.Id, account.CustomerId, amountDue, amountPaid, status);
 
-        return InScopeAsync(services => work(services.GetRequiredService<IRatePlanService>()));
+        return (account, bill);
     }
 
     /// <summary>Reads back what a test wrote, on a context outside any unit of work.</summary>
-    public BillingDbContext NewBillingContext() =>
-        new(new DbContextOptionsBuilder<BillingDbContext>().UseSqlite(_connection).Options);
+    public PaymentsDbContext NewPaymentsContext() =>
+        new(new DbContextOptionsBuilder<PaymentsDbContext>().UseSqlite(_connection).Options);
 
     /// <summary>Reads back the audit trail a register write produced.</summary>
     public PlatformDbContext NewPlatformContext() =>
@@ -126,9 +126,7 @@ public sealed class BillingTestHost : IDisposable
 
     /// <summary>
     /// Creates both schemas. <c>EnsureCreated</c> cannot do this: it returns false once the
-    /// database exists, so the second context's tables would silently never be created. It also
-    /// emits the configuration's <c>HasData</c> inserts, which is how the shipped tariffs reach the
-    /// fast tier without a migration.
+    /// database exists, so the second context's tables would silently never be created.
     /// </summary>
     private void CreateTables()
     {
@@ -137,7 +135,7 @@ public sealed class BillingTestHost : IDisposable
         scope.ServiceProvider.GetRequiredService<PlatformDbContext>()
             .Database.GetService<IRelationalDatabaseCreator>().CreateTables();
 
-        scope.ServiceProvider.GetRequiredService<BillingDbContext>()
+        scope.ServiceProvider.GetRequiredService<PaymentsDbContext>()
             .Database.GetService<IRelationalDatabaseCreator>().CreateTables();
     }
 }

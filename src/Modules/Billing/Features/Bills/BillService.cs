@@ -36,6 +36,17 @@ public sealed record CancelBillInput(string Reason);
 /// <param name="Reason">Why. Required — this is the sensitive action invariant 5 is about.</param>
 public sealed record AdjustBillInput(BillAdjustmentKind Kind, decimal Amount, string Reason);
 
+/// <summary>What arrives when an approved payment is applied to a bill.</summary>
+/// <param name="Amount">How much was approved. Always positive.</param>
+/// <param name="PaymentId">The payment in Payments' schema, so the two records can be tied together.</param>
+/// <param name="ProviderReference">The provider's reference, which a bank reconciliation matches on.</param>
+/// <param name="Reason">What to record against the transition.</param>
+public sealed record RecordBillPaymentInput(
+    decimal Amount,
+    Guid PaymentId,
+    string ProviderReference,
+    string? Reason = null);
+
 /// <summary>What a caller supplies to review overdue bills.</summary>
 /// <param name="AsOf">The day to judge against. Defaults to today.</param>
 public sealed record OverdueReviewInput(DateOnly? AsOf = null);
@@ -140,6 +151,22 @@ public interface IBillService
     /// </exception>
     /// <exception cref="BillingValidationException">The correction is not one a bill can carry.</exception>
     Task<Bill> AdjustAsync(Guid billId, AdjustBillInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Applies money that has arrived to a bill, moving it to
+    /// <see cref="BillStatus.PartiallyPaid"/> or <see cref="BillStatus.Paid"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called by <see cref="PaymentApprovedConsumer"/> and by nothing else — there is deliberately
+    /// no endpoint. Money arriving is the Payments module's fact to state; a route here would be a
+    /// second way to mark a bill paid, with no payment record behind it.
+    /// </remarks>
+    /// <exception cref="BillNotFoundException">There is no bill with that id.</exception>
+    /// <exception cref="BillingWorkflowException">
+    /// The bill is not owed, or the payment is more than is outstanding on it.
+    /// </exception>
+    /// <exception cref="BillingValidationException">The amount is not positive, or is finer than a cent.</exception>
+    Task<Bill> RecordPaymentAsync(Guid billId, RecordBillPaymentInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Moves every outstanding bill past its due date to <see cref="BillStatus.Overdue"/>.</summary>
     Task<OverdueReviewResult> ReviewOverdueAsync(OverdueReviewInput input, CancellationToken cancellationToken = default);
@@ -444,6 +471,45 @@ public sealed class BillService(
                         ct)
                     .ConfigureAwait(false);
 
+                return bill;
+            },
+            cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Bill> RecordPaymentAsync(Guid billId, RecordBillPaymentInput input, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        return unitOfWork.ExecuteAsync(
+            async ct =>
+            {
+                var now = clock.GetUtcNow();
+
+                // With its adjustments, like every other write path — Bill.Balance is what a payment
+                // is measured against, and since WP-2.4 that is the printed total plus every
+                // correction since. A bill loaded without them would be a bill whose balance the
+                // aggregate could not vouch for.
+                var bill = await LoadAsync(billId, ct).ConfigureAwait(false);
+                var before = BillSnapshot.Of(bill);
+
+                bill.RecordPayment(input.Amount, RegistryActor.Of(currentUser), now, input.Reason);
+
+                // INVARIANT 1, from a consumer rather than an endpoint. This runs outside any
+                // request, so ICurrentUser resolves to the system user and the entry is recorded
+                // against `system` — which is correct: nobody at a keyboard reduced this balance,
+                // an approved payment did. The payment's own audit entry names the clerk who took
+                // it, and the two are tied together by the reference on this one.
+                audit.Record(
+                    AuditActions.BillPaymentRecorded,
+                    AuditEntityTypes.Bill,
+                    bill.Id.ToString(),
+                    before,
+                    BillSnapshot.Of(bill));
+
+                // No event. Finance already heard the fact from Payments — PaymentApproved is what
+                // it posts the cash receipt from — and a second event saying the same money arrived
+                // is how a ledger gets a duplicate entry.
                 return bill;
             },
             cancellationToken);

@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- The fast tier runs the real EF model on SQLite in-memory: no container, milliseconds. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/Modules/Payments/GridCore.Modules.Payments.csproj" />
   </ItemGroup>
 

@@ -1,6 +1,7 @@
 using GridCore.Contracts.Providers;
 using GridCore.Modules.Metering.Features.Meters;
 using GridCore.Modules.Metering.Features.Readings;
+using GridCore.Platform.Simulation;
 
 namespace GridCore.Modules.Metering.Simulation;
 

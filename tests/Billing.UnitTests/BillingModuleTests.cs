@@ -5,6 +5,7 @@ using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Seeding;
 using GridCore.Platform.Validation;
@@ -47,6 +48,28 @@ public class BillingModuleTests
         Assert.Contains(services, service => service.ServiceType == typeof(IBillService));
         Assert.Contains(services, service => service.ServiceType == typeof(IRatePlanService));
         Assert.Contains(services, service => service.ServiceType == typeof(IBillNumberGenerator));
+    }
+
+    [Fact]
+    public void This_module_registers_the_bill_directory_because_it_owns_the_bills() =>
+        // The other side of the boundary rule below: Payments consumes IBillDirectory and may
+        // neither reference this assembly nor read the billing schema, so the module that owns the
+        // data registers the implementation.
+        Assert.Contains(Composed(), service => service.ServiceType == typeof(IBillDirectory));
+
+    [Fact]
+    public void The_module_consumes_the_payment_approval_that_settles_its_bills()
+    {
+        // Billing's first consumer (WP-2.5). It published BillIssued from WP-2.3 and BillAdjusted
+        // from WP-2.4; this is the other direction. Registered on the service collection so
+        // AddGridCoreMessaging can read it back — no assembly scanning, so the composition stays
+        // greppable.
+        var consumers = Composed()
+            .Where(service => service.ServiceType == typeof(EventConsumerDescriptor))
+            .Select(service => (service.ImplementationInstance as EventConsumerDescriptor)?.ConsumerType)
+            .ToList();
+
+        Assert.Equal([typeof(PaymentApprovedConsumer)], consumers);
     }
 
     [Theory]

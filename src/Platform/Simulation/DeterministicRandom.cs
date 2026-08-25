@@ -1,7 +1,7 @@
-namespace GridCore.Modules.Metering.Simulation;
+namespace GridCore.Platform.Simulation;
 
 /// <summary>
-/// A small, fixed pseudo-random generator — SplitMix64 — used by the meter reading simulator.
+/// A small, fixed pseudo-random generator — SplitMix64 — shared by GridCore's provider simulators.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,6 +16,13 @@ namespace GridCore.Modules.Metering.Simulation;
 /// SplitMix64 is chosen because it is stateless apart from one 64-bit counter and needs no warm-up:
 /// a stream can be created per meter from a mixed seed and produce good values immediately, which
 /// is what lets the simulator give each meter its own independent stream.
+/// </para>
+/// <para>
+/// <b>In Platform rather than in a module.</b> It arrived with the meter reading simulator
+/// (WP-2.2) and moved here when the payment sandbox (WP-2.5) became the second caller — a
+/// simulator lives in the module that owns its boundary, but the stream it draws from is the same
+/// stream, and two copies of a generator are two sequences one framework bump apart from
+/// disagreeing. The vendor and crew simulators are the third and fourth callers.
 /// </para>
 /// <para>
 /// Not cryptographic, and nothing here should ever be used where that matters.
@@ -52,7 +59,10 @@ public sealed class DeterministicRandom
     /// for September does not hand every meter the same outcome twice — a demo world where the same
     /// house is unread every single month reads as a bug, not as a simulation.
     /// </param>
-    /// <param name="subject">The subject the stream belongs to, usually a meter number.</param>
+    /// <param name="subject">
+    /// The subject the stream belongs to — a meter number, a payment number: always the number the
+    /// utility knows the thing by, never its id.
+    /// </param>
     public static DeterministicRandom For(int seed, string scope, string subject)
     {
         ArgumentNullException.ThrowIfNull(scope);
