@@ -1,9 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
 
 /**
- * The Payments module's client — taking money against a bill through the payment provider.
- * One typed client per module (CONVENTIONS.md); components never call `fetch` and never build a
- * URL themselves.
+ * The Payments module's client — taking money against a bill through the payment provider, and
+ * reading back what was taken. One typed client per module (CONVENTIONS.md); components never call
+ * `fetch` and never build a URL themselves.
  */
 
 /** Mirrors `PaymentMethods`. The wire values are the host's, not display labels. */
@@ -79,7 +80,20 @@ export type TakePaymentInput = {
   instrument?: string | null;
 };
 
+/** How a payment list is narrowed. Mirrors `PaymentQuery`, minus the parts no screen asks for. */
+export type PaymentFilters = {
+  customerId?: string;
+  serviceAccountId?: string;
+  billId?: string;
+  /** Only money the utility actually holds. Off, on the 360° page: a refusal is the answer. */
+  settledOnly?: boolean;
+  limit?: number;
+};
+
 export const paymentsApi = {
+  list: (filters: PaymentFilters, signal?: AbortSignal) =>
+    api.get<Payment[]>('/api/payments', { query: { ...filters }, signal }),
+
   /**
    * Takes a payment against a bill.
    *
@@ -93,5 +107,18 @@ export const paymentsApi = {
 
 export const paymentKeys = {
   all: ['payments'] as const,
+  list: (filters: PaymentFilters) => ['payments', 'list', filters] as const,
   detail: (id: string) => ['payments', 'detail', id] as const,
 };
+
+/**
+ * A window of payments. Takes `enabled` for the same reason `useBills` does — a panel whose
+ * subject has not resolved yet asks for nothing rather than for every payment in the register.
+ */
+export function usePayments(filters: PaymentFilters, enabled = true) {
+  return useQuery({
+    queryKey: paymentKeys.list(filters),
+    queryFn: ({ signal }) => paymentsApi.list(filters, signal),
+    enabled,
+  });
+}

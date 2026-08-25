@@ -56,6 +56,10 @@ const childRoutes: ModuleRoute[] = [
   // segment above a dynamic one, so `/customers/new` never reaches `:customerId` whatever the order.
   { path: '/customers/new', element: <CustomerRegistrationPage /> },
   { path: '/customers/:customerId', element: <CustomerDetailPage /> },
+  // The 360's tabs are routes, so a rep can send somebody the link to the tab they are looking at
+  // and the back button walks them. One page reads `:tab`; an unrecognised segment redirects to the
+  // customer rather than rendering the summary under a URL that says something else.
+  { path: '/customers/:customerId/:tab', element: <CustomerDetailPage /> },
 ];
 
 export const moduleRoutes: ModuleRoute[] = [

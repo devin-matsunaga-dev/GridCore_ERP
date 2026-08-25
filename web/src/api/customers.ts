@@ -279,6 +279,16 @@ export const customersApi = {
   getAccount: (id: string, signal?: AbortSignal) =>
     api.get<ServiceAccount>(`/api/service-accounts/${id}`, { signal }),
 
+  /**
+   * One account's transitions, on their own.
+   *
+   * A LIST ROW CARRIES NO HISTORY — `ServiceAccountService.ListAsync` includes none, deliberately:
+   * a list shows where an account stands, not how it got there. So a screen that wants the record
+   * an agent reads back on the phone asks for it per account, which is what this endpoint is for.
+   */
+  accountHistory: (id: string, signal?: AbortSignal) =>
+    api.get<ServiceAccountHistoryEntry[]>(`/api/service-accounts/${id}/history`, { signal }),
+
   // The writes. Registering a customer, a premise and the account that pairs them are three acts
   // rather than one form, because they are three registries — and the revenue cycle is only a
   // cycle if each of them is a step somebody can see happen.
@@ -319,6 +329,7 @@ export const customerKeys = {
   location: (id: string) => ['service-locations', 'detail', id] as const,
   accounts: (filters: ServiceAccountFilters) => ['service-accounts', 'list', filters] as const,
   account: (id: string) => ['service-accounts', 'detail', id] as const,
+  accountHistory: (id: string) => ['service-accounts', 'history', id] as const,
 };
 
 /**
@@ -382,6 +393,37 @@ export function useServiceAccounts(filters: ServiceAccountFilters, enabled = tru
     queryKey: customerKeys.accounts(filters),
     queryFn: ({ signal }) => customersApi.listAccounts(filters, signal),
     enabled,
+  });
+}
+
+/**
+ * The transitions of a set of accounts, one query each — the shape `useServiceLocationsByIds`
+ * established, for the same reason and with the same failure it avoids.
+ *
+ * This is not an optimisation of the list: **the list genuinely has no history on it**, because
+ * `ServiceAccountService.ListAsync` includes none. A screen that reads `account.history` off a
+ * list row gets an empty array in the running app whatever the test fixture says, and shows
+ * nothing where a service record should be. WP-2.10's timeline needs the transitions, so it asks
+ * for them.
+ */
+export function useServiceAccountHistories(ids: readonly string[]) {
+  const unique = [...new Set(ids)];
+
+  return useQueries({
+    queries: unique.map((id) => ({
+      queryKey: customerKeys.accountHistory(id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => customersApi.accountHistory(id, signal),
+      staleTime: 60_000,
+    })),
+    combine: (results) => ({
+      isPending: results.some((result) => result.isPending),
+      /** Keyed by account, so a card and the timeline look their entries up the same way. */
+      byAccountId: new Map(
+        unique
+          .map((id, index) => [id, results[index]?.data] as const)
+          .filter((pair): pair is readonly [string, ServiceAccountHistoryEntry[]] => pair[1] !== undefined),
+      ),
+    }),
   });
 }
 

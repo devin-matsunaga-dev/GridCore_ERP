@@ -3,6 +3,7 @@ import type { Customer, ServiceAccount, ServiceLocation } from '@/api/customers'
 import type { JournalEntry, Receivables, TrialBalance } from '@/api/finance';
 import type { Meter, MeterReading, ReadingCycle } from '@/api/metering';
 import type { TakePaymentResult } from '@/api/payments';
+import { centsEqual } from '@/lib/money';
 
 /**
  * The revenue cycle as a walk: which step comes next, what each one has produced, and whether the
@@ -302,7 +303,10 @@ export function reconcile(
   };
 }
 
-/** Money equality to the cent — the smallest unit anything in GridCore is stored to. */
-export function centsEqual(left: number, right: number): boolean {
-  return Math.round(left * 100) === Math.round(right * 100);
-}
+/**
+ * Money equality to the cent — the smallest unit anything in GridCore is stored to.
+ *
+ * Lives in `lib/money.ts` now, re-exported here so nothing that imported it from the walk had to
+ * change. WP-2.10's balance arithmetic was the third caller for this kind of sum.
+ */
+export { centsEqual };

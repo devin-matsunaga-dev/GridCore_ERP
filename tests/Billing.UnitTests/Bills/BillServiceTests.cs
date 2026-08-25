@@ -858,6 +858,67 @@ public class BillServiceTests
     }
 
     [Fact]
+    public async Task A_list_loads_the_adjustments_only_when_it_is_asked_to()
+    {
+        // The 360° page's timeline shows a correction as an event in its own right, and its window
+        // is one customer's last few bills. Without the flag its only route to the entries is one
+        // detail request per bill; with it, every other caller's page of fifty is unchanged.
+        using var host = NewHost();
+
+        var issued = await AnIssuedBillAsync(host);
+
+        await host.WithBillsAsync(bills => bills.AdjustAsync(
+            issued.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 20m, "Estimated read corrected.")));
+
+        var plain = Assert.Single(await host.WithBillsAsync(bills => bills.ListAsync(new BillQuery())));
+        var withEntries = Assert.Single(await host.WithBillsAsync(
+            bills => bills.ListAsync(new BillQuery(IncludeAdjustments: true))));
+
+        Assert.Empty(plain.Adjustments);
+        Assert.Equal(-20m, plain.AdjustmentTotal);
+
+        var entry = Assert.Single(withEntries.Adjustments);
+
+        Assert.Equal(BillAdjustmentKind.Credit, entry.Kind);
+        Assert.Equal(-20m, entry.Amount);
+
+        // Whichever way it was asked for, the lines stay off the row: they are the collection the
+        // objection was always about.
+        Assert.Empty(withEntries.Lines);
+    }
+
+    [Fact]
+    public async Task Asking_for_the_adjustments_narrows_nothing_and_widens_nothing()
+    {
+        // A bill with no corrections is still a row. An Include that had been written as a join
+        // would drop exactly those bills, which is the failure that would look like a working list.
+        using var host = NewHost();
+
+        var adjusted = Premise();
+        var untouched = Premise();
+
+        host.Accounts.Add(adjusted);
+        host.Accounts.Add(untouched);
+        host.Readings.Add(adjusted, 750m, Cycle, ReadAt);
+        host.Readings.Add(untouched, 400m, Cycle, ReadAt);
+
+        var run = await host.WithBillsAsync(bills => bills.RunAsync(new RunBillingInput(Cycle)));
+        var first = run.Bills.Single(bill => bill.Consumption == 750m);
+
+        await host.WithBillsAsync(bills => bills.IssueAsync(first.Id, new IssueBillInput()));
+        await host.WithBillsAsync(bills => bills.AdjustAsync(
+            first.Id,
+            new AdjustBillInput(BillAdjustmentKind.Credit, 5m, "Goodwill.")));
+
+        var listed = await host.WithBillsAsync(bills => bills.ListAsync(new BillQuery(IncludeAdjustments: true)));
+
+        Assert.Equal(2, listed.Count);
+        Assert.Single(listed.Single(bill => bill.Id == first.Id).Adjustments);
+        Assert.Empty(listed.Single(bill => bill.Id != first.Id).Adjustments);
+    }
+
+    [Fact]
     public async Task A_bill_that_does_not_exist_is_null_rather_than_a_throw()
     {
         using var host = NewHost();

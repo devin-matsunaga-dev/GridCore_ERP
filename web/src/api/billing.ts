@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { api } from './client';
 
 /**
@@ -5,8 +6,9 @@ import { api } from './client';
  * One typed client per module (CONVENTIONS.md); components never call `fetch` and never build a
  * URL themselves.
  *
- * Only what the revenue-cycle walk needs is here. The billing registry screens (adjustments, the
- * AR worklist, the overdue review) belong to the work package that builds them.
+ * Only what the revenue-cycle walk and the 360° page need is here. The billing registry screens
+ * (the adjustment form, the AR worklist, the overdue review) belong to the work package that
+ * builds them.
  */
 
 /** Mirrors `BillStatus`. The order is the lifecycle's, not the alphabet's. */
@@ -107,8 +109,26 @@ export type BillingRun = {
   skipped: SkippedReading[];
 };
 
+/** How a bill list is narrowed. Mirrors `BillQuery`, minus the parts no screen asks for yet. */
+export type BillFilters = {
+  customerId?: string;
+  serviceAccountId?: string;
+  /** Only money still owed — the AR worklist, without naming three statuses. */
+  outstandingOnly?: boolean;
+  limit?: number;
+  /**
+   * Load each row's corrections too. Off by default on the host, because a register page of fifty
+   * bills does not want them; the 360° timeline asks for a handful of bills and shows a correction
+   * as an event of its own, so it does.
+   */
+  includeAdjustments?: boolean;
+};
+
 export const billingApi = {
   get: (id: string, signal?: AbortSignal) => api.get<Bill>(`/api/bills/${id}`, { signal }),
+
+  list: (filters: BillFilters, signal?: AbortSignal) =>
+    api.get<Bill[]>('/api/bills', { query: { ...filters }, signal }),
 
   /**
    * Bills a reading cycle. Produces drafts and publishes nothing: issuing is the separate act that
@@ -124,5 +144,18 @@ export const billingApi = {
 
 export const billKeys = {
   all: ['bills'] as const,
+  list: (filters: BillFilters) => ['bills', 'list', filters] as const,
   detail: (id: string) => ['bills', 'detail', id] as const,
 };
+
+/**
+ * A window of bills. Takes `enabled` so a panel whose subject has not resolved yet — the 360° page
+ * before it knows which customer it is showing — asks for nothing rather than for everything.
+ */
+export function useBills(filters: BillFilters, enabled = true) {
+  return useQuery({
+    queryKey: billKeys.list(filters),
+    queryFn: ({ signal }) => billingApi.list(filters, signal),
+    enabled,
+  });
+}

@@ -433,6 +433,66 @@ public sealed class BillingRegistryTests(GateFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task One_customers_bill_window_comes_back_with_its_corrections()
+    {
+        // WP-2.10's 360° page asks Billing for one customer's last few bills WITH the corrections on
+        // them — a filtered, ordered, limited list with an Include of an ordered collection beside
+        // it. The fast tier runs that shape against SQLite; only Npgsql can say the SQL it becomes
+        // still returns one row per bill, with its entries, in the order the sequence puts them.
+        var (_, meter) = await AServedPremiseAsync(
+            "Manglona Residence",
+            "9 Chalan Kanoa Lane",
+            "SEN-2300107",
+            installationReading: 1_100.000m);
+
+        await ARecordedReadingAsync(meter, 1_650.000m);
+
+        await using (var scope = fixture.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IMeterReadingService>()
+                .RunCycleAsync(new RunReadingCycleInput(Cycle, Seed: 4471));
+        }
+
+        Guid customerId;
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var bills = scope.ServiceProvider.GetRequiredService<IBillService>();
+            var raised = Assert.Single((await bills.RunAsync(new RunBillingInput(Cycle))).Bills);
+
+            customerId = raised.CustomerId;
+
+            await bills.IssueAsync(raised.Id, new IssueBillInput());
+            await bills.AdjustAsync(
+                raised.Id,
+                new AdjustBillInput(BillAdjustmentKind.Credit, Credit, "Estimated read corrected."));
+        }
+
+        await using (var scope = fixture.CreateScope())
+        {
+            var bills = scope.ServiceProvider.GetRequiredService<IBillService>();
+
+            var plain = await bills.ListAsync(new BillQuery(CustomerId: customerId));
+            var withEntries = await bills.ListAsync(new BillQuery(CustomerId: customerId, IncludeAdjustments: true));
+
+            // Off by default, so no other caller's page grew a second collection it will not render.
+            Assert.Empty(Assert.Single(plain).Adjustments);
+            Assert.Equal(-Credit, Assert.Single(plain).AdjustmentTotal);
+
+            var listed = Assert.Single(withEntries);
+            var entry = Assert.Single(listed.Adjustments);
+
+            Assert.Equal(1, entry.Sequence);
+            Assert.Equal(-Credit, entry.Amount);
+            Assert.Equal("Estimated read corrected.", entry.Reason);
+
+            // The lines stay off the row whichever way it was asked for — they are the collection
+            // the objection was always about.
+            Assert.Empty(listed.Lines);
+        }
+    }
+
+    [Fact]
     public async Task A_bill_is_priced_on_the_tariff_version_in_force_for_its_own_period()
     {
         // Effective dating against the rows the migration actually seeded, rather than the ones the

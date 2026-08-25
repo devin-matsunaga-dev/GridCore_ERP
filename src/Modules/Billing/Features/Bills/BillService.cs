@@ -58,13 +58,21 @@ public sealed record OverdueReviewInput(DateOnly? AsOf = null);
 /// <param name="OutstandingOnly">Only money still owed — the AR worklist, without naming three statuses.</param>
 /// <param name="CycleCode">Only bills from this billing run.</param>
 /// <param name="Limit">Most rows to return.</param>
+/// <param name="IncludeAdjustments">
+/// Load each row's corrections as well. Off by default, and it is the lines that are the reason
+/// why: a page of fifty bills does not want two hundred lines, and adjustments are a second
+/// collection with the same objection. A caller asking for a bounded window of one customer's
+/// bills — the 360° page's timeline, which shows a correction as an event in its own right — has
+/// no such page, and the alternative is one detail request per bill.
+/// </param>
 public sealed record BillQuery(
     Guid? ServiceAccountId = null,
     Guid? CustomerId = null,
     BillStatus? Status = null,
     bool? OutstandingOnly = null,
     string? CycleCode = null,
-    int Limit = 50);
+    int Limit = 50,
+    bool IncludeAdjustments = false);
 
 /// <summary>A reading a billing run did not bill, and why.</summary>
 /// <remarks>
@@ -596,9 +604,16 @@ public sealed class BillService(
             bills = bills.Where(bill => bill.CycleCode == cycle);
         }
 
+        // Adjustments only when they were asked for; lines never. Both are collections a register
+        // page would carry and not render, and the flag exists for the one caller whose window is
+        // already small and whose subject IS the corrections (WP-2.10's timeline).
+        if (query.IncludeAdjustments)
+        {
+            bills = bills.Include(bill => bill.Adjustments.OrderBy(adjustment => adjustment.Sequence));
+        }
+
         // Ordered by key: ids are Guid v7, so the primary-key index already orders chronologically
-        // on Postgres and on the fast tier's SQLite alike. Lines are deliberately not included — a
-        // page of fifty bills does not want two hundred lines it will not render.
+        // on Postgres and on the fast tier's SQLite alike.
         return await bills
             .OrderByDescending(bill => bill.Id)
             .Take(Math.Clamp(query.Limit, 1, MaxPageSize))

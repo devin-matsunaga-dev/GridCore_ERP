@@ -6,6 +6,7 @@ import type {
   ServiceLocation,
 } from '@/api/customers';
 import { customerClasses } from '@/api/customers';
+import { isWholeCents, toCents } from '@/lib/money';
 
 /**
  * The intake wizard's logic: which step comes next, what each one validates, what the deposit
@@ -133,20 +134,13 @@ export function assessmentFor(
 }
 
 /**
- * Money as a whole number of cents.
+ * Money as a whole number of cents, and whether what somebody typed is exact to one.
  *
- * Every comparison below goes through this rather than through `===` on the parsed number, for the
- * reason `revenue-cycle.ts` gives: these are `decimal` on the wire and `number` after `JSON.parse`,
- * and 0.1 + 0.2 is a poor reason to tell a clerk their deposit is wrong.
+ * Both live in `lib/money.ts` now — WP-2.10's balance arithmetic was the third caller, which is
+ * when this codebase promotes a copy. Re-exported rather than moved, so every call site and every
+ * test that imported them from here still does.
  */
-export function toCents(amount: number): number {
-  return Math.round(amount * 100);
-}
-
-/** Whether an amount somebody typed is exact to the cent — refused rather than rounded, as the host does. */
-export function isWholeCents(amount: number): boolean {
-  return Math.abs(amount * 100 - toCents(amount)) < 1e-6;
-}
+export { isWholeCents, toCents };
 
 /** What a typed deposit box means. An empty box is nothing collected, never `NaN`. */
 export function parseDeposit(typed: string): number {

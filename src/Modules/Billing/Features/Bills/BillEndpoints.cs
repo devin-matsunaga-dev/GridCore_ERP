@@ -332,7 +332,8 @@ public static class BillEndpoints
 
         // The register-wide list, and with ?outstandingOnly=true the AR worklist. Filtered on the
         // server; there is no sort and no total, the same shape every GridCore registry list has
-        // (WP-1.5). Lines are not loaded — a page of fifty bills does not want two hundred lines.
+        // (WP-1.5). Lines are not loaded — a page of fifty bills does not want two hundred lines —
+        // and adjustments only when ?includeAdjustments=true asks for them.
         bills
             .MapGet("/", async (
                     Guid? serviceAccountId,
@@ -341,10 +342,18 @@ public static class BillEndpoints
                     bool? outstandingOnly,
                     string? cycleCode,
                     int? limit,
+                    bool? includeAdjustments,
                     [FromServices] IBillService register,
                     CancellationToken cancellationToken) =>
                 Results.Ok((await register.ListAsync(
-                        new BillQuery(serviceAccountId, customerId, status, outstandingOnly, cycleCode, limit ?? DefaultPageSize),
+                        new BillQuery(
+                            serviceAccountId,
+                            customerId,
+                            status,
+                            outstandingOnly,
+                            cycleCode,
+                            limit ?? DefaultPageSize,
+                            includeAdjustments ?? false),
                         cancellationToken))
                     .Select(BillResponse.From)
                     .ToList()))
