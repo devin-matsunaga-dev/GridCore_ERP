@@ -4,7 +4,7 @@
 
 ## Current position
 - **Phase:** 2.5 — Customers Deepening (CSR experience)
-- **Current WP:** **WP-2.15 complete, awaiting owner verification and squash-merge.** It is the LAST package of Phase 2.5 — **the next act is the `v0.3.5-customers` gate**, not another WP. Phase 3 (Ops cycle, starting WP-3.1 work order core) follows the tag
+- **Current WP:** **WP-2.15 complete, awaiting owner verification and squash-merge.** It is the LAST package of Phase 2.5 — **the next act is the `v0.3.5-customers` gate**, not another WP. **Phase 2.6 — CUC Process Realism (WP-2.16 … WP-2.24) now follows the tag**, not Phase 3: the customer-service module was gap-analysed against CUC Saipan's published processes and nine packages were added ahead of the Ops cycle. Start at **WP-2.16 (fee schedule + account charges)** — it is the prerequisite for six of the others and for five Phase 3 packages. Phase 3 (Ops cycle, WP-3.1 work order core) follows `v0.3.6-cuc-process`
 - **Current branch:** `feat/wp-2.15-transitions` (off `8ab373d`) — WP-2.14 was squash-merged to main as `8ab373d`
 - **Last tag:** `v0.3-revenue` (on `e57e112`, 2026-08-25) — Phase 2 gate closed and verified by the owner; the tag is pushed, which also fired the GHCR release build
 
@@ -15,6 +15,8 @@
 FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integration (shared Testcontainer + Respawn) and E2E run at gates only. See CONVENTIONS.md ⚡ section.
 
 ## In flight / carry-over
+- **PLANNING CHANGE (no code): the customer-service module was aligned to CUC Saipan's real processes.** `docs/WORK_PACKAGES.md` gained **Phase 2.6 (WP-2.16…WP-2.24, gate `v0.3.6-cuc-process`)** and six deferred packages in Phase 3 (**WP-3.6…WP-3.11, gate `v0.4.5-cuc-field`**). Three findings from the gap analysis are worth carrying forward. (1) **There is no fee line on a bill** — `ChargeKind` is `ServiceCharge | Consumption` only — so every published CUC figure (meter/service fee, reconnection, returned cheque, meter test, inspection, the $550 penalty) has nowhere to land; WP-2.16 is the unblocker and is deliberately first. (2) **A service account has no service type**: `ServiceType` lives on `RatePlan` in Billing, has no `Wastewater` member, and `DepositRule` is keyed on `CustomerClass` alone — which is why a separate water or wastewater deposit is currently inexpressible (WP-2.17). (3) **The deposit is modelled too simply against PL 16-17**: WP-2.12's ledger is sound, but `Applied` is a discretionary clerk action, so a customer holding a deposit that covers their arrears can still be disconnected because nobody pressed the button. WP-2.19 makes the offset automatic and a *bar to eligibility*. Also unresolved: **`PaymentStatus` has no `Returned`** (a settled payment cannot bounce — WP-2.22), and **MinIO has been composed since WP-0.2 with no client** (WP-2.18 is its first user).
+- **⚠️ THE BILLING-DEEPENING PASS IS STILL NOT A PHASE IN `WORK_PACKAGES.md`, AND STUBS NOW POINT AT IT FROM THREE PHASES.** Phase 2.5 left it the final bill on a move-out, bill delivery against the WP-2.11 preference, and the final/initial reads a transfer implies; Phase 2.6 adds the handover final bill (WP-2.24) and unmetered wastewater billing (WP-2.17); Phase 3 adds prepaid billing (WP-3.11). **Owner's call to name and schedule it** — it should happen before Phase 2.6 ships more stubs into it.
 - **⚠️⚠️ TWO PRE-EXISTING FLAKY TESTS FOUND WHILE RUNNING WP-2.13's LOOPS. Neither is WP-2.13's and neither was fixed (SESSION.md rule 1 — noted, stayed in scope). Both are the SAME class of bug and both are the owner's call to schedule.**
   1. **Fast tier, ~30% per run:** `CustomerDepositServiceTests.The_ledger_reads_back_newest_first_with_the_balance_and_the_assessment` (WP-2.12). `NewHost` freezes `FakeClock` at `Now` and **never advances it**, so the collection and the refund both mint `Guid.CreateVersion7(Now)` — same 48-bit timestamp, random tail — and `GetAsync`'s `OrderByDescending(entry => entry.Id)` is a coin flip. Reproduced on **main** at `4e0bc32` with WP-2.13's work stashed: 2 of 5 runs failed. **The fix is one line** — advance the clock between the two movements, exactly as `PaymentServiceTests.TakeAsync` does and documents. This is the trap STATUS.md has warned about since WP-0.5.
   2. **Gate tier, ~4% per bill built:** `DepositLedgerTests.AnIssuedBillAsync` and `PaymentRegistryTests.AnIssuedBillAsync` run **one** reading cycle and then `Assert.Single(run.Bills)`. `SimulatedMeterReadingProvider.MissingReadChance` is **`0.04`** — "no access to the meter" is modelled on purpose — so 4% of the time the cycle records nothing, the billing run returns no bills, and the assertion fails with "the collection was empty" for a reason unrelated to what is under test. Six such helper calls across those two classes is roughly a **1-in-4 chance of a red gate run**. `CustomerNoteLogTests.AnIssuedBillAsync` (WP-2.13) does **not** have this: it re-runs the cycle under a fresh code up to five times, which is the shape the other two want. **WP-2.14's `CustomerDocumentTests.AnIssuedBillAsync` copies the retry too**, so it adds nothing to the 4% problem — but that is now three copies of a twenty-line helper against two that are flaky, which is itself an argument for the fixture-level helper the WP-2.13 note turned down.
@@ -381,12 +383,32 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 - [x] WP-2.14 Customer documents
 - [x] WP-2.15 Account transitions **[SENSITIVE]** → **NEXT: gate `v0.3.5-customers`**
 
+### Phase 2.6 — CUC Process Realism (real-utility processes)
+- [ ] WP-2.16 Fee schedule + account charges **[SENSITIVE]** ← *first: nothing else has anywhere to charge until this lands*
+- [ ] WP-2.17 Service types + per-service deposit schedule **[SENSITIVE]**
+- [ ] WP-2.18 Service application + document intake (first user of MinIO)
+- [ ] WP-2.19 Delinquency, late charges + statutory deposit offset **[SENSITIVE — PL 16-17]**
+- [ ] WP-2.20 Payment arrangements **[SENSITIVE]**
+- [ ] WP-2.21 Disconnection for non-payment + reconnection **[SENSITIVE]**
+- [ ] WP-2.22 Returned payments + NSF fee **[SENSITIVE]**
+- [ ] WP-2.23 Billing disputes + leak adjustments **[SENSITIVE]**
+- [ ] WP-2.24 Change of account holder             → gate `v0.3.6-cuc-process`
+
 ### Phase 3 — Ops & Maintenance Cycle
 - [ ] WP-3.1 Work order core + state machine
 - [ ] WP-3.2 Crew simulator + assignment
 - [ ] WP-3.3 Parts issuance ↔ inventory
 - [ ] WP-3.4 Completion → asset history + costs
 - [ ] WP-3.5 Ops Cycle E2E + demo + WO UI         → gate v0.4-operations
+
+### Phase 3 (continued) — CUC process packages deferred from Phase 2.6
+*Each needs a crew, a part or a completed job; all run **after** the `v0.4-operations` gate.*
+- [ ] WP-3.6  Connection + inspection work orders *(needs WP-3.1, WP-2.16)*
+- [ ] WP-3.7  Installation cost assessment **[SENSITIVE]** *(needs WP-3.2/3.3/3.4, WP-2.16, WP-3.6)*
+- [ ] WP-3.8  Meter testing requests + fee **[SENSITIVE]** *(needs WP-3.1, WP-2.16, WP-2.23)*
+- [ ] WP-3.9  Field execution of disconnection/reconnection *(needs WP-3.1/3.2, WP-2.21)*
+- [ ] WP-3.10 Unauthorized connection findings + penalty **[SENSITIVE]** *(needs WP-3.1, WP-2.16)*
+- [ ] WP-3.11 PayGo / prepaid conversion *(needs WP-3.1, WP-2.16, **+ the unscheduled billing-deepening pass**)* → gate `v0.4.5-cuc-field`
 
 ### Phase 4 — Purchasing, Finance views, Dashboards, Admin
 - [ ] WP-4.1 Procurement lifecycle

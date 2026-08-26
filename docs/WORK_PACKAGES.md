@@ -153,6 +153,67 @@ The two changes that alter what a customer is billed. **Class / status change:**
 
 ---
 
+# PHASE 2.6 — CUC Process Realism (the REAL UTILITY'S PROCESSES)
+
+Phase 2.5 built the desk; this phase makes the desk work the way the real one does. The reference is CUC Saipan's published customer-service processes — what a customer applies for, what they are charged for it, what happens when they do not pay, and what the utility does with the deposit it is holding. Two rules run through every package here.
+
+**Every figure is effective-dated reference data seeded by migration, never a constant.** CUC's own publications disagree with each other on amounts and change without notice, so a fee schedule is a table the application reads and a charge **stamps the row that priced it** — the `DepositRule` / `RatePlan` pattern one step on. Changing $185 to $200 is a migration, not a redeploy, and a reprint never re-reads a catalogue that has since moved.
+
+**The security deposit is money held against a debt, not a fee.** CNMI Public Law 16-17 and CUC's published regulations oblige the utility to set the deposit against qualifying past-due amounts **before** disconnection, and to reconcile it against unpaid charges when the account closes. That makes the offset a *step in the disconnection path*, not a button a clerk remembers — WP-2.12's ledger is right, but nothing today is obliged to call it.
+
+Still internal / CSR-side: no customer self-service portal and no external customer login (deferred, see DECISIONS.md), and **no new external integrations** — a fee, an inspection and a dunning notice are internal domain logic, not provider seams.
+
+**WP-2.16 goes first and everything else waits on it.** There is no fee line on a bill today — `ChargeKind` is service charge and consumption only — so the late charge, the reconnection fee, the returned-payment fee and four Phase 3 packages have nowhere to land until there is one.
+
+### WP-2.16 — Fee schedule & account charges **[SENSITIVE — money]**
+The non-consumption half of what a utility charges for, which GridCore has no shape for at all. An effective-dated **fee schedule** as reference data beside `RatePlan` in Billing — code, description, amount, currency, service type, effective-from — seeded by migration exactly as `DefaultRatePlans` and `DepositRules` are, with a completeness check at startup so a declared code with no row fails loudly rather than at the counter. A new `ChargeKind.Fee` and an **account charge** raised against a service account: it lands on the next bill, or on a bill of its own where the customer is paying at the counter now. Assessment **stamps the schedule row id and the amount charged** onto the charge, the shape `DepositAssessment.RuleId` already gives a deposit, so a document reprinted after a schedule change still shows the figure the customer holds a copy of. The catalogue lives in **Billing, not Customers** — a fee is a published charge that becomes a receivable, and Customers must not own money that appears on a bill; the desk reads it over a directory seam the way it already reads `IBillDirectory`. Ships the published CUC figures as the demo schedule with their provenance in the description, so nobody reads $135 as authoritative.
+**Touches Billing:** **yes** — a new line kind and a second source of receivables besides the rate engine.
+**Verify (unit):** a fee charged today prices off today's schedule and a reprint after a change still shows the old figure; an unknown fee code → 400; charging without permission → 403; the Finance posting balances (Dr AR / Cr fee revenue); a fee line carries no tier or per-unit fields, which is what distinguishes it from a consumption line; the completeness check fails when a declared code has no row; a schedule row is never edited in place — a new figure is a new effective-dated row. One gate-tier integration test for the charge → journal entry.
+
+### WP-2.17 — Service types & per-service deposit schedule **[SENSITIVE — deposit]**
+The reference asks for three deposits — electric, water, wastewater — and GridCore cannot express any distinction between them, because a service account is a customer↔location link with no notion of *what service*. `ServiceType` moves out of `RatePlan` into `Contracts` and gains **Wastewater**; a service account **declares its type**, so one premise may hold an electric, a water and a wastewater account at once. `DepositRule` is re-keyed to **(customer class × service type)**, each rule carrying a **minimum** and an optional usage basis — `max(minimum, average monthly usage × n months)`, which is exactly how the reference describes the electric deposit. **Re-assessment** is the piece the desk is missing: what is held against what is now required, asked on demand and on any class or service change, answering with a shortfall a rep can read out. Wastewater arrives as the first **unmetered** account — a flat charge, no meter, no reading — which is a shape the module has to refuse to attach a meter to rather than one it merely never does.
+**Touches Billing:** **yes** — rate-plan selection becomes per service type, and unmetered billing is a stub pointing at the billing-deepening pass.
+**Verify (unit):** each (class × type) resolves to exactly one rule and a missing pair fails the completeness check; a usage-based assessment below the minimum returns the minimum; a customer with no reading history falls back to the minimum rather than assessing zero; re-assessment on an account holding more than required returns a shortfall of zero, never a negative; an unmetered account refuses a meter assignment; the existing class-keyed rules migrate to electric without changing what any current customer was assessed.
+
+### WP-2.18 — Service application & document intake
+CUC reviews an application before it establishes an account; WP-2.8's wizard creates one immediately. An **application** becomes a reviewable entity — submitted → under review → approved / rejected / withdrawn, with a reason code on every terminal move — and **approval is what opens the account**, which turns the intake wizard into the approve-and-open path rather than the only path. A required-document checklist per application type (photo ID, lease or deed, business licence for a commercial connection), with the documents themselves stored in **MinIO behind an `IDocumentStore` seam**: the object store has been composed in the AppHost since WP-0.2 and this is its first user. Type, uploader, size and checksum are recorded against the application so what was reviewed is provable years later.
+**Touches Billing:** no — nothing here is billable; the deposit and the connection fee are assessed at approval by WP-2.16 and WP-2.17.
+**Verify (unit):** approval is blocked while a required document is missing; a rejected application cannot be approved without a fresh submission; an upload of a disallowed content type → 400; approval without permission → 403; the store seam is **faked in the fast tier** — CONVENTIONS.md rule C, no container to test a checklist. One gate-tier integration test for a real MinIO round-trip.
+
+### WP-2.19 — Delinquency, late charges & the statutory deposit offset **[SENSITIVE — money, PL 16-17]**
+The package Public Law 16-17 is about. **Arrears** per service account, aged; a **late-charge run** applying the configured 1% per month of the *past-due* balance as a WP-2.16 fee, idempotent per bill per period. A **dunning sequence** as reference data — notice type, days past due, what it says — running reminder → delinquency → disconnection notice, where each notice served is a **record with a served-on date**: that record is the whole of what makes "the customer had an opportunity to pay before disconnection" provable rather than asserted. **Disconnection eligibility is computed, never typed**: arrears over the threshold, *and* the disconnection notice served, *and* the statutory waiting period elapsed, *and* no kept payment arrangement. And the offset the law requires: evaluating eligibility **applies the held deposit to qualifying past-due amounts first**, so an account whose deposit clears its arrears is **not eligible for disconnection at all**. The `DepositEntry` that results carries the statutory basis in its reason, because a legally obliged movement should defend itself from the trail without anyone remembering why it happened.
+**Touches Billing:** **yes** — the late charge is a fee on a bill and arrears is a read across the whole bill history.
+**Verify (unit):** the 1% is taken on the **past-due** balance and not on the bill total; running the late-charge job twice charges once; a $300 deposit against $200 arrears offsets exactly $200 and leaves the account **ineligible**; a $100 deposit against $200 arrears offsets $100 and leaves it eligible; eligibility is false when the notice was never served and false again inside the waiting period; every offset entry balances, is audited, and names the statutory basis; an offset attempted without permission → 403. One gate-tier integration test for the offset event → journal entry.
+
+### WP-2.20 — Payment arrangements **[SENSITIVE — money]**
+What Customer Service does instead of disconnecting. An arrangement against a stated arrears balance: a down payment, an instalment count, a schedule of due dates, each instalment settled by a real payment through WP-2.5. States proposed → active → kept, or **broken** on a missed instalment — broken restores disconnection eligibility, active suppresses it, which is the only reason the state matters to anything outside this feature. Permission-gated with a limit: a rep may arrange within it, and beyond it the arrangement uses WP-0.4's approval primitive rather than a second bespoke workflow.
+**Touches Billing:** **yes** — an arrangement is a promise about receivables that already exist. It **creates no money and never mutates a bill**: the customer still owes what the bills say, and this records how and when it will arrive.
+**Verify (unit):** instalments sum exactly to the arrangement balance in `decimal`, with the remainder landing on the last instalment rather than being spread; a payment applies to the earliest unpaid instalment; one missed due date breaks it; a broken arrangement cannot be resumed, only replaced; an arrangement for more than the arrears is refused; an arrangement beyond the rep's limit requires approval before it becomes active; the arrangement leaves every bill's status untouched.
+
+### WP-2.21 — Disconnection for non-payment & reconnection **[SENSITIVE — money]**
+The reference's "Customer Service determines the outstanding amount, deposit requirements and applicable reconnection charges before service is restored" — one computed, itemised **amount to restore**: remaining arrears + the reconnection fee (WP-2.16) + any deposit shortfall (WP-2.17's re-assessment). That figure is what a rep reads down the telephone, so it itemises to its own total or it is worth nothing. Disconnection for non-payment becomes a **process consuming WP-2.19's eligibility** rather than WP-1.2's free-text `/stop`, and reconnection is authorised once the restore amount is settled. Both raise a **service request** carrying the field act — a stub with a seam until WP-3.9 dispatches it, because a transition register does not put a technician at a premise (WP-2.15's rule) and neither does a reconnection authorisation.
+**Touches Billing:** **yes** — the restore amount is the heaviest read in the phase, across bills, payments, fees and the deposit ledger.
+**Verify (unit):** the itemisation adds up to the total it prints; a reconnection authorised against a partly-paid restore amount → 409; disconnection for non-payment on an ineligible account → 409; the reconnection fee is charged once per disconnection and not once per attempt; the deposit shortfall inside the restore amount is the **re-assessed** figure, not the original rule amount; authorising a reconnection does not energise the account; each act audited with before/after.
+
+### WP-2.22 — Returned payments & the NSF fee **[SENSITIVE — money]**
+A payment that settles and then bounces is not a shape GridCore can hold — `PaymentStatus` stops at Refunded. Adds **`Returned`** and a **reversal**: the bill's balance is restored, the bill returns to whichever status its remaining balance now dictates, and the reversal is a **new entry, never an edited payment** — WP-2.4's rule, one module over. The NSF fee is assessed through WP-2.16 on the reversal, and the Finance posting is the exact reverse of the original plus the fee. Also records a **payment channel** on every payment — counter, online, telephone, prepaid, mail — which the reference lists as distinct routes and which is what lets a cashier tell the desk's own takings from an online payment.
+**Touches Billing:** **yes** — a reversal moves a bill *backwards* out of Paid, and it is the one legitimate way that happens.
+**Verify (unit):** reversing an approved payment restores the exact balance in `decimal`; a bill that had reached Paid returns to Issued or PartiallyPaid as its remaining balance dictates; a payment cannot be returned twice; a declined payment cannot be returned at all; the reversal postings net to zero against the original; the **NSF fee survives the reversal** and is not itself reversed; the channel is required at record time and immutable afterwards.
+
+### WP-2.23 — Billing disputes & leak adjustments **[SENSITIVE]**
+WP-2.13 logs a dispute as an interaction, and a note is not a case. A **dispute** raised against a bill, routed to a queue, moving received → investigating → resolved (upheld / adjusted / rejected / withdrawn) with a required resolution note — and resolving it as *adjusted* is what **raises the WP-2.4 adjustment**, which is what finally makes "why was this bill credited" answerable from the credit itself. Alongside it, the reference's high-bill and leak path: a reported usage anomaly, an investigation record, a **qualification rule as reference data** (excess over the historical average, once per n months, capped), and a **calculated** leak credit at the configured rate. Both feed the WP-2.10 timeline; the WP-2.13 dispute interaction stays as the record of the telephone call that started it.
+**Touches Billing:** **yes** — the adjustment is the outcome, and WP-2.4's immutable-correction rule holds unchanged: a credit is a new entry against the bill, never a rewrite of it.
+**Verify (unit):** a dispute resolved as *adjusted* with no adjustment raised → 409; the leak credit equals excess-over-average at the configured rate, exact in `decimal`; a customer already granted an adjustment inside the window does not qualify; the credit is capped where the rule caps it; a dispute against a draft bill is refused (nothing has been priced at the customer yet); resolving without permission → 403; the resolution note is required on every terminal move.
+
+### WP-2.24 — Change of account holder
+The reference's "change account holder — generally processed similarly to establishing a new account; new deposit may be required", which is a different act from WP-2.15's transfer and must not reuse its machinery. A **handover at one premise between two customers**, as one linked act: a final read and closure for the outgoing account, a new account for the incoming customer at the same location, and the deposit **refunded to the outgoing customer and separately assessed on the incoming one**. Never carried — WP-2.15's zero-direction `Transferred` entry exists precisely because both accounts on a transfer belong to *one* customer, and a handover is two, so money genuinely does leave and genuinely does arrive. Recorded in WP-2.15's transition register with a new kind and its own reason codes, guarded so the premise is never occupied by both accounts on the same day.
+**Touches Billing:** **yes** — a final bill for the outgoing customer, a stub pointing at the billing-deepening pass, and the incoming account starts a fresh service period.
+**Verify (unit):** the outgoing deposit is a `Refunded` entry and the incoming a `Collected` one — a `Transferred` entry on a handover fails the test that says so; the two accounts do not overlap by a day; a handover to a customer already holding an account at that premise → 409; a handover that would leave the outgoing account open is unreachable rather than merely unwritten; the register row names both accounts **and** both customers; audited on both sides with before/after.
+
+**🏁 CUC PROCESS REALISM COMPLETE. Tag `v0.3.6-cuc-process`.** The desk now applies, charges, chases, arranges, disconnects, restores and reconciles the way the real one does — everything that does not need a crew at a premise.
+
+---
+
 # PHASE 3 — Work Orders → Inventory Issuance → Assets → Finance (OPS & MAINTENANCE CYCLE)
 
 ### WP-3.1 — Work order core + state machine
@@ -176,6 +237,46 @@ Work-order feed/board + detail per DESIGN.md; wizard for the Ops cycle; **E2E te
 **Verify:** E2E green; board matches reference; demo runs top-to-bottom.
 
 **🏁 OPS CYCLE COMPLETE. Tag `v0.4-operations`.** (Second half of MVP success criterion — both workflows now demonstrable.)
+
+## Phase 3 (continued) — CUC process packages deferred from Phase 2.6
+
+Six packages the CUC reference asks for that **cannot be built in Phase 2.6**, because each one needs a crew, a part or a completed job — the work-order core, the crew simulator, parts issuance and job costing that WP-3.1 through WP-3.4 introduce. They are placed here rather than forced early, and each names its dependency. They run **after** the `v0.4-operations` gate, so the second demonstration workflow is proved before the field-side process work lands on top of it.
+
+### WP-3.6 — Connection & inspection work orders
+*Depends on: WP-3.1 (work-order core, which already declares connect / disconnect / inspection types) and WP-2.16 (fee schedule).*
+The middle of the reference's installation flow, which Phase 2.6 deliberately left as a seam: an approved WP-2.18 application raises a **connection order**, an **inspection order** carries a pass/fail result, and the account is energised only by a completed connection order — never by an API call, which is what `/start` is today. **The first inspection is free and each subsequent one is charged**, the published rule and the reason the count lives on the connection rather than on the order. Retires WP-2.21's service-request stub.
+**Verify (unit):** an account cannot reach Active without a completed connection order; the second inspection on one connection charges and the first does not; a failed inspection blocks energising; a cancelled connection order leaves the account Pending.
+
+### WP-3.7 — Installation cost assessment **[SENSITIVE — money]**
+*Depends on: WP-3.2 (labour), WP-3.3 (parts issuance), WP-3.4 (job costing), WP-2.16, WP-3.6.*
+The reference's central warning made real — "a $135 meter/service fee does not necessarily mean the entire installation costs $135". Turns the actual labour, materials, equipment hours and a configured administrative rate on a connection order into a customer charge, itemised so the customer can be told what they are paying for.
+**Verify (unit):** the assessed cost equals labour + materials + equipment + admin exactly, in `decimal`; issuing further parts after assessment requires a **re-assessment** rather than silently moving the charge; a charge is raised once per order; the admin rate comes from the schedule, not a constant.
+
+### WP-3.8 — Meter testing requests & fee **[SENSITIVE]**
+*Depends on: WP-3.1, WP-2.16, WP-2.23.*
+A customer request to have a meter tested → a test order → a result. The fee follows the meter type from the catalogue ($75 single-phase, $110 three-phase as published) and is **waived when the meter is found faulty** — the rule that makes the test worth requesting. A faulty result feeds a WP-2.23 dispute, because a meter that was over-reading has bills behind it.
+**Verify (unit):** the fee follows meter type; a faulty result charges nothing; a test against an unmetered (wastewater) account is refused; a faulty result opens a dispute rather than adjusting a bill directly.
+
+### WP-3.9 — Field execution of disconnection & reconnection
+*Depends on: WP-3.1, WP-3.2, WP-2.21.*
+Dispatches the orders WP-2.21 raises and makes **completion the thing that moves the account's state**, closing the gap where a reconnection is authorised in the office and the supply is assumed to follow.
+**Verify (unit):** a completed reconnection order energises the account; an order cancelled in the field leaves the account Disconnected with the restore amount still standing; a disconnection order cannot complete against an account that has since paid.
+
+### WP-3.10 — Unauthorized connection findings & penalty **[SENSITIVE — money]**
+*Depends on: WP-3.1, WP-2.16.*
+A field finding of unauthorised connection or use becomes an evidence record, and the record is what permits the penalty (~$550 as published) plus an estimate of the unbilled usage. The fee itself ships in WP-2.16's catalogue; what waits for Phase 3 is the finding that justifies it.
+**Verify (unit):** a penalty requires a finding; one incident cannot be found twice; the penalty is an ordinary fee charge and posts like one; the unbilled estimate is a separate line from the penalty.
+
+### WP-3.11 — PayGo / prepaid conversion
+*Depends on: WP-3.1 (meter-replacement orders), WP-2.16, **and the billing-deepening pass** (see below).*
+The largest deferred item and the one that is not only a fee. An existing customer applies to convert, pays the published meter-change fee (~$95), a meter-exchange order swaps the meter, and the account moves to a **prepaid billing mode** with a credit balance and top-ups. The conversion half is Phase 3 work; the **prepaid billing half is not a Phase 3 shape** and belongs with the billing-deepening pass — a prepaid account is not billed on a cycle, which is an assumption the whole billing module currently holds.
+**Verify (unit):** an account cannot enter prepaid mode without a completed meter exchange; a prepaid account is skipped by the billing run; a top-up increases the credit balance and posts to Finance; converting an account with arrears is refused until they are settled or arranged.
+
+**🏁 Tag `v0.4.5-cuc-field`.** Every process in the CUC reference is now modelled except those explicitly held for the billing-deepening pass.
+
+---
+
+> **Unscheduled: the billing-deepening pass.** Referenced throughout Phase 2.5 and by four packages above — the final bill on a move-out or handover, bill delivery against the WP-2.11 preference, the final and initial meter reads a transfer implies, unmetered (wastewater) billing, and prepaid billing. It is **not yet a phase in this document**, and stubs are now pointing at it from three phases. It should be named and scheduled before Phase 2.6 ships more of them.
 
 ---
 
@@ -231,4 +332,4 @@ OTel dashboards; ensure full gate suite (unit+integration+E2E) green and timed; 
 SCADA, real AMI, real payment gateway, payroll, GIS, outage prediction, mobile field app, bank reconciliation, regulatory reporting, forecasting, analytics/AI. Each becomes a WP when scheduled.
 
 ## Sizing
-~42 packages. Phases 0-2 are the critical path (foundation + first demonstration workflow). Money/finance WPs are [SENSITIVE] — heavier review, but still FAST unit tests. Keep the per-package loop under ~60s; if it creeps, move a test to the integration tier.
+~57 packages. Phases 0-2 are the critical path (foundation + first demonstration workflow). Money/finance WPs are [SENSITIVE] — heavier review, but still FAST unit tests. Keep the per-package loop under ~60s; if it creeps, move a test to the integration tier.
