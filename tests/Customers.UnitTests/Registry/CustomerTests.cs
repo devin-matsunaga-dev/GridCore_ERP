@@ -58,25 +58,13 @@ public class CustomerTests
             Customer.Register(" ", "Sablan Family Residence", CustomerClass.Residential, Now));
 
     [Fact]
-    public void A_negative_deposit_is_refused()
+    public void A_customer_is_registered_holding_no_deposit()
     {
-        // Failure path: money owed back to a customer is a Finance entry, not a deposit stored as a
-        // negative — which would net silently against every other deposit in a total.
-        var refused = Assert.Throws<RegistryValidationException>(() =>
-            Customer.Register("C-000001", "Sablan Family Residence", CustomerClass.Residential, Now, depositHeld: -1m));
-
-        Assert.Contains("negative", refused.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void A_deposit_finer_than_a_cent_is_refused_rather_than_silently_rounded()
-    {
-        // The column is numeric(18,2). Accepting this would round it away in the database, where
-        // nobody would ever see which value was stored.
-        var refused = Assert.Throws<RegistryValidationException>(() =>
-            Customer.Register("C-000001", "Sablan Family Residence", CustomerClass.Residential, Now, depositHeld: 75.125m));
-
-        Assert.Contains("cents", refused.Message, StringComparison.OrdinalIgnoreCase);
+        // WP-2.12: a registration takes no money. Every cent held has a ledger entry explaining it,
+        // so a customer starts at zero and the deposit lifecycle is what moves them off it. The
+        // guards that used to live here — negative, finer than a cent — moved to DepositEntry with
+        // the money.
+        Assert.Equal(0m, ARegisteredCustomer().DepositHeld);
     }
 
     [Fact]
@@ -89,12 +77,11 @@ public class CustomerTests
     {
         var customer = ARegisteredCustomer();
 
-        customer.UpdateDetails("Sablan Family Trust", CustomerClass.Commercial, "Maria Sablan", "maria@example.com", "+1-670-532-0114", 150.00m);
+        customer.UpdateDetails("Sablan Family Trust", CustomerClass.Commercial, "Maria Sablan", "maria@example.com", "+1-670-532-0114");
 
         Assert.Equal("C-000001", customer.AccountNumber);
         Assert.Equal("Sablan Family Trust", customer.Name);
         Assert.Equal(CustomerClass.Commercial, customer.Class);
-        Assert.Equal(150.00m, customer.DepositHeld);
 
         // Untouched by an update: it is quoted on bills and referred to by every other module.
         Assert.Equal(CustomerStatus.Prospect, customer.Status);
@@ -103,13 +90,13 @@ public class CustomerTests
     [Fact]
     public void A_rejected_correction_leaves_the_customer_exactly_as_it_was()
     {
-        // Failure path: the guards run before the first assignment, so a bad deposit cannot take
-        // the name and class with it. The transaction would roll the database back either way —
-        // this is about the entity a caller still holds on the error path.
+        // Failure path: the guards run before the first assignment, so an undeclared class cannot
+        // take the name with it. The transaction would roll the database back either way — this is
+        // about the entity a caller still holds on the error path.
         var customer = ARegisteredCustomer();
 
         Assert.Throws<RegistryValidationException>(() =>
-            customer.UpdateDetails("Sablan Family Trust", CustomerClass.Commercial, null, null, null, -5m));
+            customer.UpdateDetails("Sablan Family Trust", (CustomerClass)99, null, null, null));
 
         Assert.Equal("Sablan Family Residence", customer.Name);
         Assert.Equal(CustomerClass.Residential, customer.Class);

@@ -1,5 +1,6 @@
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -164,6 +165,59 @@ public class CustomerRegistrationServiceTests
         // difference between the two is recorded.
         Assert.Contains(registration.Assessment.RuleId.ToString(), entry.AfterJson, StringComparison.Ordinal);
         Assert.Contains("75.00", entry.AfterJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_intake_that_collects_a_deposit_hands_off_to_the_lifecycle_rather_than_duplicating_it()
+    {
+        // WORK_PACKAGES.md asked WP-2.8 to "hand off to the WP-2.12 lifecycle rather than
+        // duplicating it", and WP-2.12 is what made that possible. The proof is that the intake
+        // leaves a real LEDGER ENTRY and a real EVENT behind, not a figure written onto the customer
+        // row: without them the balance would be a number Finance never heard about.
+        using var host = NewHost();
+
+        var registration = await host.WithIntakeAsync(intake => intake.RegisterAsync(AnIntake(deposit: 75.00m)));
+
+        await using var database = host.NewCustomersContext();
+
+        var entry = await database.DepositEntries.SingleAsync();
+
+        Assert.Equal(registration.Customer.Id, entry.CustomerId);
+        Assert.Equal(DepositEntryKind.Collected, entry.Kind);
+        Assert.Equal(75.00m, entry.Amount);
+        Assert.Equal(75.00m, entry.BalanceAfter);
+
+        var published = host.Events.Single<CustomerDepositCollected>();
+
+        Assert.Equal(entry.Id, published.DepositEntryId);
+        Assert.Equal(registration.Customer.AccountNumber, published.AccountNumber);
+    }
+
+    [Fact]
+    public async Task An_intake_refused_after_the_deposit_leaves_no_ledger_entry_behind()
+    {
+        // The collection runs inside the intake's transaction against a customer that has been
+        // added but not yet saved — the deposit service finds it through the change tracker. This is
+        // the other half of that: an intake that fails later takes the deposit entry with it, so an
+        // abandoned wizard cannot leave money recorded against a customer who does not exist.
+        using var host = NewHost();
+
+        var premise = await host.WithLocationsAsync(locations => locations.RegisterAsync(APremise()));
+
+        var sittingTenant = await host.WithCustomersAsync(customers =>
+            customers.RegisterAsync(new RegisterCustomerInput("Sitting tenant", CustomerClass.Residential)));
+
+        await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(sittingTenant.Id, premise.Id)));
+
+        // The premise is already served, so the ACCOUNT step throws — after the deposit was taken.
+        await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
+            host.WithIntakeAsync(intake => intake.RegisterAsync(
+                AnIntake(premise: new IntakePremise(ServiceLocationId: premise.Id), deposit: 75.00m))));
+
+        await using var database = host.NewCustomersContext();
+
+        Assert.Empty(await database.DepositEntries.ToListAsync());
     }
 
     [Fact]

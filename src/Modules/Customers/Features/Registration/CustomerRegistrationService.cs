@@ -1,8 +1,8 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
-using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Monetary;
 using GridCore.Platform.Security;
@@ -104,11 +104,19 @@ public interface ICustomerRegistrationService
 /// leaves no customer, no premise and no account behind.
 /// </para>
 /// <para>
-/// <b>The deposit is assessed and recorded, and that is all.</b> The figure comes from the schedule
-/// in <c>customers.deposit_rules</c>, collecting one is gated on
-/// <see cref="Permissions.Customers.Deposit"/> and audited in its own entry — but no journal entry
-/// is posted and nothing is held, applied or refunded here. WP-2.12 owns that lifecycle, and this
-/// hands off to it rather than growing half of it.
+/// <b>The deposit is assessed here and collected by the lifecycle that owns it.</b> The figure comes
+/// from the schedule in <c>customers.deposit_rules</c> and the ceiling below is the intake's own
+/// rule; everything after that — the <see cref="Permissions.Customers.Deposit"/> gate, the ledger
+/// entry, the audit trail and the event Finance posts the liability from — belongs to
+/// <see cref="ICustomerDepositService"/>. WORK_PACKAGES.md asked WP-2.8 to "hand off to the WP-2.12
+/// lifecycle rather than duplicating it", and WP-2.12 is what made that possible: this used to hold
+/// its own copy of the permission check and the audit entry, and now holds neither.
+/// </para>
+/// <para>
+/// The collection runs <i>inside</i> this transaction, against a customer that has been added but
+/// not yet saved. That works because the deposit service finds the customer through the change
+/// tracker — see its <c>MoveAsync</c> — and it is what keeps an abandoned or refused intake from
+/// leaving a deposit entry behind.
 /// </para>
 /// </remarks>
 public sealed class CustomerRegistrationService(
@@ -116,8 +124,8 @@ public sealed class CustomerRegistrationService(
     IServiceLocationService locations,
     IServiceAccountService accounts,
     IDepositRuleService deposits,
+    ICustomerDepositService depositLedger,
     IUnitOfWork unitOfWork,
-    IAuditLog audit,
     ICurrentUser currentUser) : ICustomerRegistrationService
 {
     /// <inheritdoc />
@@ -133,9 +141,12 @@ public sealed class CustomerRegistrationService(
                 var assessment = await deposits.AssessAsync(input.Class, ct).ConfigureAwait(false);
                 var collected = RequireCollectable(input.DepositCollected, assessment);
 
-                // Refused before a single row is written. The check is here rather than on the
-                // endpoint because the deposit is one field of a composite intake: the request is
-                // permitted or not depending on what is in it, which routing cannot see.
+                // Refused before a single row is written, and still refused by the ledger a few
+                // lines below. The check is duplicated here on purpose: a caller who may not take a
+                // deposit should be told before a premise and a customer have been registered, not
+                // after — the intake is one transaction, so either way nothing survives, but the
+                // 403 is cheaper and the message is about the deposit rather than about the last
+                // step to run.
                 if (collected > Money.Zero && !currentUser.HasPermission(Permissions.Customers.Deposit))
                 {
                     throw new RegistryPermissionException(
@@ -146,26 +157,19 @@ public sealed class CustomerRegistrationService(
                 var (location, wasRegistered) = await PremiseAsync(input, ct).ConfigureAwait(false);
 
                 var customer = await customers.RegisterAsync(
-                    new RegisterCustomerInput(input.Name, input.Class, input.ContactName, input.Email, input.Phone, collected),
+                    new RegisterCustomerInput(input.Name, input.Class, input.ContactName, input.Email, input.Phone),
                     ct).ConfigureAwait(false);
 
                 if (collected > Money.Zero)
                 {
-                    // Invariant 5: a sensitive action is permission-gated AND audited. The customer's
-                    // own creation entry carries the balance; this one carries what was asked for
-                    // beside what was taken, which is the only place the difference is recorded.
-                    audit.Record(
-                        AuditActions.CustomerDepositCollected,
-                        AuditEntityTypes.Customer,
-                        customer.Id.ToString(),
-                        before: null,
-                        after: new DepositCollectionSnapshot(
-                            customer.Id,
-                            customer.AccountNumber,
-                            assessment.CustomerClass,
-                            assessment.RuleId,
-                            assessment.Amount,
-                            collected));
+                    // The lifecycle's act, not a copy of it: one ledger entry, one audit entry
+                    // carrying assessed beside collected, and one event for Finance to post the
+                    // liability from. A waived deposit does none of that, because nothing changed
+                    // hands — which is also why it needs no permission.
+                    await depositLedger.CollectAsync(
+                        customer.Id,
+                        new CollectDepositInput(collected, Reason: input.Reason ?? "Collected at intake."),
+                        ct).ConfigureAwait(false);
                 }
 
                 var account = await accounts.OpenAsync(
@@ -233,20 +237,3 @@ public sealed class CustomerRegistrationService(
     }
 }
 
-/// <summary>
-/// The shape a deposit collection is audited as: what the schedule asked for, beside what was
-/// taken, and which rule said so.
-/// </summary>
-/// <param name="CustomerId">Who paid it.</param>
-/// <param name="AccountNumber">The number they quote.</param>
-/// <param name="CustomerClass">The class assessed.</param>
-/// <param name="RuleId">The reference row the figure came from.</param>
-/// <param name="AssessedAmount">What the schedule asked for.</param>
-/// <param name="CollectedAmount">What was actually taken.</param>
-public sealed record DepositCollectionSnapshot(
-    Guid CustomerId,
-    string AccountNumber,
-    CustomerClass CustomerClass,
-    Guid RuleId,
-    decimal AssessedAmount,
-    decimal CollectedAmount);

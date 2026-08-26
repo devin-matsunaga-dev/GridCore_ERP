@@ -29,9 +29,6 @@ public interface ICustomerDetails
 
     /// <summary>Where to call them.</summary>
     string? Phone { get; }
-
-    /// <summary>Security deposit held.</summary>
-    decimal DepositHeld { get; }
 }
 
 /// <summary>Body of a request to register a customer.</summary>
@@ -40,14 +37,18 @@ public interface ICustomerDetails
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
-/// <param name="DepositHeld">Security deposit taken, if any.</param>
+/// <remarks>
+/// <b>No deposit field (WP-2.12).</b> Money is taken through
+/// <c>POST /api/customers/{id}/deposits/collections</c>, which is gated on
+/// <c>customers.deposit</c> and writes a ledger entry — a balance a registration form could set is
+/// a balance that disagrees with the general ledger.
+/// </remarks>
 public sealed record CreateCustomerRequest(
     string Name,
     CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
-    string? Phone = null,
-    decimal DepositHeld = 0m) : ICustomerDetails;
+    string? Phone = null) : ICustomerDetails;
 
 /// <summary>Body of a request to correct a customer's details.</summary>
 /// <param name="Name">Who they are.</param>
@@ -55,14 +56,13 @@ public sealed record CreateCustomerRequest(
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
-/// <param name="DepositHeld">Security deposit held.</param>
+/// <remarks><b>No deposit field (WP-2.12)</b>, for the reason <see cref="CreateCustomerRequest"/> gives.</remarks>
 public sealed record UpdateCustomerRequest(
     string Name,
     CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
-    string? Phone = null,
-    decimal DepositHeld = 0m) : ICustomerDetails;
+    string? Phone = null) : ICustomerDetails;
 
 /// <summary>Body of a request to move a customer to another status.</summary>
 /// <param name="Status">Where they should end up.</param>
@@ -162,7 +162,7 @@ public static class CustomerEndpoints
                 RegistryProblems.RunAsync(async () =>
                 {
                     var customer = await customers.RegisterAsync(
-                        new RegisterCustomerInput(body.Name, body.Class, body.ContactName, body.Email, body.Phone, body.DepositHeld),
+                        new RegisterCustomerInput(body.Name, body.Class, body.ContactName, body.Email, body.Phone),
                         cancellationToken);
 
                     return Results.Created($"{RoutePrefix}/{customer.Id}", CustomerResponse.From(customer));
@@ -177,7 +177,7 @@ public static class CustomerEndpoints
                 {
                     var customer = await customers.UpdateAsync(
                         id,
-                        new UpdateCustomerInput(body.Name, body.Class, body.ContactName, body.Email, body.Phone, body.DepositHeld),
+                        new UpdateCustomerInput(body.Name, body.Class, body.ContactName, body.Email, body.Phone),
                         cancellationToken);
 
                     return Results.Ok(CustomerResponse.From(customer));

@@ -27,6 +27,15 @@ public static class FinancePostings
     /// <summary>Source name recorded for a posting driven by <see cref="GoodsReceived"/>.</summary>
     public const string GoodsReceivedSource = "inventory.goods_received";
 
+    /// <summary>Source name recorded for a posting driven by <see cref="CustomerDepositCollected"/>.</summary>
+    public const string DepositCollectedSource = "customers.deposit_collected";
+
+    /// <summary>Source name recorded for a posting driven by <see cref="CustomerDepositApplied"/>.</summary>
+    public const string DepositAppliedSource = "customers.deposit_applied";
+
+    /// <summary>Source name recorded for a posting driven by <see cref="CustomerDepositRefunded"/>.</summary>
+    public const string DepositRefundedSource = "customers.deposit_refunded";
+
     /// <summary>A bill raises a receivable and earns revenue.</summary>
     public static JournalPostingIntent From(BillIssued @event)
     {
@@ -139,5 +148,93 @@ public static class FinancePostings
                 JournalLineIntent.Debits(FinanceAccounts.Inventory, @event.TotalCost),
                 JournalLineIntent.Credits(FinanceAccounts.AccountsPayable, @event.TotalCost),
             ]);
+    }
+
+    /// <summary>
+    /// A deposit taken is cash the utility holds and owes back.
+    /// </summary>
+    /// <remarks>
+    /// <b>A liability, not revenue.</b> The money is in the bank, so cash is debited — but it was
+    /// never earned, and crediting revenue would inflate what the utility has made by every deposit
+    /// on its books. <see cref="FinanceAccounts.CustomerDeposits"/> has been in the chart since
+    /// WP-0.8 waiting for exactly this.
+    /// </remarks>
+    public static JournalPostingIntent From(CustomerDepositCollected @event)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        return JournalPostingIntent.For(
+            @event.EventId,
+            @event.OccurredAt,
+            DepositCollectedSource,
+            @event.AccountNumber,
+            $"Security deposit of {@event.Amount:0.00} collected from customer {@event.AccountNumber}.",
+            @event.Currency,
+            [
+                JournalLineIntent.Debits(FinanceAccounts.Cash, @event.Amount),
+                JournalLineIntent.Credits(FinanceAccounts.CustomerDeposits, @event.Amount),
+            ],
+
+            // No service account: a deposit is held against the customer, not against one of the
+            // premises they are served at. Passing an account here would attribute the liability to
+            // whichever supply happened to be opened first.
+            serviceAccountId: null,
+            @event.CustomerId);
+    }
+
+    /// <summary>
+    /// A deposit put against a bill settles the receivable out of money already held.
+    /// </summary>
+    /// <remarks>
+    /// <b>No cash line, on either side.</b> The money entered the utility when the deposit was
+    /// taken; what changes here is what it is held for — a liability owed back becomes a receivable
+    /// no longer to be collected. An entry that touched cash would be recording the same money
+    /// arriving twice.
+    /// </remarks>
+    public static JournalPostingIntent From(CustomerDepositApplied @event)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        return JournalPostingIntent.For(
+            @event.EventId,
+            @event.OccurredAt,
+            DepositAppliedSource,
+            @event.BillNumber,
+            $"Security deposit of {@event.Amount:0.00} applied to bill {@event.BillNumber}.",
+            @event.Currency,
+            [
+                JournalLineIntent.Debits(FinanceAccounts.CustomerDeposits, @event.Amount),
+                JournalLineIntent.Credits(FinanceAccounts.AccountsReceivable, @event.Amount),
+            ],
+
+            // The service account IS carried here, unlike a collection: this relieves a receivable,
+            // and an AR view keyed on the account is what says whose debt went down.
+            @event.ServiceAccountId,
+            @event.CustomerId);
+    }
+
+    /// <summary>A deposit refunded is the collection run backwards: the liability is discharged in cash.</summary>
+    /// <remarks>
+    /// A new entry, never an unwinding of the collection — invariant 3. The debit and credit are the
+    /// exact reverse of <see cref="From(CustomerDepositCollected)"/>, posted the right way round
+    /// rather than as negative amounts, which is the same rule a bill credit follows.
+    /// </remarks>
+    public static JournalPostingIntent From(CustomerDepositRefunded @event)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        return JournalPostingIntent.For(
+            @event.EventId,
+            @event.OccurredAt,
+            DepositRefundedSource,
+            @event.AccountNumber,
+            $"Security deposit of {@event.Amount:0.00} refunded to customer {@event.AccountNumber}.",
+            @event.Currency,
+            [
+                JournalLineIntent.Debits(FinanceAccounts.CustomerDeposits, @event.Amount),
+                JournalLineIntent.Credits(FinanceAccounts.Cash, @event.Amount),
+            ],
+            serviceAccountId: null,
+            @event.CustomerId);
     }
 }

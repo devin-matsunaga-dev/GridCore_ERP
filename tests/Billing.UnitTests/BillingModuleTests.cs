@@ -58,10 +58,12 @@ public class BillingModuleTests
         Assert.Contains(Composed(), service => service.ServiceType == typeof(IBillDirectory));
 
     [Fact]
-    public void The_module_consumes_the_payment_approval_that_settles_its_bills()
+    public void The_module_consumes_everything_that_settles_its_bills()
     {
         // Billing's first consumer (WP-2.5). It published BillIssued from WP-2.3 and BillAdjusted
-        // from WP-2.4; this is the other direction. Registered on the service collection so
+        // from WP-2.4; this is the other direction. WP-2.12 added the second: a customer's security
+        // deposit put against a bill settles it the same way cash does, and both arrive as facts
+        // from the module that moved the money. Registered on the service collection so
         // AddGridCoreMessaging can read it back — no assembly scanning, so the composition stays
         // greppable.
         var consumers = Composed()
@@ -69,7 +71,7 @@ public class BillingModuleTests
             .Select(service => (service.ImplementationInstance as EventConsumerDescriptor)?.ConsumerType)
             .ToList();
 
-        Assert.Equal([typeof(PaymentApprovedConsumer)], consumers);
+        Assert.Equal([typeof(PaymentApprovedConsumer), typeof(CustomerDepositAppliedConsumer)], consumers);
     }
 
     [Theory]

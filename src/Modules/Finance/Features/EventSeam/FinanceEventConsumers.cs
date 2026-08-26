@@ -79,3 +79,56 @@ public sealed class GoodsReceivedConsumer(IdempotentEventHandler handler, IJourn
     protected override Task ConsumeAsync(GoodsReceived message, CancellationToken cancellationToken) =>
         journal.PostAsync(FinancePostings.From(message), cancellationToken);
 }
+
+/// <summary>Posts the liability when a customer's security deposit is taken.</summary>
+public sealed class CustomerDepositCollectedConsumer(IdempotentEventHandler handler, IJournalPostingSeam journal)
+    : IdempotentConsumer<CustomerDepositCollected>(handler)
+{
+    /// <summary>Stable dedupe identity. Never rename: a new name replays every past deposit.</summary>
+    public const string Name = "finance.deposit-collected";
+
+    /// <inheritdoc />
+    protected override string ConsumerName => Name;
+
+    /// <inheritdoc />
+    protected override Task ConsumeAsync(CustomerDepositCollected message, CancellationToken cancellationToken) =>
+        journal.PostAsync(FinancePostings.From(message), cancellationToken);
+}
+
+/// <summary>
+/// Posts the transfer when a held deposit is put against a bill.
+/// </summary>
+/// <remarks>
+/// <b>Billing claims this event too</b>, under <c>billing.deposit-applied</c>, and the two names are
+/// distinct for the reason the payment consumers' are: each module has its own work to do with the
+/// fact, and a shared dedupe name would mean whichever handled it first silently suppressed the
+/// other. Billing reduces what the bill is owed; this records what it did to the ledger.
+/// </remarks>
+public sealed class CustomerDepositAppliedConsumer(IdempotentEventHandler handler, IJournalPostingSeam journal)
+    : IdempotentConsumer<CustomerDepositApplied>(handler)
+{
+    /// <summary>Stable dedupe identity. Never rename: a new name replays every past application.</summary>
+    public const string Name = "finance.deposit-applied";
+
+    /// <inheritdoc />
+    protected override string ConsumerName => Name;
+
+    /// <inheritdoc />
+    protected override Task ConsumeAsync(CustomerDepositApplied message, CancellationToken cancellationToken) =>
+        journal.PostAsync(FinancePostings.From(message), cancellationToken);
+}
+
+/// <summary>Posts the discharge when a security deposit is given back.</summary>
+public sealed class CustomerDepositRefundedConsumer(IdempotentEventHandler handler, IJournalPostingSeam journal)
+    : IdempotentConsumer<CustomerDepositRefunded>(handler)
+{
+    /// <summary>Stable dedupe identity. Never rename: a new name replays every past refund.</summary>
+    public const string Name = "finance.deposit-refunded";
+
+    /// <inheritdoc />
+    protected override string ConsumerName => Name;
+
+    /// <inheritdoc />
+    protected override Task ConsumeAsync(CustomerDepositRefunded message, CancellationToken cancellationToken) =>
+        journal.PostAsync(FinancePostings.From(message), cancellationToken);
+}

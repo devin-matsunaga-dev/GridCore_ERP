@@ -4,6 +4,8 @@ import type {
   Customer,
   CustomerContact,
   CustomerProfile,
+  DepositEntry,
+  DepositLedger,
   ServiceAccount,
   ServiceLocation,
 } from '@/api/customers';
@@ -111,6 +113,49 @@ export function customerProfile(overrides: Partial<CustomerProfile> = {}): Custo
  * A meter as the register returns it. Fitted at a premise, never at an account — the meter carries
  * a `serviceLocationId` and no account of any kind, which is the whole shape of WP-2.1.
  */
+/** One movement of a customer's security deposit, as the ledger endpoint returns it. */
+export function depositEntry(overrides: Partial<DepositEntry> = {}): DepositEntry {
+  return {
+    id: '0192f000-0000-7000-8000-000000000701',
+    customerId: customer().id,
+    kind: 'Collected',
+    amount: 450,
+    signedAmount: 450,
+    balanceAfter: 450,
+    currency: 'USD',
+    isInterestBearing: false,
+    billId: null,
+    billNumber: null,
+    serviceAccountId: null,
+    reason: 'Collected at intake.',
+    actorId: 'demo:cashier',
+    actorName: 'Rita Atalig (demo)',
+    recordedAt: '2026-02-11T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * A customer's deposit position. The default is the seeded commercial customer: the schedule is
+ * covered exactly, which is the case a screen has to render as "met" rather than as "short by
+ * nothing".
+ */
+export function depositLedger(overrides: Partial<DepositLedger> = {}): DepositLedger {
+  return {
+    customerId: customer().id,
+    accountNumber: customer().accountNumber,
+    balance: 450,
+    currency: 'USD',
+    customerClass: 'Commercial',
+    assessedAmount: 450,
+    shortfallAmount: 0,
+    ruleId: '0192f000-0000-7000-8000-0000000007f1',
+    isInterestBearing: false,
+    entries: [depositEntry()],
+    ...overrides,
+  };
+}
+
 export function meter(overrides: Partial<Meter> = {}): Meter {
   return {
     id: '0192f000-0000-7000-8000-000000000401',

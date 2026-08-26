@@ -49,8 +49,7 @@ public sealed class CustomerRegistryTests(GateFixture fixture) : IAsyncLifetime
                             "Songsong Village Market",
                             CustomerClass.Commercial,
                             "Elena Manglona",
-                            "accounts@songsongmarket.example.com",
-                            DepositHeld: 450.00m),
+                            "accounts@songsongmarket.example.com"),
                         token);
 
                 // Both in the platform schema, both pending in the same transaction as the customer
@@ -70,7 +69,9 @@ public sealed class CustomerRegistryTests(GateFixture fixture) : IAsyncLifetime
             .Customers.AsNoTracking()
             .SingleAsync(candidate => candidate.Id == customer.Id);
 
-        Assert.Equal(450.00m, stored.DepositHeld);
+        // Registering takes no money since WP-2.12: every cent held has a ledger entry explaining
+        // it, so a customer starts at zero and the deposit lifecycle is what moves them off it.
+        Assert.Equal(0m, stored.DepositHeld);
         Assert.Equal(CustomerStatus.Prospect, stored.Status);
 
         var entry = await read.ServiceProvider.GetRequiredService<PlatformDbContext>()
@@ -93,7 +94,7 @@ public sealed class CustomerRegistryTests(GateFixture fixture) : IAsyncLifetime
         {
             await Assert.ThrowsAsync<RegistryValidationException>(() =>
                 scope.ServiceProvider.GetRequiredService<ICustomerService>()
-                    .RegisterAsync(new RegisterCustomerInput("Rejected registration", CustomerClass.Residential, DepositHeld: -1m)));
+                    .RegisterAsync(new RegisterCustomerInput(" ", CustomerClass.Residential)));
         }
 
         Assert.Equal(before, await CountAsync());

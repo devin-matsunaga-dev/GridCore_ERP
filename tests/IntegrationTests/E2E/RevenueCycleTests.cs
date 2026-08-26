@@ -402,7 +402,7 @@ public sealed class RevenueCycleTests(GateFixture fixture) : IAsyncLifetime
         await using var scope = fixture.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<ICustomerService>()
-            .RegisterAsync(new RegisterCustomerInput(name, CustomerClass.Residential, "Ana Reyes", null, null, 0m));
+            .RegisterAsync(new RegisterCustomerInput(name, CustomerClass.Residential, "Ana Reyes"));
     }
 
     private async Task<ServiceLocation> RegisterPremiseAsync(string line1)

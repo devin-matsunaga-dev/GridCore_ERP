@@ -1,7 +1,10 @@
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
+using GridCore.Platform.Registry;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;
@@ -60,17 +63,24 @@ public class RegistryModelTests
     public async Task A_deposit_survives_the_round_trip_to_the_cent()
     {
         // Money is decimal all the way down. A float column would return 1234.5599999999999 here,
-        // and the difference would first be noticed in a trial balance.
+        // and the difference would first be noticed in a trial balance. Since WP-2.12 the balance is
+        // moved by a ledger entry, so this exercises both columns — the entry's own amount and the
+        // projection it maintains.
         using var host = new CustomersTestHost();
 
         await using (var write = host.NewCustomersContext())
         {
-            write.Customers.Add(Customer.Register(
-                "C-000001",
-                "Garapan Beachfront Hotel",
-                CustomerClass.Commercial,
-                Now,
-                depositHeld: 2_500.55m));
+            var customer = Customer.Register("C-000001", "Garapan Beachfront Hotel", CustomerClass.Commercial, Now);
+
+            write.Customers.Add(customer);
+            write.DepositEntries.Add(DepositEntry.Collect(
+                customer,
+                2_500.55m,
+                DepositRules.Currency,
+                isInterestBearing: false,
+                reason: null,
+                new RegistryActor("auth0|cs-agent", "Ana Cruz"),
+                Now));
 
             await write.SaveChangesAsync();
         }
@@ -78,6 +88,7 @@ public class RegistryModelTests
         await using var read = host.NewCustomersContext();
 
         Assert.Equal(2_500.55m, (await read.Customers.SingleAsync()).DepositHeld);
+        Assert.Equal(2_500.55m, (await read.DepositEntries.SingleAsync()).BalanceAfter);
     }
 
     [Fact]

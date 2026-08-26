@@ -157,3 +157,114 @@ public sealed class FakeMeterDirectory : IMeterDirectory
         return Task.FromResult(found);
     }
 }
+
+/// <summary>
+/// The Billing module's register, as Customers is allowed to see it — a dictionary rather than a
+/// database.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The sixth cross-module read seam this module consumes a double for, and the second it consumes
+/// at all (<see cref="FakeMeterDirectory"/> was the first, for WP-2.9's search). WP-2.12's deposit
+/// lifecycle asks one question of Billing before any of a deposit is put against a bill: <i>how
+/// much is actually owed on it</i>. A Customers test may not resolve the real
+/// <see cref="IBillDirectory"/> — a <c>billing</c> schema is exactly what this module must never
+/// know about — so a test supplies a bill in one line and no Postgres container is needed.
+/// </para>
+/// <para>
+/// Shaped exactly like <c>FakeBillDirectory</c> in the Payments fast tier, deliberately: the two
+/// modules ask the same seam the same question, and a double that answered differently in one of
+/// them would let a rule pass here and fail against the real directory.
+/// </para>
+/// </remarks>
+public sealed class FakeBillDirectory : IBillDirectory
+{
+    private readonly Dictionary<Guid, BillSummary> _bills = [];
+    private int _ordinal;
+
+    /// <summary>Every bill the ledger asked about, so a test can assert it went through the seam.</summary>
+    public List<Guid> Lookups { get; } = [];
+
+    /// <summary>Adds a bill and hands it back.</summary>
+    /// <param name="customerId">Who owes it.</param>
+    /// <param name="serviceAccountId">The account it is billed to.</param>
+    /// <param name="amountDue">What is owed on it before anything has been paid.</param>
+    /// <param name="amountPaid">How much has already been paid against it.</param>
+    /// <param name="status">Its lifecycle status, by name.</param>
+    /// <param name="currency">What its amounts are expressed in.</param>
+    public BillSummary Add(
+        Guid customerId,
+        Guid? serviceAccountId = null,
+        decimal amountDue = 120.00m,
+        decimal amountPaid = 0m,
+        string status = "Issued",
+        string currency = "USD")
+    {
+        var id = Guid.CreateVersion7();
+        _ordinal++;
+
+        var bill = new BillSummary(
+            id,
+            $"BIL-{_ordinal:000000}",
+            serviceAccountId ?? Guid.CreateVersion7(),
+            $"A-{_ordinal:000000}",
+            customerId,
+            $"Customer {_ordinal}",
+            currency,
+
+            // The printed total and what is owed deliberately differ, as WP-2.4 made them: the
+            // adjustment is what an application checked against the total rather than the balance
+            // would get wrong.
+            TotalAmount: amountDue + 10m,
+            AmountDue: amountDue,
+            AmountPaid: amountPaid,
+            Balance: amountDue - amountPaid,
+            status,
+            IsOutstanding: status is "Issued" or "PartiallyPaid" or "Overdue",
+            DueDate: new DateOnly(2026, 9, 30));
+
+        _bills[id] = bill;
+
+        return bill;
+    }
+
+    /// <inheritdoc />
+    public Task<BillSummary?> FindAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(id);
+
+        return Task.FromResult(_bills.GetValueOrDefault(id));
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<Guid, BillSummary>> FindManyAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        Lookups.AddRange(ids);
+
+        IReadOnlyDictionary<Guid, BillSummary> found = ids
+            .Distinct()
+            .Select(_bills.GetValueOrDefault)
+            .OfType<BillSummary>()
+            .ToDictionary(bill => bill.Id);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<BillSummary>> OutstandingForAccountAsync(
+        Guid serviceAccountId,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<BillSummary> found = _bills.Values
+            .Where(bill => bill.ServiceAccountId == serviceAccountId && bill.IsOutstanding)
+            .Take(limit)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+}

@@ -69,7 +69,7 @@ public sealed class PaymentRegistryTests(GateFixture fixture) : IAsyncLifetime
         await using (var scope = fixture.CreateScope())
         {
             customer = (await scope.ServiceProvider.GetRequiredService<ICustomerService>()
-                .RegisterAsync(new RegisterCustomerInput(customerName, CustomerClass.Residential, "Maria Sablan", null, null, 0m)))
+                .RegisterAsync(new RegisterCustomerInput(customerName, CustomerClass.Residential, "Maria Sablan")))
                 .Id;
 
             premise = (await scope.ServiceProvider.GetRequiredService<IServiceLocationService>()

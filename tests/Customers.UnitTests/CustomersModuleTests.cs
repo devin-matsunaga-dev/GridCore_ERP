@@ -1,6 +1,7 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -59,6 +60,22 @@ public class CustomersModuleTests
 
         Assert.False(Registers<ServiceLocationDirectory>(services));
         Assert.False(Registers<ServiceAccountDirectory>(services));
+    }
+
+    [Fact]
+    public void The_deposit_lifecycle_is_registered_and_reads_the_billing_register_through_Contracts()
+    {
+        // WP-2.12, and the same boundary rule the search box follows: the deposit ledger asks
+        // IBillDirectory what a bill still has outstanding before any of a deposit is applied, and
+        // that interface is BILLING's to answer. A Customers registration of it would mean this
+        // module referencing the assembly that holds the implementation.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(CustomerDepositService),
+            Assert.Single(services, service => service.ServiceType == typeof(ICustomerDepositService)).ImplementationType);
+
+        Assert.False(Registers<Contracts.Directories.IBillDirectory>(services));
     }
 
     [Fact]

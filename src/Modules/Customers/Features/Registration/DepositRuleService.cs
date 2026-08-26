@@ -10,16 +10,22 @@ namespace GridCore.Modules.Customers.Features.Registration;
 /// </summary>
 /// <param name="CustomerClass">The class assessed.</param>
 /// <param name="Amount">What the schedule asks for.</param>
+/// <param name="Currency">ISO 4217 code the amount is expressed in — what a collection is posted in.</param>
 /// <param name="Description">Why, in the clerk's words.</param>
 /// <param name="RuleId">Which rule row answered — stamped on the audit entry so a figure can be traced.</param>
-public sealed record DepositAssessment(CustomerClass CustomerClass, decimal Amount, string Description, Guid RuleId)
+public sealed record DepositAssessment(
+    CustomerClass CustomerClass,
+    decimal Amount,
+    string Currency,
+    string Description,
+    Guid RuleId)
 {
     /// <summary>Reads an assessment off a rule.</summary>
     public static DepositAssessment Of(DepositRule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
 
-        return new DepositAssessment(rule.CustomerClass, rule.Amount, rule.Description, rule.Id);
+        return new DepositAssessment(rule.CustomerClass, rule.Amount, rule.Currency, rule.Description, rule.Id);
     }
 }
 

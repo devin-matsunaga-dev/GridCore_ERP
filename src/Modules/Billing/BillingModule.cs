@@ -46,6 +46,10 @@ public sealed class BillingModule : IModule
         // what the document is owed is this module's own work.
         services.AddEventConsumer<PaymentApprovedConsumer>();
 
+        // WP-2.12: a customer's deposit put against a bill settles it the same way a payment does.
+        // The event is Customers', and Finance claims it too — under its own consumer name.
+        services.AddEventConsumer<CustomerDepositAppliedConsumer>();
+
         // Note what is NOT here: IMeterReadingDirectory and IServiceAccountDirectory. This module
         // consumes both and Metering and Customers register them, which is the whole point of
         // putting the interfaces in Contracts — a module never registers another module's

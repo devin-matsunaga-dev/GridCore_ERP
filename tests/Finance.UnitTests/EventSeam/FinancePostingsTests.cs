@@ -322,6 +322,135 @@ public sealed class FinancePostingsTests
         Assert.Contains("finer than a cent", thrown.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void A_deposit_collected_debits_cash_and_raises_a_liability()
+    {
+        var customerId = Guid.CreateVersion7(Now);
+
+        var collected = CustomerDepositCollected.For(
+            Now,
+            depositEntryId: Guid.CreateVersion7(Now),
+            customerId: customerId,
+            accountNumber: "C-000123",
+            amount: 75.00m,
+            balanceAfter: 75.00m,
+            currency: "USD",
+            isInterestBearing: false);
+
+        var posting = FinancePostings.From(collected);
+
+        Assert.Equal(FinancePostings.DepositCollectedSource, posting.Source);
+        Assert.Equal("C-000123", posting.Reference);
+        Assert.Equal(collected.EventId, posting.EventId);
+        Assert.Equal(75.00m, DebitOf(posting, FinanceAccounts.Cash));
+
+        // A LIABILITY, not revenue. The money is in the bank but was never earned, and crediting
+        // revenue would inflate what the utility has made by every deposit on its books.
+        Assert.Equal(75.00m, CreditOf(posting, FinanceAccounts.CustomerDeposits));
+        Assert.Equal(0m, CreditOf(posting, FinanceAccounts.Revenue));
+        AssertBalances(posting, 75.00m);
+
+        // Held against the customer, not against one of the premises they are served at.
+        Assert.Equal(customerId, posting.CustomerId);
+        Assert.Null(posting.ServiceAccountId);
+    }
+
+    [Fact]
+    public void A_deposit_applied_to_a_bill_moves_the_liability_onto_the_receivable_without_touching_cash()
+    {
+        var serviceAccountId = Guid.CreateVersion7(Now);
+        var customerId = Guid.CreateVersion7(Now);
+
+        var applied = CustomerDepositApplied.For(
+            Now,
+            depositEntryId: Guid.CreateVersion7(Now),
+            customerId: customerId,
+            serviceAccountId: serviceAccountId,
+            billId: Guid.CreateVersion7(Now),
+            billNumber: "B-000123",
+            amount: 40.00m,
+            balanceAfter: 35.00m,
+            currency: "USD");
+
+        var posting = FinancePostings.From(applied);
+
+        Assert.Equal(FinancePostings.DepositAppliedSource, posting.Source);
+        Assert.Equal("B-000123", posting.Reference);
+        Assert.Equal(40.00m, DebitOf(posting, FinanceAccounts.CustomerDeposits));
+        Assert.Equal(40.00m, CreditOf(posting, FinanceAccounts.AccountsReceivable));
+        AssertBalances(posting, 40.00m);
+
+        // NO CASH LINE, on either side. The money entered the utility when the deposit was taken;
+        // touching cash here would record the same money arriving twice.
+        Assert.Equal(0m, DebitOf(posting, FinanceAccounts.Cash));
+        Assert.Equal(0m, CreditOf(posting, FinanceAccounts.Cash));
+
+        // The service account IS carried, unlike a collection: this relieves a receivable, and the
+        // AR view keyed on the account is what says whose debt went down.
+        Assert.Equal(serviceAccountId, posting.ServiceAccountId);
+        Assert.Equal(customerId, posting.CustomerId);
+    }
+
+    [Fact]
+    public void A_deposit_refunded_is_the_collection_posted_the_other_way_round()
+    {
+        var refunded = CustomerDepositRefunded.For(
+            Now,
+            depositEntryId: Guid.CreateVersion7(Now),
+            customerId: Guid.CreateVersion7(Now),
+            accountNumber: "C-000123",
+            amount: 75.00m,
+            balanceAfter: 0m,
+            currency: "USD",
+            reason: "Account closed.");
+
+        var posting = FinancePostings.From(refunded);
+
+        Assert.Equal(FinancePostings.DepositRefundedSource, posting.Source);
+        Assert.Equal(75.00m, DebitOf(posting, FinanceAccounts.CustomerDeposits));
+        Assert.Equal(75.00m, CreditOf(posting, FinanceAccounts.Cash));
+        AssertBalances(posting, 75.00m);
+
+        // Posted the right way round rather than as negative amounts — the rule a bill credit
+        // follows, because a negative debit and a credit are the same money and only one of them
+        // can be added up by eye.
+        Assert.All(posting.Lines, line => Assert.True(line.Debit >= 0m && line.Credit >= 0m));
+    }
+
+    [Fact]
+    public void A_deposit_collected_and_then_refunded_leaves_the_ledger_flat()
+    {
+        // The whole point of invariant 3: a refund is a NEW entry, never an unwinding of the
+        // collection, and the two together net to nothing on both accounts. A customer who paid a
+        // deposit and had it returned has two movements in their history, which is what happened.
+        var customerId = Guid.CreateVersion7(Now);
+
+        var collected = FinancePostings.From(CustomerDepositCollected.For(
+            Now, Guid.CreateVersion7(Now), customerId, "C-000123", 75.00m, 75.00m, "USD", false));
+
+        var refunded = FinancePostings.From(CustomerDepositRefunded.For(
+            Now, Guid.CreateVersion7(Now), customerId, "C-000123", 75.00m, 0m, "USD", "Account closed."));
+
+        Assert.Equal(
+            0m,
+            DebitOf(collected, FinanceAccounts.Cash) - CreditOf(refunded, FinanceAccounts.Cash));
+
+        Assert.Equal(
+            0m,
+            CreditOf(collected, FinanceAccounts.CustomerDeposits) - DebitOf(refunded, FinanceAccounts.CustomerDeposits));
+    }
+
+    [Theory]
+    [InlineData(0.005)]
+    [InlineData(-10)]
+    public void A_deposit_movement_the_ledger_cannot_hold_is_refused_rather_than_posted(decimal amount) =>
+        // Failure path. A negative amount would be a posting on the wrong side written as a minus,
+        // and a fraction of a cent means an upstream total that no longer adds up — the guard
+        // refuses both rather than rounding or flipping them silently.
+        Assert.Throws<ArgumentException>(() =>
+            FinancePostings.From(CustomerDepositCollected.For(
+                Now, Guid.CreateVersion7(Now), Guid.CreateVersion7(Now), "C-000123", amount, amount, "USD", false)));
+
     private static void AssertBalances(JournalPostingIntent posting, decimal expectedTotal)
     {
         Assert.Equal(expectedTotal, posting.TotalDebits);

@@ -12,8 +12,14 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
  * one of these sits under `/customers`.
  */
 
-/** The tabs, in the order they read. `summary` is the one a fresh page opens on. */
-export const customer360TabIds = ['summary', 'contacts', 'bills', 'payments', 'timeline', 'work-orders'] as const;
+/**
+ * The tabs, in the order they read. `summary` is the one a fresh page opens on.
+ *
+ * `deposit` sits with the money (WP-2.12), after the payments it is an alternative to and before
+ * the feed that reports on all of it. Adding a tab here adds a route, so an id is part of the URL
+ * vocabulary: renaming one breaks every link a rep has sent.
+ */
+export const customer360TabIds = ['summary', 'contacts', 'bills', 'payments', 'deposit', 'timeline', 'work-orders'] as const;
 export type Customer360TabId = (typeof customer360TabIds)[number];
 
 /** The tab a bare `/customers/{id}` shows. */
@@ -24,6 +30,7 @@ const tabLabels: Record<Customer360TabId, string> = {
   contacts: 'Contacts',
   bills: 'Bills',
   payments: 'Payments',
+  deposit: 'Deposit',
   timeline: 'Timeline',
   'work-orders': 'Work orders',
 };

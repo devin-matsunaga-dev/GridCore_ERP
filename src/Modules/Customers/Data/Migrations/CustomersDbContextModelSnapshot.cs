@@ -179,6 +179,88 @@ namespace GridCore.Modules.Customers.Data.Migrations
                     b.ToTable("customers", "customers");
                 });
 
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Deposits.DepositEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("balance_after");
+
+                    b.Property<Guid?>("BillId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bill_id");
+
+                    b.Property<string>("BillNumber")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("bill_number");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<bool>("IsInterestBearing")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_interest_bearing");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid?>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_deposit_entries");
+
+                    b.HasIndex("BillId")
+                        .HasDatabaseName("ix_deposit_entries_bill_id")
+                        .HasFilter("\"bill_id\" IS NOT NULL");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_deposit_entries_customer_id");
+
+                    b.ToTable("deposit_entries", "customers");
+                });
+
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Profile.CustomerProfile", b =>
                 {
                     b.Property<Guid>("CustomerId")
@@ -227,6 +309,12 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
                     b.Property<string>("CustomerClass")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -253,6 +341,7 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         {
                             Id = new Guid("01a03637-7800-7b13-b0b4-4a028a08b4e8"),
                             Amount = 75.00m,
+                            Currency = "USD",
                             CustomerClass = "Residential",
                             Description = "One residential connection: two months of a typical household bill, refundable on close."
                         },
@@ -260,6 +349,7 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         {
                             Id = new Guid("01a03637-7800-7a7d-8b76-34355f44b9d8"),
                             Amount = 450.00m,
+                            Currency = "USD",
                             CustomerClass = "Commercial",
                             Description = "One commercial connection: two months of a small-premises bill, refundable on close."
                         });
@@ -432,6 +522,16 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_contact_methods_contact");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Deposits.DepositEntry", b =>
+                {
+                    b.HasOne("GridCore.Modules.Customers.Features.Customers.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_deposit_entries_customer");
                 });
 
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Profile.CustomerProfile", b =>

@@ -19,7 +19,7 @@ public class RegistryValidatorTests
     private static readonly ServiceAccountTransitionRequestValidator TransitionRules = new();
 
     private static CreateCustomerRequest AValidCustomer() =>
-        new("Sablan Family Residence", CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114", 75.00m);
+        new("Sablan Family Residence", CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114");
 
     private static ServiceLocationRequest AValidLocation() =>
         new(new AddressPayload("128 As Nieves Road", "Songsong", "Rota", "MP", PostalCode: "96951"));
@@ -53,14 +53,6 @@ public class RegistryValidatorTests
         // A utility takes registrations over the counter. Requiring an email would make half of
         // them impossible.
         Assert.True(CustomerRules.Validate(AValidCustomer() with { Email = null }).IsValid);
-
-    [Fact]
-    public void A_negative_deposit_is_rejected() =>
-        Assert.Equal(["DepositHeld"], FailedFieldsOf(CustomerRules, AValidCustomer() with { DepositHeld = -0.01m }));
-
-    [Fact]
-    public void A_deposit_finer_than_a_cent_is_rejected() =>
-        Assert.Equal(["DepositHeld"], FailedFieldsOf(CustomerRules, AValidCustomer() with { DepositHeld = 75.125m }));
 
     [Fact]
     public void A_class_that_is_not_declared_is_rejected() =>

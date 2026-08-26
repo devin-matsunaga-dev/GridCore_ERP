@@ -21,7 +21,7 @@ public class ServiceAccountDirectoryTests
         string line1 = "128 As Nieves Road")
     {
         var customer = await host.WithCustomersAsync(customers => customers.RegisterAsync(
-            new RegisterCustomerInput(name, CustomerClass.Residential, "Maria Sablan", null, null, 0m)));
+            new RegisterCustomerInput(name, CustomerClass.Residential, "Maria Sablan")));
 
         var premise = await host.WithLocationsAsync(locations => locations.RegisterAsync(
             new ServiceLocationInput(

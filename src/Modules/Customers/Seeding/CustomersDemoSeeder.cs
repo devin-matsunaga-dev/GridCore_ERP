@@ -1,5 +1,7 @@
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Registry;
@@ -53,6 +55,14 @@ public sealed class CustomersDemoSeeder(CustomersDbContext database, TimeProvide
     /// </remarks>
     public int Order => 200;
 
+    /// <summary>
+    /// The colleague seeded deposits are attributed to. A demo stand-in, never a real identity —
+    /// <see cref="DemoActor"/> holds no permissions, which is exactly right here: the ledger entries
+    /// below are written as entities, not through <c>ICustomerDepositService</c>, so nothing is
+    /// being authorised.
+    /// </summary>
+    private static readonly DemoActor Cashier = new("cashier", "Rita Atalig");
+
     /// <inheritdoc />
     public Task SeedAsync(CancellationToken cancellationToken)
     {
@@ -63,18 +73,39 @@ public sealed class CustomersDemoSeeder(CustomersDbContext database, TimeProvide
 
         DateTimeOffset Next() => now.AddMilliseconds(step++);
 
-        database.Customers.AddRange(
-            DemoCustomers.Select((customer, index) =>
-                Customer.Register(
-                    RegistryNumbers.Format(CustomerNumbers.CustomerPrefix, index + 1),
-                    customer.Name,
-                    customer.Class,
-                    Next(),
-                    customer.ContactName,
-                    customer.Email,
-                    customer.Phone,
-                    customer.DepositHeld,
-                    customer.Status)));
+        var customers = DemoCustomers.Select((customer, index) =>
+        {
+            var registered = Customer.Register(
+                RegistryNumbers.Format(CustomerNumbers.CustomerPrefix, index + 1),
+                customer.Name,
+                customer.Class,
+                Next(),
+                customer.ContactName,
+                customer.Email,
+                customer.Phone,
+                customer.Status);
+
+            return (Registered: registered, customer.DepositHeld);
+        }).ToList();
+
+        database.Customers.AddRange(customers.Select(pair => pair.Registered));
+
+        // Since WP-2.12 a customer's deposit is the sum of its ledger entries, so a seeded balance
+        // has to arrive as one — a demo world whose deposit tab was empty while the header said
+        // $450 would be demonstrating the bug this package exists to remove. Written as entities
+        // rather than through the service for the reason every seeder is: the runner's unit of work
+        // owns the transaction, and a seeded row is not somebody exercising a permission.
+        database.DepositEntries.AddRange(
+            customers
+                .Where(pair => pair.DepositHeld > 0m)
+                .Select(pair => DepositEntry.Collect(
+                    pair.Registered,
+                    pair.DepositHeld,
+                    DepositRules.Currency,
+                    isInterestBearing: false,
+                    "Security deposit taken when service was connected.",
+                    RegistryActor.Of(Cashier),
+                    Next())));
 
         database.ServiceLocations.AddRange(
             DemoLocations.Select((location, index) =>
@@ -121,7 +152,7 @@ public sealed class CustomersDemoSeeder(CustomersDbContext database, TimeProvide
     /// <param name="ContactName">Who to ask for.</param>
     /// <param name="Email">Where to email them.</param>
     /// <param name="Phone">Where to call them.</param>
-    /// <param name="DepositHeld">Deposit the utility holds.</param>
+    /// <param name="DepositHeld">Deposit the utility holds — seeded as a ledger collection, not a field.</param>
     private sealed record DemoCustomer(
         string Name,
         CustomerClass Class,

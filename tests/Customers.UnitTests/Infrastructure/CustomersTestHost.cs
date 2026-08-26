@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
@@ -51,6 +52,11 @@ public sealed class CustomersTestHost : IDisposable
         // the seam, so the fast tier stands a double in front of it.
         services.AddSingleton<IMeterDirectory>(Meters);
 
+        // Billing registers the real IBillDirectory; a Customers test may not resolve it, for the
+        // same reason. WP-2.12's deposit lifecycle asks it what a bill still has outstanding before
+        // any of a deposit is applied, so the fast tier stands a double in front of it too.
+        services.AddSingleton<IBillDirectory>(Bills);
+
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
@@ -67,6 +73,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerSearchService, CustomerSearchService>();
         services.AddScoped<ICustomerContactService, CustomerContactService>();
         services.AddScoped<ICustomerProfileService, CustomerProfileService>();
+        services.AddScoped<ICustomerDepositService, CustomerDepositService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -80,6 +87,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>The meter register the search box resolves a meter number through.</summary>
     public FakeMeterDirectory Meters { get; } = new();
+
+    /// <summary>The billing register the deposit ledger asks what a bill still has outstanding.</summary>
+    public FakeBillDirectory Bills { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -149,6 +159,38 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<ICustomerProfileService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the deposit lifecycle, in its own scope.</summary>
+    public Task<TResult> WithDepositsAsync<TResult>(Func<ICustomerDepositService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerDepositService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the deposit lifecycle as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The one place a test needs two identities against one dataset: proving a movement is refused
+    /// means somebody who <i>may</i> move money has to have put some there first. Composed by hand
+    /// rather than through the container, because the caller is the single dependency being swapped.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<ICustomerDepositService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new CustomerDepositService(
+            services.GetRequiredService<CustomersDbContext>(),
+            services.GetRequiredService<IDepositRuleService>(),
+            Bills,
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            Events,
+            caller,
+            services.GetRequiredService<TimeProvider>())));
     }
 
     /// <summary>Runs <paramref name="work"/> against the deposit schedule, in its own scope.</summary>

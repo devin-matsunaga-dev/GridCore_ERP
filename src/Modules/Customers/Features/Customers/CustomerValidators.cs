@@ -23,11 +23,8 @@ public abstract class CustomerDetailsValidator<TRequest> : AbstractValidator<TRe
             .EmailAddress()
             .When(request => !string.IsNullOrWhiteSpace(request.Email));
 
-        RuleFor(request => request.DepositHeld)
-            .GreaterThanOrEqualTo(0m)
-            .WithMessage("A deposit held cannot be negative.")
-            .Must(amount => decimal.Round(amount, 2) == amount)
-            .WithMessage("A deposit must be a whole number of cents.");
+        // No deposit rule: since WP-2.12 neither body carries one. The deposit's own validators live
+        // beside the lifecycle that moves it.
     }
 }
 

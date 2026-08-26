@@ -24,7 +24,7 @@ public class CustomerSearchServiceTests
         string? phone = null,
         CustomerClass customerClass = CustomerClass.Residential) =>
         host.WithCustomersAsync(customers => customers.RegisterAsync(
-            new RegisterCustomerInput(name, customerClass, null, null, phone, 0m)));
+            new RegisterCustomerInput(name, customerClass, null, null, phone)));
 
     private static Task<ServiceLocation> APremiseAsync(CustomersTestHost host, string line1, string city = "Songsong") =>
         host.WithLocationsAsync(locations => locations.RegisterAsync(

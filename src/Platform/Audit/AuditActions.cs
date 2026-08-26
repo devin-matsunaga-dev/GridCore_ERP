@@ -31,8 +31,25 @@ public static class AuditActions
     /// <summary>A customer moved to another status.</summary>
     public const string CustomerStatusChanged = "customer.status";
 
-    /// <summary>A security deposit was assessed and collected from a customer.</summary>
+    /// <summary>
+    /// A security deposit was assessed and collected from a customer. Sensitive: money changing
+    /// hands, so it is permission-gated on <c>customers.deposit</c> and audited (invariant 5).
+    /// </summary>
     public const string CustomerDepositCollected = "customer.deposit";
+
+    /// <summary>
+    /// A held deposit was put against a bill the customer owes (WP-2.12). Its own action rather than
+    /// a second <c>customer.deposit</c> entry, because "what has this customer's deposit been spent
+    /// on" is a question asked by filtering rather than by reading every deposit entry to see which
+    /// way the money went.
+    /// </summary>
+    public const string CustomerDepositApplied = "customer.deposit_applied";
+
+    /// <summary>
+    /// A deposit was given back to the customer (WP-2.12). The one deposit movement that takes money
+    /// out of the building, which is why it is filterable on its own.
+    /// </summary>
+    public const string CustomerDepositRefunded = "customer.deposit_refunded";
 
     /// <summary>A contact was added to a customer.</summary>
     public const string CustomerContactCreated = "customer_contact.create";
@@ -120,6 +137,15 @@ public static class AuditActions
     /// who took the money is named on the payment's own entry.
     /// </summary>
     public const string BillPaymentRecorded = "bill.payment";
+
+    /// <summary>
+    /// A customer's security deposit was applied to a bill, reducing what is owed (WP-2.12).
+    /// Recorded against <c>system</c> for the same reason a payment is: this happens in a consumer,
+    /// and the rep who decided to spend the deposit is named on the deposit ledger's own entry.
+    /// Distinct from <see cref="BillPaymentRecorded"/> because "was this bill settled with cash or
+    /// out of the deposit" is exactly what somebody asks of a closed account.
+    /// </summary>
+    public const string BillDepositApplied = "bill.deposit";
 
     /// <summary>
     /// A payment was taken from a customer and put to the payment provider. Recorded whatever the

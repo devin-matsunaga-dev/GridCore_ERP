@@ -31,10 +31,14 @@ public sealed class DepositRule
     /// <summary>Longest description stored against a rule.</summary>
     public const int DescriptionLength = 256;
 
+    /// <summary>Longest ISO 4217 code stored. Three letters, with room to spare.</summary>
+    public const int CurrencyLength = 8;
+
     private DepositRule()
     {
         // EF materialisation.
         Description = string.Empty;
+        Currency = string.Empty;
     }
 
     /// <summary>Identifier of this rule. Derived from the class — see <see cref="ReferenceId"/>.</summary>
@@ -46,6 +50,18 @@ public sealed class DepositRule
     /// <summary>What a customer of that class is asked for, in whole cents.</summary>
     public decimal Amount { get; private init; }
 
+    /// <summary>
+    /// ISO 4217 code the amount is expressed in.
+    /// </summary>
+    /// <remarks>
+    /// On the reference row rather than in a constant, the call <c>DefaultRatePlans</c> already made
+    /// for a tariff: a Finance posting has to name a currency, and one traceable to the row that set
+    /// the figure beats a literal three letters deep in an event mapping. WP-2.12's collections and
+    /// refunds read it from here; an application to a bill takes the bill's instead, because that is
+    /// the currency the receivable is denominated in.
+    /// </remarks>
+    public string Currency { get; private init; }
+
     /// <summary>Why the figure is what it is, for the clerk who has to explain it.</summary>
     public string Description { get; private init; }
 
@@ -55,9 +71,11 @@ public sealed class DepositRule
     /// </summary>
     /// <exception cref="ArgumentException">The description is missing or too long.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The amount is negative or finer than a cent.</exception>
-    public static DepositRule Reference(CustomerClass customerClass, decimal amount, string description)
+    public static DepositRule Reference(CustomerClass customerClass, decimal amount, string currency, string description)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        ArgumentException.ThrowIfNullOrWhiteSpace(currency);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(currency.Length, CurrencyLength);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(description.Length, DescriptionLength);
         ArgumentOutOfRangeException.ThrowIfNegative(amount);
 
@@ -76,6 +94,7 @@ public sealed class DepositRule
             Id = ReferenceId.For(DepositRules.AuthoredAt, customerClass.ToString()),
             CustomerClass = customerClass,
             Amount = amount,
+            Currency = currency,
             Description = description,
         };
     }
@@ -99,16 +118,25 @@ public static class DepositRules
     /// </summary>
     public static readonly DateTimeOffset AuthoredAt = new(2026, 8, 25, 0, 0, 0, TimeSpan.Zero);
 
+    /// <summary>
+    /// The currency the shipped schedule is in. The demo utility bills in US dollars, as the rate
+    /// plans do; a multi-currency utility is not in scope and would start by making this per-rule
+    /// data somebody maintains rather than a value this list repeats.
+    /// </summary>
+    public const string Currency = "USD";
+
     /// <summary>Every rule, in class order.</summary>
     public static IReadOnlyList<DepositRule> All { get; } =
     [
         DepositRule.Reference(
             CustomerClass.Residential,
             75.00m,
+            Currency,
             "One residential connection: two months of a typical household bill, refundable on close."),
         DepositRule.Reference(
             CustomerClass.Commercial,
             450.00m,
+            Currency,
             "One commercial connection: two months of a small-premises bill, refundable on close."),
     ];
 

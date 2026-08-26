@@ -126,7 +126,6 @@ export type CreateCustomerInput = {
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
-  depositHeld?: number;
 };
 
 /** Mirrors `AddressPayload`. */
@@ -291,6 +290,72 @@ export type UpdateCustomerProfileInput = {
   mailingAddress?: AddressInput | null;
 };
 
+/** Mirrors `DepositEntryKind`. The order is the lifecycle's; the kind carries the direction. */
+export const depositEntryKinds = ['Collected', 'Applied', 'Refunded'] as const;
+export type DepositEntryKind = (typeof depositEntryKinds)[number];
+
+/** Mirrors `DepositEntryResponse` — one movement of a customer's security deposit. */
+export type DepositEntry = {
+  id: string;
+  customerId: string;
+  kind: DepositEntryKind;
+  /** Always positive. The kind carries the direction, never the sign. */
+  amount: number;
+  /** The magnitude with its direction applied: `+` for money taken, `-` for money out. */
+  signedAmount: number;
+  /** What the utility held once this entry was applied. Stored, not recomputed. */
+  balanceAfter: number;
+  currency: string;
+  isInterestBearing: boolean;
+  billId: string | null;
+  billNumber: string | null;
+  serviceAccountId: string | null;
+  reason: string | null;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/**
+ * Mirrors `DepositLedgerResponse`.
+ *
+ * `balance` is `Customer.depositHeld` — the projection these entries add up to — and `assessedAmount`
+ * is what the class schedule asks, so a screen can say whether the customer is short without a
+ * second request. `shortfallAmount` is floored at zero by the host.
+ */
+export type DepositLedger = {
+  customerId: string;
+  accountNumber: string;
+  balance: number;
+  currency: string;
+  customerClass: CustomerClass;
+  assessedAmount: number;
+  shortfallAmount: number;
+  ruleId: string;
+  isInterestBearing: boolean;
+  entries: DepositEntry[];
+};
+
+/** Mirrors `CollectDepositRequest`. */
+export type CollectDepositInput = {
+  amount: number;
+  isInterestBearing?: boolean;
+  reason?: string | null;
+};
+
+/** Mirrors `ApplyDepositRequest`. */
+export type ApplyDepositInput = {
+  billId: string;
+  amount: number;
+  reason?: string | null;
+};
+
+/** Mirrors `RefundDepositRequest`. */
+export type RefundDepositInput = {
+  amount: number;
+  reason?: string | null;
+};
+
 /** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
 export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
 export type CustomerMatchKind = (typeof customerMatchKinds)[number];
@@ -437,6 +502,24 @@ export const customersApi = {
   saveProfile: (customerId: string, input: UpdateCustomerProfileInput) =>
     api.put<CustomerProfile>(`/api/customers/${customerId}/profile`, { json: input }),
 
+  /** One customer's deposit: the balance, the schedule it is measured against, and every movement. */
+  deposits: (customerId: string, signal?: AbortSignal) =>
+    api.get<DepositLedger>(`/api/customers/${customerId}/deposits`, { signal }),
+
+  /**
+   * The three deposit movements (WP-2.12), each a POST sub-resource rather than a PUT of a balance:
+   * the balance is a projection of immutable entries and is not a field anybody sets. All three
+   * need `customers.deposit` on the host — narrower than the `customers.write` that opened the page.
+   */
+  collectDeposit: (customerId: string, input: CollectDepositInput) =>
+    api.post<DepositEntry>(`/api/customers/${customerId}/deposits/collections`, { json: input }),
+
+  applyDeposit: (customerId: string, input: ApplyDepositInput) =>
+    api.post<DepositEntry>(`/api/customers/${customerId}/deposits/applications`, { json: input }),
+
+  refundDeposit: (customerId: string, input: RefundDepositInput) =>
+    api.post<DepositEntry>(`/api/customers/${customerId}/deposits/refunds`, { json: input }),
+
   /** The deposit schedule. Reference data on the host, so it is safe to cache for a session. */
   depositRules: (signal?: AbortSignal) => api.get<DepositRule[]>('/api/deposit-rules', { signal }),
 
@@ -462,6 +545,7 @@ export const customerKeys = {
   accountHistory: (id: string) => ['service-accounts', 'history', id] as const,
   contacts: (customerId: string) => ['customers', 'contacts', customerId] as const,
   profile: (customerId: string) => ['customers', 'profile', customerId] as const,
+  deposits: (customerId: string) => ['customers', 'deposits', customerId] as const,
 };
 
 /**
@@ -596,6 +680,24 @@ export function useCustomerContacts(customerId: string | undefined) {
   return useQuery({
     queryKey: customerKeys.contacts(customerId ?? ''),
     queryFn: ({ signal }) => customersApi.contacts(customerId!, signal),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * One customer's deposit ledger.
+ *
+ * Lives at the 360 page beside every other query rather than inside the deposit tab, which is the
+ * call WP-2.10 made for all of them: switching to a tab issues no request, and each query still owns
+ * its own loading and error state.
+ *
+ * Always answers for a customer who exists — one who has never paid a deposit reads back as a zero
+ * balance and no entries, which is an ordinary position rather than a missing record.
+ */
+export function useCustomerDeposits(customerId: string | undefined) {
+  return useQuery({
+    queryKey: customerKeys.deposits(customerId ?? ''),
+    queryFn: ({ signal }) => customersApi.deposits(customerId!, signal),
     enabled: Boolean(customerId),
   });
 }

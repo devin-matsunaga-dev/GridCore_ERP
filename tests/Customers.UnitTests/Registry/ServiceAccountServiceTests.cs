@@ -25,7 +25,7 @@ public class ServiceAccountServiceTests
 
     private static Task<Customer> ACustomerAsync(CustomersTestHost host, string name = "Sablan Family Residence") =>
         host.WithCustomersAsync(customers => customers.RegisterAsync(
-            new RegisterCustomerInput(name, CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114", 75.00m)));
+            new RegisterCustomerInput(name, CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114")));
 
     private static Task<ServiceLocation> APremiseAsync(CustomersTestHost host, string line1 = "128 As Nieves Road") =>
         host.WithLocationsAsync(locations => locations.RegisterAsync(

@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
@@ -46,6 +47,12 @@ public sealed class CustomersModule : IModule
         services.AddScoped<IDepositRuleService, DepositRuleService>();
         services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
 
+        // The deposit lifecycle (WP-2.12): collect, hold, apply to a bill, refund. It consumes
+        // IBillDirectory — registered by Billing — to ask what a bill still has outstanding before
+        // any of the deposit is put against it, which is the second cross-module seam this module
+        // reads (IMeterDirectory was the first, for WP-2.9's search).
+        services.AddScoped<ICustomerDepositService, CustomerDepositService>();
+
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
         // rules, and only one of them has a permission gate inside it.
@@ -82,6 +89,9 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<ContactMethodRequest, ContactMethodRequestValidator>();
         services.AddGridCoreValidator<UpdateContactMethodRequest, UpdateContactMethodRequestValidator>();
         services.AddGridCoreValidator<UpdateCustomerProfileRequest, UpdateCustomerProfileRequestValidator>();
+        services.AddGridCoreValidator<CollectDepositRequest, CollectDepositRequestValidator>();
+        services.AddGridCoreValidator<ApplyDepositRequest, ApplyDepositRequestValidator>();
+        services.AddGridCoreValidator<RefundDepositRequest, RefundDepositRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -101,5 +111,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapCustomerSearchEndpoints();
         endpoints.MapContactEndpoints();
         endpoints.MapProfileEndpoints();
+        endpoints.MapDepositEndpoints();
     }
 }

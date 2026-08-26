@@ -20,7 +20,7 @@ public class CustomerServiceTests
         new(new FakeClock(Now), new FakeCurrentUser("auth0|cs-agent", "Ana Cruz"));
 
     private static RegisterCustomerInput AResidentialCustomer(string name = "Sablan Family Residence") =>
-        new(name, CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114", 75.00m);
+        new(name, CustomerClass.Residential, "Maria Sablan", "maria.sablan@example.com", "+1-670-532-0114");
 
     [Fact]
     public async Task Registering_a_customer_issues_the_first_account_number()
@@ -84,7 +84,7 @@ public class CustomerServiceTests
 
         await Assert.ThrowsAsync<RegistryValidationException>(() =>
             host.WithCustomersAsync(customers =>
-                customers.RegisterAsync(new RegisterCustomerInput("Sablan Family Residence", CustomerClass.Residential, DepositHeld: -5m))));
+                customers.RegisterAsync(new RegisterCustomerInput(" ", CustomerClass.Residential))));
 
         await using var database = host.NewCustomersContext();
         await using var platform = host.NewPlatformContext();
@@ -102,7 +102,7 @@ public class CustomerServiceTests
 
         await host.WithCustomersAsync(customers => customers.UpdateAsync(
             customer.Id,
-            new UpdateCustomerInput("Sablan Family Trust", CustomerClass.Commercial, DepositHeld: 150.00m)));
+            new UpdateCustomerInput("Sablan Family Trust", CustomerClass.Commercial)));
 
         await using var platform = host.NewPlatformContext();
 

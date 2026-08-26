@@ -1,6 +1,7 @@
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -66,15 +67,20 @@ public sealed class CustomerIntakeTests(GateFixture fixture) : IAsyncLifetime
                     .GetRequiredService<ICustomerRegistrationService>()
                     .RegisterAsync(AnIntake(new IntakePremise(APremise()), deposit: 75.00m, startService: true), token);
 
-                // Three tables in the customers schema…
+                // Four tables in the customers schema — the deposit ledger joined them in WP-2.12,
+                // which is what makes the collected figure a row somebody can reconcile rather than
+                // a number written onto the customer.
                 Assert.Single(customers.ChangeTracker.Entries<Customer>());
                 Assert.Single(customers.ChangeTracker.Entries<ServiceLocation>());
                 Assert.Single(customers.ChangeTracker.Entries<ServiceAccount>());
+                Assert.Single(customers.ChangeTracker.Entries<DepositEntry>());
 
                 // …and, in the platform schema, an audit entry per write plus the deposit's own,
-                // with an outbox row for each fact the registries published.
+                // with an outbox row for each fact the registries published. The fifth outbox row is
+                // CustomerDepositCollected, which Finance posts the liability from — before WP-2.12
+                // the intake recorded a deposit the ledger never heard about.
                 Assert.Equal(5, platform.ChangeTracker.Entries<AuditEntry>().Count());
-                Assert.Equal(4, platform.ChangeTracker.Entries<OutboxMessage>().Count());
+                Assert.Equal(5, platform.ChangeTracker.Entries<OutboxMessage>().Count());
             });
         }
 

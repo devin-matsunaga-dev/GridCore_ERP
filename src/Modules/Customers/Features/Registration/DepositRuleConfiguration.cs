@@ -30,6 +30,11 @@ public sealed class DepositRuleConfiguration : IEntityTypeConfiguration<DepositR
             .HasPrecision(18, 2)
             .IsRequired();
 
+        builder.Property(rule => rule.Currency)
+            .HasColumnName("currency")
+            .HasMaxLength(DepositRule.CurrencyLength)
+            .IsRequired();
+
         builder.Property(rule => rule.Description)
             .HasColumnName("description")
             .HasMaxLength(DepositRule.DescriptionLength)

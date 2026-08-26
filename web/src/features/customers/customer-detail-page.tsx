@@ -5,6 +5,7 @@ import { useBills } from '@/api/billing';
 import {
   useCustomer,
   useCustomerContacts,
+  useCustomerDeposits,
   useCustomerProfile,
   useServiceAccountHistories,
   useServiceAccounts,
@@ -26,6 +27,7 @@ import { buildCustomerTimeline, customerBalance } from './customer-360';
 import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
+import { CustomerDepositCard } from './components/customer-deposit-card';
 import { CustomerProfileCard } from './components/customer-profile-card';
 import { CustomerBillsCard } from './components/customer-bills-card';
 import { CustomerPaymentsCard } from './components/customer-payments-card';
@@ -83,6 +85,10 @@ export function CustomerDetailPage() {
   // issues no request (WP-2.10's call), and each still owns its own loading and error state.
   const contacts = useCustomerContacts(customerId);
   const profile = useCustomerProfile(customerId);
+
+  // The deposit tab's query, here at the page with every other one. It always answers for a
+  // customer who exists — a zero balance and no entries is an ordinary position, not a 404.
+  const deposits = useCustomerDeposits(customerId);
 
   const balance = useMemo(() => customerBalance(bills.data ?? []), [bills.data]);
 
@@ -276,6 +282,21 @@ export function CustomerDetailPage() {
           isLoading={payments.isPending}
           error={payments.isError ? payments.error : undefined}
           onRetry={() => void payments.refetch()}
+        />
+      )}
+
+      {active === 'deposit' && customerId && (
+        <CustomerDepositCard
+          customerId={customerId}
+          ledger={deposits.data}
+          // The bills the deposit could settle come from the window this page already fetched, so
+          // choosing one issues no request. They are filtered to the outstanding ones in
+          // `deposits.ts` — a select offering a draft or a settled bill is a select whose choices
+          // produce 409s.
+          bills={bills.data ?? []}
+          isLoading={deposits.isPending}
+          error={deposits.isError ? deposits.error : undefined}
+          onRetry={() => void deposits.refetch()}
         />
       )}
 

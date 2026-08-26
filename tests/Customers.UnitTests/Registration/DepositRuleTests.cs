@@ -57,12 +57,12 @@ public class DepositRuleTests
         // The call WP-1.1 made for a deposit somebody types, made again for the figure the schedule
         // quotes: a rule the column would truncate is a rule nobody chose.
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            DepositRule.Reference(CustomerClass.Residential, 75.125m, "Finer than a cent."));
+            DepositRule.Reference(CustomerClass.Residential, 75.125m, DepositRules.Currency, "Finer than a cent."));
 
     [Fact]
     public void A_negative_rule_is_refused() =>
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            DepositRule.Reference(CustomerClass.Residential, -1m, "Owed back is a refund, not a rule."));
+            DepositRule.Reference(CustomerClass.Residential, -1m, DepositRules.Currency, "Owed back is a refund, not a rule."));
 
     [Fact]
     public async Task The_schedule_is_read_from_the_table_that_the_migration_seeded()

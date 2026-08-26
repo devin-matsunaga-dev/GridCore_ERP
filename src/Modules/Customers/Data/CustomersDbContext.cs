@@ -1,5 +1,6 @@
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -32,6 +33,13 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// <see cref="Customers"/>.
     /// </summary>
     public DbSet<CustomerProfile> CustomerProfiles => Set<CustomerProfile>();
+
+    /// <summary>
+    /// Every movement of every customer's security deposit — WP-2.12. Append-only, and the thing
+    /// <see cref="Customer.DepositHeld"/> is the projection of: the balance is these rows added up,
+    /// never a figure a form set.
+    /// </summary>
+    public DbSet<DepositEntry> DepositEntries => Set<DepositEntry>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

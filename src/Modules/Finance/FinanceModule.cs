@@ -46,6 +46,12 @@ public sealed class FinanceModule : IModule
         services.AddEventConsumer<PaymentApprovedConsumer>();
         services.AddEventConsumer<GoodsReceivedConsumer>();
 
+        // WP-2.12's deposit lifecycle. Three facts, three postings: money held is a liability, money
+        // returned reverses it, and money applied to a bill turns it into a settled receivable.
+        services.AddEventConsumer<CustomerDepositCollectedConsumer>();
+        services.AddEventConsumer<CustomerDepositAppliedConsumer>();
+        services.AddEventConsumer<CustomerDepositRefundedConsumer>();
+
         // Note what is NOT here.
         //
         // No edge validators: nothing is posted from the wire, so there is no request body to

@@ -39,7 +39,8 @@ public class RegistryRequestBindingTests
         Assert.Equal("Ana Reyes", body.ContactName);
 
         // Omitted fields keep the record's own defaults rather than arriving as something else.
-        Assert.Equal(0m, body.DepositHeld);
+        Assert.Null(body.Email);
+        Assert.Null(body.Phone);
     }
 
     [Fact]

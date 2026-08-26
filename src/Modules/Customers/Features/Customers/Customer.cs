@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Platform.Monetary;
 using GridCore.Platform.Registry;
 
 namespace GridCore.Modules.Customers.Features.Customers;
@@ -62,6 +63,14 @@ public sealed class Customer
     /// is never a float, and a deposit that quietly lost a fraction would surface months later as
     /// a refund that does not reconcile.
     /// </summary>
+    /// <remarks>
+    /// <b>A projection of <c>customers.deposit_entries</c>, not a field (WP-2.12).</b> It is here so
+    /// the registry list, the search hit and the 360's header can show what is held without loading
+    /// a ledger — but nothing outside <see cref="Deposits.DepositEntry"/> may move it, and no
+    /// request body can set it. It was an editable amount up to WP-2.11, which is exactly what
+    /// WP-2.12 removed: a balance a form could type over is a balance that disagrees with the
+    /// general ledger the first time somebody does.
+    /// </remarks>
     public decimal DepositHeld { get; private set; }
 
     /// <summary>When the customer was registered.</summary>
@@ -80,7 +89,12 @@ public sealed class Customer
     /// Registers a customer under an account number the caller has already reserved — see
     /// <see cref="IRegistryNumberGenerator"/>.
     /// </summary>
-    /// <exception cref="RegistryValidationException">A required field is missing, or the deposit is negative or finer than a cent.</exception>
+    /// <remarks>
+    /// <b>No deposit.</b> A customer is registered holding nothing, and money is taken by the
+    /// deposit lifecycle (WP-2.12) so that every cent held has an entry explaining it. An intake
+    /// that collects one does so as a second act inside the same transaction.
+    /// </remarks>
+    /// <exception cref="RegistryValidationException">A required field is missing.</exception>
     public static Customer Register(
         string accountNumber,
         string name,
@@ -89,7 +103,6 @@ public sealed class Customer
         string? contactName = null,
         string? email = null,
         string? phone = null,
-        decimal depositHeld = 0m,
         CustomerStatus status = CustomerStatus.Prospect)
     {
         Require(accountNumber, nameof(accountNumber));
@@ -107,7 +120,7 @@ public sealed class Customer
             Phone = RegistryText.Clean(phone, PhoneLength),
             Class = customerClass,
             Status = status,
-            DepositHeld = Deposit(depositHeld),
+            DepositHeld = Money.Zero,
             RegisteredAt = now,
         };
     }
@@ -117,28 +130,27 @@ public sealed class Customer
     /// them: it is quoted on bills and referred to by every other module, so it is fixed at
     /// registration.
     /// </summary>
-    /// <exception cref="RegistryValidationException">A required field is missing, or the deposit is negative or finer than a cent.</exception>
+    /// <remarks>
+    /// <b>The deposit is not among them either (WP-2.12).</b> It is a balance made of immutable
+    /// entries, so it moves by collecting, applying or refunding — never by a correction to a
+    /// customer record. See <see cref="RecordDepositMovement"/>.
+    /// </remarks>
+    /// <exception cref="RegistryValidationException">A required field is missing.</exception>
     public void UpdateDetails(
         string name,
         CustomerClass customerClass,
         string? contactName,
         string? email,
-        string? phone,
-        decimal depositHeld)
+        string? phone)
     {
         Require(name, nameof(name));
         RequireDeclared(customerClass);
-
-        // Every guard runs before the first assignment, so a rejected correction leaves the entity
-        // exactly as it was rather than half-applied.
-        var deposit = Deposit(depositHeld);
 
         Name = RegistryText.Clean(name, NameLength)!;
         Class = customerClass;
         ContactName = RegistryText.Clean(contactName, NameLength);
         Email = RegistryText.Clean(email, EmailLength);
         Phone = RegistryText.Clean(phone, PhoneLength);
-        DepositHeld = deposit;
     }
 
     /// <summary>Moves the customer to <paramref name="status"/>.</summary>
@@ -160,22 +172,39 @@ public sealed class Customer
         StatusReason = RegistryText.Clean(reason, ReasonLength);
     }
 
-    private static decimal Deposit(decimal amount)
+    /// <summary>
+    /// Moves the held deposit by <paramref name="signedAmount"/> — positive for money taken,
+    /// negative for money applied or given back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="Deposits.DepositEntry"/> is the only caller, and that is the invariant.</b> It
+    /// is <see langword="internal"/> so nothing outside this module can reach it at all, and inside
+    /// the module every path goes through the entry factories — which is what makes "a balance
+    /// change without a ledger row" unreachable rather than merely unwritten. A second writer takes
+    /// the invariant with it: the same warning WP-2.11 left on <c>CustomerContact</c> and the
+    /// one-primary-per-kind rule, for the same reason, that no database constraint expresses this.
+    /// </para>
+    /// <para>
+    /// <b>The balance may not go below zero</b>, which is where "a refund cannot exceed the held
+    /// balance" is actually enforced — one guard covering refunds and bill applications alike,
+    /// rather than a rule per kind that a fourth kind could be added without.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="RegistryWorkflowException">The movement would leave the utility holding less than nothing.</exception>
+    internal void RecordDepositMovement(decimal signedAmount, Deposits.DepositEntryKind kind)
     {
-        if (amount < 0m)
+        var moved = DepositHeld + signedAmount;
+
+        if (moved < Money.Zero)
         {
-            throw new RegistryValidationException("A deposit held cannot be negative; a refund owed is a Finance entry, not a negative deposit.");
+            throw new RegistryWorkflowException(
+                $"Customer {AccountNumber} holds a deposit of {DepositHeld:0.00}; "
+                + $"{Math.Abs(signedAmount):0.00} cannot be {kind.ToString().ToLowerInvariant()} against it. "
+                + "The utility cannot hand over money it is not holding.");
         }
 
-        // Rounding is not this type's to invent — CONVENTIONS.md centralises it, and the helper
-        // arrives with the rate engine (WP-2.3). Until then a value finer than a cent is refused
-        // rather than silently truncated by the column's scale.
-        if (decimal.Round(amount, 2) != amount)
-        {
-            throw new RegistryValidationException($"A deposit must be a whole number of cents; '{amount}' is not.");
-        }
-
-        return amount;
+        DepositHeld = moved;
     }
 
     private static void Require(string value, string field)

@@ -47,6 +47,23 @@ public sealed record RecordBillPaymentInput(
     string ProviderReference,
     string? Reason = null);
 
+/// <summary>
+/// What arrives when a customer's security deposit is put against a bill (WP-2.12).
+/// </summary>
+/// <remarks>
+/// Its own input rather than a <see cref="RecordBillPaymentInput"/> with a deposit id squeezed into
+/// the payment field. The two settle a bill the same way — money against the amount paid, never a
+/// bill adjustment — but they are different facts about where the money came from, and the audit
+/// trail says so with a different action.
+/// </remarks>
+/// <param name="Amount">How much of the deposit was applied. Always positive.</param>
+/// <param name="DepositEntryId">The ledger entry in the Customers schema, so the two records can be tied together.</param>
+/// <param name="Reason">What to record against the transition.</param>
+public sealed record RecordBillDepositInput(
+    decimal Amount,
+    Guid DepositEntryId,
+    string? Reason = null);
+
 /// <summary>What a caller supplies to review overdue bills.</summary>
 /// <param name="AsOf">The day to judge against. Defaults to today.</param>
 public sealed record OverdueReviewInput(DateOnly? AsOf = null);
@@ -175,6 +192,16 @@ public interface IBillService
     /// </exception>
     /// <exception cref="BillingValidationException">The amount is not positive, or is finer than a cent.</exception>
     Task<Bill> RecordPaymentAsync(Guid billId, RecordBillPaymentInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reduces what a bill is owed because a customer's security deposit was applied to it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A payment-side effect, not a bill mutation.</b> WP-2.4's rule holds — money moving is not
+    /// a lifecycle state — so the bill's adjustment trail is untouched and only the amount paid
+    /// moves, exactly as it does for an approved payment.
+    /// </remarks>
+    Task<Bill> RecordDepositAsync(Guid billId, RecordBillDepositInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Moves every outstanding bill past its due date to <see cref="BillStatus.Overdue"/>.</summary>
     Task<OverdueReviewResult> ReviewOverdueAsync(OverdueReviewInput input, CancellationToken cancellationToken = default);
@@ -489,7 +516,35 @@ public sealed class BillService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        return unitOfWork.ExecuteAsync(
+        // INVARIANT 1, from a consumer rather than an endpoint. This runs outside any request, so
+        // ICurrentUser resolves to the system user and the entry is recorded against `system` —
+        // which is correct: nobody at a keyboard reduced this balance, an approved payment did. The
+        // payment's own audit entry names the clerk who took it, and the two are tied together by
+        // the reference on this one.
+        return SettleAsync(billId, input.Amount, input.Reason, AuditActions.BillPaymentRecorded, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<Bill> RecordDepositAsync(Guid billId, RecordBillDepositInput input, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        // Same settlement, different fact. The action name is what makes "was this bill settled with
+        // cash or out of the deposit" a filter on the trail rather than a diff somebody has to read,
+        // and the rep who decided to spend the deposit is named on the deposit ledger's own entry.
+        return SettleAsync(billId, input.Amount, input.Reason, AuditActions.BillDepositApplied, cancellationToken);
+    }
+
+    /// <summary>
+    /// Puts money against a bill and audits it under <paramref name="action"/>.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the two things that settle a bill — an approved payment and an applied deposit —
+    /// because what settling means is <see cref="Bill.RecordPayment"/>'s answer and there must not
+    /// be two of them. What differs is only which fact the trail records.
+    /// </remarks>
+    private Task<Bill> SettleAsync(Guid billId, decimal amount, string? reason, string action, CancellationToken cancellationToken) =>
+        unitOfWork.ExecuteAsync(
             async ct =>
             {
                 var now = clock.GetUtcNow();
@@ -501,27 +556,16 @@ public sealed class BillService(
                 var bill = await LoadAsync(billId, ct).ConfigureAwait(false);
                 var before = BillSnapshot.Of(bill);
 
-                bill.RecordPayment(input.Amount, RegistryActor.Of(currentUser), now, input.Reason);
+                bill.RecordPayment(amount, RegistryActor.Of(currentUser), now, reason);
 
-                // INVARIANT 1, from a consumer rather than an endpoint. This runs outside any
-                // request, so ICurrentUser resolves to the system user and the entry is recorded
-                // against `system` — which is correct: nobody at a keyboard reduced this balance,
-                // an approved payment did. The payment's own audit entry names the clerk who took
-                // it, and the two are tied together by the reference on this one.
-                audit.Record(
-                    AuditActions.BillPaymentRecorded,
-                    AuditEntityTypes.Bill,
-                    bill.Id.ToString(),
-                    before,
-                    BillSnapshot.Of(bill));
+                audit.Record(action, AuditEntityTypes.Bill, bill.Id.ToString(), before, BillSnapshot.Of(bill));
 
-                // No event. Finance already heard the fact from Payments — PaymentApproved is what
-                // it posts the cash receipt from — and a second event saying the same money arrived
-                // is how a ledger gets a duplicate entry.
+                // No event. Finance already heard the fact from the module that stated it —
+                // PaymentApproved for cash, CustomerDepositApplied for a deposit — and a second
+                // event saying the same money moved is how a ledger gets a duplicate entry.
                 return bill;
             },
             cancellationToken);
-    }
 
     /// <inheritdoc />
     public Task<OverdueReviewResult> ReviewOverdueAsync(OverdueReviewInput input, CancellationToken cancellationToken = default)

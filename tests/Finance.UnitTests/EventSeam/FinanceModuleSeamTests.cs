@@ -9,8 +9,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace GridCore.Modules.Finance.UnitTests.EventSeam;
 
 /// <summary>
-/// What Finance asks the host for: three consumers and a ledger seam behind them. Finance is
-/// downstream-only, so it registers no client of Billing, Payments or Inventory.
+/// What Finance asks the host for: a consumer per upstream fact and a ledger seam behind them.
+/// Finance is downstream-only, so it registers no client of Billing, Payments, Inventory or
+/// Customers.
 /// </summary>
 public sealed class FinanceModuleSeamTests
 {
@@ -21,13 +22,18 @@ public sealed class FinanceModuleSeamTests
 
         // BillAdjusted joined the set in WP-2.6. Without it the receivable raised on BillIssued
         // would keep saying the original figure, and AR would diverge from Billing the first time a
-        // disputed bill was credited.
+        // disputed bill was credited. The three deposit facts joined in WP-2.12: money the utility
+        // holds on somebody else's behalf is a liability, and one that never reached the ledger
+        // would leave a trial balance short by every deposit on the books.
         Assert.Equal(
             [
                 typeof(BillIssuedConsumer),
                 typeof(BillAdjustedConsumer),
                 typeof(PaymentApprovedConsumer),
                 typeof(GoodsReceivedConsumer),
+                typeof(CustomerDepositCollectedConsumer),
+                typeof(CustomerDepositAppliedConsumer),
+                typeof(CustomerDepositRefundedConsumer),
             ],
             RegisteredConsumers(services));
     }

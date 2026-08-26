@@ -17,6 +17,7 @@ describe('customer360Tabs', () => {
       'Contacts',
       'Bills',
       'Payments',
+      'Deposit',
       'Timeline',
       'Work orders',
     ]);

@@ -14,14 +14,16 @@ namespace GridCore.Modules.Customers.Features.Customers;
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
-/// <param name="DepositHeld">Security deposit taken, if any.</param>
+/// <remarks>
+/// <b>No deposit (WP-2.12).</b> A customer is registered holding nothing; taking money is the
+/// deposit lifecycle's act, so that every cent held has an entry explaining it.
+/// </remarks>
 public sealed record RegisterCustomerInput(
     string Name,
     CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
-    string? Phone = null,
-    decimal DepositHeld = 0m);
+    string? Phone = null);
 
 /// <summary>What a caller supplies to correct a customer's details.</summary>
 /// <param name="Name">Who they are.</param>
@@ -29,14 +31,16 @@ public sealed record RegisterCustomerInput(
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
-/// <param name="DepositHeld">Security deposit held.</param>
+/// <remarks>
+/// <b>The deposit is not correctable (WP-2.12).</b> It is a balance made of immutable entries, so it
+/// moves by collecting, applying or refunding — never by an edit to a customer record.
+/// </remarks>
 public sealed record UpdateCustomerInput(
     string Name,
     CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
-    string? Phone = null,
-    decimal DepositHeld = 0m);
+    string? Phone = null);
 
 /// <summary>How the registry list is filtered.</summary>
 /// <param name="Search">Matched against the account number and the name, case-insensitively.</param>
@@ -115,8 +119,7 @@ public sealed class CustomerService(
                     now,
                     input.ContactName,
                     input.Email,
-                    input.Phone,
-                    input.DepositHeld);
+                    input.Phone);
 
                 database.Customers.Add(customer);
 
@@ -150,7 +153,7 @@ public sealed class CustomerService(
         return MutateAsync(
             id,
             AuditActions.CustomerUpdated,
-            customer => customer.UpdateDetails(input.Name, input.Class, input.ContactName, input.Email, input.Phone, input.DepositHeld),
+            customer => customer.UpdateDetails(input.Name, input.Class, input.ContactName, input.Email, input.Phone),
             cancellationToken);
     }
 
