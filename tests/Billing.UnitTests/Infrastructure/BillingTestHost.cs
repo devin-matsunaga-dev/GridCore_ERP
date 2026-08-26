@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Delinquency;
 using GridCore.Modules.Billing.Features.Documents;
 using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -76,6 +77,10 @@ public sealed class BillingTestHost : IDisposable
         // so the shipped catalogue is there without a migration.
         services.AddScoped<IFeeScheduleService, FeeScheduleService>();
         services.AddScoped<IAccountChargeService, AccountChargeService>();
+
+        // The late-charge run (WP-2.19). Registered like every other slice, so a test resolves it the
+        // way the host does; the one that proves a refusal builds it by hand with another caller.
+        services.AddScoped<ILateChargeService, LateChargeService>();
 
         // The reprint (WP-2.14). Registered like every other slice, so a test resolves it the way
         // the host does; the ones that prove a refusal build it by hand with another caller.
@@ -179,6 +184,38 @@ public sealed class BillingTestHost : IDisposable
             services.GetRequiredService<IUnitOfWork>(),
             services.GetRequiredService<IAuditLog>(),
             services.GetRequiredService<IEventPublisher>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the late-charge run, in its own scope (WP-2.19).</summary>
+    public Task<TResult> WithLateChargesAsync<TResult>(Func<ILateChargeService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ILateChargeService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the late-charge run as <paramref name="caller"/>, over
+    /// this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape the reprint and the charge register take, and needed for the same reason:
+    /// running the late charges is gated on <c>billing.charge</c> both on the route and in the
+    /// service, and proving the refusal means somebody who <i>may</i> bill has to have left a
+    /// past-due bill lying about first.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<ILateChargeService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new LateChargeService(
+            services.GetRequiredService<BillingDbContext>(),
+            services.GetRequiredService<IAccountChargeService>(),
+            services.GetRequiredService<IFeeScheduleService>(),
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
             caller,
             services.GetRequiredService<TimeProvider>())));
     }

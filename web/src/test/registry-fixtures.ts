@@ -1,6 +1,7 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
 import type { AccountCharge, FeeScheduleEntry } from '@/api/billing';
 import type {
+  AccountArrears,
   AccountStatement,
   AccountTransition,
   ApplicationDocument,
@@ -14,6 +15,10 @@ import type {
   DepositAccountRequirement,
   DepositLedger,
   DepositRequirement,
+  Delinquency,
+  DisconnectionEligibility,
+  DunningNotice,
+  DunningStep,
   ServiceAccount,
   ServiceApplication,
   ServiceLocation,
@@ -486,7 +491,11 @@ export function feeScheduleEntry(overrides: Partial<FeeScheduleEntry> = {}): Fee
     name: 'Service connection',
     description: 'Establishing supply at a premise. Demo figure.',
     serviceType: 'Electricity',
+    // Flat by default (WP-2.19). The one rate fee GridCore publishes is the late charge, which is
+    // never offered at the counter — a test that wants one asks for it by name.
+    basis: 'Flat',
     amount: 135,
+    rate: null,
     currency: 'USD',
     effectiveFrom: '2026-01-01',
     feeScheduleId: '0192f000-0000-7000-8000-000000000701',
@@ -506,6 +515,9 @@ export function accountCharge(overrides: Partial<AccountCharge> = {}): AccountCh
     description: 'Service connection',
     amount: 135,
     currency: 'USD',
+    basis: 'Flat',
+    rate: null,
+    basisAmount: null,
     feeScheduleId: feeScheduleEntry().feeScheduleId,
     scheduleEffectiveFrom: '2026-01-01',
     raisedOn: '2026-08-27',
@@ -623,6 +635,157 @@ export function stockMovement(overrides: Partial<StockMovement> = {}): StockMove
     actorId: 'demo:storeman',
     actorName: 'Wes Store (demo)',
     recordedAt: '2026-06-01T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * One account's delinquency picture (WP-2.19): $200 past due and ninety days late, a $50 threshold,
+ * no notice served and no deposit held — the state a screen has the most to say about.
+ */
+export function delinquency(overrides: Partial<Delinquency> = {}): Delinquency {
+  const account = serviceAccount();
+
+  return {
+    serviceAccountId: account.id,
+    accountNumber: account.accountNumber,
+    customerId: customer().id,
+    customerName: customer().name,
+    accountStatus: 'Active',
+    arrears: accountArrears(),
+    depositHeld: 0,
+    steps: dunningSteps(),
+    dueStep: dunningSteps()[2],
+    notices: [],
+    eligibility: disconnectionEligibility(),
+    ...overrides,
+  };
+}
+
+/** What an account owes, aged. Past due and not-yet-due deliberately differ — the package's hinge. */
+export function accountArrears(overrides: Partial<AccountArrears> = {}): AccountArrears {
+  return {
+    currency: 'USD',
+    asOf: '2026-09-01',
+    outstandingAmount: 280,
+    pastDueAmount: 200,
+    currentAmount: 80,
+    oldestDueDate: '2026-06-03',
+    daysPastDue: 90,
+    isInArrears: true,
+    buckets: [
+      { label: 'Not yet due', fromDays: 0, toDays: 0, amount: 80 },
+      { label: '1-30 days', fromDays: 1, toDays: 30, amount: 0 },
+      { label: '31-60 days', fromDays: 31, toDays: 60, amount: 0 },
+      { label: '61-90 days', fromDays: 61, toDays: 90, amount: 200 },
+      { label: 'Over 90 days', fromDays: 91, toDays: null, amount: 0 },
+    ],
+    bills: [
+      {
+        id: '0192f000-0000-7000-8000-000000000901',
+        billNumber: 'BIL-000001',
+        dueDate: '2026-06-03',
+        balance: 200,
+        daysPastDue: 90,
+        isPastDue: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/** The shipped dunning sequence, as the host publishes it. */
+export function dunningSteps(): DunningStep[] {
+  return [
+    {
+      noticeType: 'Reminder',
+      sequence: 1,
+      daysPastDue: 10,
+      minimumArrears: 10,
+      waitingPeriodDays: 0,
+      currency: 'USD',
+      name: 'Payment reminder',
+      message: 'Your account is past due. Demo wording; not an authoritative notice.',
+    },
+    {
+      noticeType: 'Delinquency',
+      sequence: 2,
+      daysPastDue: 30,
+      minimumArrears: 25,
+      waitingPeriodDays: 0,
+      currency: 'USD',
+      name: 'Notice of delinquency',
+      message: 'Your account is delinquent. Demo wording; not an authoritative notice.',
+    },
+    {
+      noticeType: 'Disconnection',
+      sequence: 3,
+      daysPastDue: 45,
+      minimumArrears: 50,
+      waitingPeriodDays: 10,
+      currency: 'USD',
+      name: 'Notice of disconnection',
+      message: 'Service is scheduled for disconnection. Demo wording; not an authoritative notice.',
+    },
+  ];
+}
+
+/** One notice served, with the day it went out — the record that makes a disconnection defensible. */
+export function dunningNotice(overrides: Partial<DunningNotice> = {}): DunningNotice {
+  const account = serviceAccount();
+
+  return {
+    id: '0192f000-0000-7000-8000-000000000911',
+    serviceAccountId: account.id,
+    accountNumber: account.accountNumber,
+    customerId: customer().id,
+    customerName: customer().name,
+    noticeType: 'Disconnection',
+    servedOn: '2026-08-10',
+    arrearsAmount: 200,
+    currency: 'USD',
+    daysPastDue: 68,
+    waitingPeriodDays: 10,
+    effectiveFrom: '2026-08-20',
+    notes: null,
+    actorId: 'auth0|cs-agent',
+    actorName: 'Ana Cruz',
+    recordedAt: '2026-08-10T09:00:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * Where an account stands against the four tests. Not eligible by default and blocked on the notice,
+ * because that is the state a screen has to explain rather than the one it celebrates.
+ */
+export function disconnectionEligibility(
+  overrides: Partial<DisconnectionEligibility> = {},
+): DisconnectionEligibility {
+  return {
+    serviceAccountId: serviceAccount().id,
+    asOf: '2026-09-01',
+    currency: 'USD',
+    arrearsBeforeOffset: 200,
+    depositHeldBeforeOffset: 0,
+    offsetAmount: 0,
+    arrearsAfterOffset: 200,
+    depositHeldAfterOffset: 0,
+    threshold: 50,
+    disconnectionNoticeServedOn: null,
+    waitingPeriodDays: 10,
+    eligibleFrom: null,
+    arrangementStatus: null,
+    isEligible: false,
+    depositClearsArrears: false,
+    isOffsetApplied: false,
+    tests: [
+      { name: 'Arrears at or over the published threshold', isSatisfied: true, detail: '200.00 past due against a threshold of 50.00.' },
+      { name: 'Disconnection notice served', isSatisfied: false, detail: 'No disconnection notice has been served on this account.' },
+      { name: 'Statutory waiting period elapsed', isSatisfied: false, detail: 'Nothing has started the 10-day period.' },
+      { name: 'No payment arrangement in force', isSatisfied: true, detail: 'No payment arrangement is recorded against this account.' },
+    ],
+    blockers: ['Disconnection notice served', 'Statutory waiting period elapsed'],
     ...overrides,
   };
 }

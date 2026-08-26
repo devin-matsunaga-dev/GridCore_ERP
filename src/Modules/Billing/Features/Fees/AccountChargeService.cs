@@ -20,7 +20,23 @@ namespace GridCore.Modules.Billing.Features.Fees;
 /// The day to price against. Defaults to today. Its own field because a fee raised today for
 /// something done last week is priced on last week's schedule.
 /// </param>
-public sealed record RaiseChargeInput(Guid ServiceAccountId, FeeCode Code, string Reason, DateOnly? RaisedOn = null);
+/// <param name="BasisAmount">
+/// What to take a <see cref="FeeBasis.Rate"/> fee's rate on — the past-due balance, for a late
+/// charge (WP-2.19). Required for a rate fee and refused on a flat one.
+/// </param>
+/// <remarks>
+/// <b><see cref="BasisAmount"/> is deliberately not on <c>RaiseChargeRequest</c>.</b> A rate fee's
+/// basis is a figure the register computes, exactly as its rate is a figure the schedule publishes,
+/// and a field a rep could type would be a rep inventing the balance a customer is charged on — the
+/// same argument WP-2.16 made for having no amount field. The only caller that supplies one is
+/// <c>LateChargeService</c>, in process.
+/// </remarks>
+public sealed record RaiseChargeInput(
+    Guid ServiceAccountId,
+    FeeCode Code,
+    string Reason,
+    DateOnly? RaisedOn = null,
+    decimal? BasisAmount = null);
 
 /// <summary>What a caller supplies to withdraw a raised charge.</summary>
 /// <param name="Reason">Why. Required — it removes money the utility was going to be owed.</param>
@@ -137,6 +153,20 @@ public sealed class AccountChargeService(
                 // old figure: the charge is priced once, here, and stamps the row that priced it.
                 // Nothing downstream ever asks the catalogue again.
                 var assessment = await schedule.AssessAsync(input.Code, raisedOn, ct).ConfigureAwait(false);
+
+                // WP-2.19's rate basis. A rate fee arrives unpriced and is priced here, on a figure
+                // the caller computed; a flat fee arrives priced and refuses a basis, because a
+                // caller that supplied one was expecting arithmetic that is not going to happen.
+                assessment = (assessment.Basis, input.BasisAmount) switch
+                {
+                    (FeeBasis.Rate, { } basis) => assessment.PriceOn(basis),
+                    (FeeBasis.Rate, null) => throw new BillingValidationException(
+                        $"{input.Code} is charged as a rate on a balance, so raising one needs the balance to charge on."),
+                    (FeeBasis.Flat, not null) => throw new BillingValidationException(
+                        $"{input.Code} is published as a flat fee; there is nothing for a basis of "
+                        + $"{input.BasisAmount:0.00} to change about its figure."),
+                    _ => assessment,
+                };
 
                 var charge = AccountCharge.Raise(assessment, account, raisedOn, input.Reason, RegistryActor.Of(currentUser), now);
 
@@ -354,6 +384,9 @@ public sealed class AccountChargeService(
 /// <param name="AccountNumber">Its number, so the entry is readable without a second lookup.</param>
 /// <param name="Code">Which published fee.</param>
 /// <param name="Description">What the line will say on the bill.</param>
+/// <param name="Basis">Whether the schedule published an amount or a rate.</param>
+/// <param name="Rate">The rate it was taken at, on a rate fee.</param>
+/// <param name="BasisAmount">What that rate was taken on.</param>
 /// <param name="Amount">What was charged.</param>
 /// <param name="Currency">ISO 4217 code it is expressed in.</param>
 /// <param name="FeeScheduleId">The schedule row that priced it — how a figure is traced.</param>
@@ -368,6 +401,9 @@ public sealed record AccountChargeSnapshot(
     string AccountNumber,
     FeeCode Code,
     string Description,
+    FeeBasis Basis,
+    decimal? Rate,
+    decimal? BasisAmount,
     decimal Amount,
     string Currency,
     Guid FeeScheduleId,
@@ -388,6 +424,9 @@ public sealed record AccountChargeSnapshot(
             charge.AccountNumber,
             charge.Code,
             charge.Description,
+            charge.Basis,
+            charge.Rate,
+            charge.BasisAmount,
             charge.Amount,
             charge.Currency,
             charge.FeeScheduleId,

@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Delinquency;
 using GridCore.Modules.Billing.Features.Documents;
 using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -44,6 +45,12 @@ public sealed class BillingModule : IModule
         services.AddScoped<IFeeScheduleService, FeeScheduleService>();
         services.AddScoped<IAccountChargeService, AccountChargeService>();
 
+        // The late-charge run (WP-2.19). Its own service rather than a method on IBillService: that
+        // interface raises, issues, corrects and settles a bill, and this reads the register to
+        // decide who is late and then raises fees through IAccountChargeService. It writes no charge
+        // itself, which is what keeps "what a charge is" in one place.
+        services.AddScoped<ILateChargeService, LateChargeService>();
+
         // The bill reprint (WP-2.14). Its own service rather than another method on IBillService:
         // that interface is where a bill is raised, issued, corrected and paid, and a read that
         // produces a document for a customer has different rules — it refuses a draft, it is gated on
@@ -80,6 +87,7 @@ public sealed class BillingModule : IModule
         services.AddGridCoreValidator<RaiseChargeRequest, RaiseChargeRequestValidator>();
         services.AddGridCoreValidator<CancelChargeRequest, CancelChargeRequestValidator>();
         services.AddGridCoreValidator<BillChargeRequest, BillChargeRequestValidator>();
+        services.AddGridCoreValidator<LateChargeRunRequest, LateChargeRunRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -93,6 +101,7 @@ public sealed class BillingModule : IModule
 
         endpoints.MapRatePlanEndpoints();
         endpoints.MapFeeEndpoints();
+        endpoints.MapLateChargeEndpoints();
         endpoints.MapBillEndpoints();
         endpoints.MapBillDocumentEndpoints();
     }

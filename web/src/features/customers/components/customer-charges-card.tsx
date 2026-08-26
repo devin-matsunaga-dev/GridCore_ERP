@@ -3,7 +3,6 @@ import { Receipt } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   billKeys,
-  feeCodes,
   feeKeys,
   feesApi,
   useAccountCharges,
@@ -25,7 +24,7 @@ import { Select } from '@/components/ui/select';
 import { StatusPill } from '@/components/ui/status';
 import { formatDate, formatMoney } from '@/lib/format';
 import { IntakeField, IntakeFields } from '../registration/components/intake-field';
-import { chargeStatusTone, chargeableAccounts, feeCodeLabel, isActionable, pendingTotal, priceOf, sortCharges } from '../charges';
+import { chargeBasisNote, chargeStatusTone, chargeableAccounts, feeCodeLabel, isActionable, pendingTotal, priceOf, raisableFees, sortCharges } from '../charges';
 
 /**
  * The fees raised against one customer, and the desk that raises one (WP-2.16's screen, shipped
@@ -205,7 +204,8 @@ function RaiseChargeForm({
   const [code, setCode] = useState<FeeCode>('ServiceConnection');
   const [reason, setReason] = useState('');
 
-  const priced = priceOf(schedule, code);
+  const raisable = useMemo(() => raisableFees(schedule), [schedule]);
+  const priced = priceOf(raisable, code);
   const queryClient = useQueryClient();
 
   const raise = useMutation({
@@ -256,15 +256,21 @@ function RaiseChargeForm({
           hint={
             isScheduleLoading
               ? 'Reading the published schedule…'
-              : priced
+              : priced?.amount !== null && priced?.amount !== undefined
                 ? `${formatMoney(priced.amount)} ${priced.currency} — published from ${formatDate(priced.effectiveFrom)}`
                 : 'The schedule publishes no figure for this fee today.'
           }
         >
+          {/*
+            Driven off the schedule rather than off the static code list, so the late payment charge
+            (WP-2.19) never appears here: it is a rate on a past-due balance the register computes,
+            and a rep choosing it would have to supply the balance — which is inventing one. The
+            late-charge run raises it, and the register below is where it shows up.
+          */}
           <Select id="charge-code" fullWidth value={code} onChange={(event) => setCode(event.target.value as FeeCode)}>
-            {feeCodes.map((option) => (
-              <option key={option} value={option}>
-                {feeCodeLabel(option)}
+            {raisable.map((option) => (
+              <option key={option.code} value={option.code}>
+                {feeCodeLabel(option.code)}
               </option>
             ))}
           </Select>
@@ -286,7 +292,7 @@ function RaiseChargeForm({
 
       <Button
         className="mt-4"
-        disabled={serviceAccountId === '' || reason.trim() === '' || priced === undefined || raise.isPending}
+        disabled={serviceAccountId === '' || reason.trim() === '' || priced?.amount === null || priced?.amount === undefined || raise.isPending}
         onClick={() => raise.mutate()}
       >
         {raise.isPending ? 'Raising…' : 'Raise fee'}
@@ -308,7 +314,12 @@ const chargeColumns: Column<AccountCharge>[] = [
     cell: (row) => (
       <span className="block min-w-0">
         <span className="text-heading block truncate font-medium">{feeCodeLabel(row.code)}</span>
-        <span className="text-muted block truncate text-xs">{row.reason}</span>
+        {/*
+          A rate charge says what it was taken on. Two of the three columns it stamps — the rate and
+          the basis — reach a screen here, which is what lets a clerk answer "why is this $2.35"
+          without anybody re-running an arrears query.
+        */}
+        <span className="text-muted block truncate text-xs">{chargeBasisNote(row) ?? row.reason}</span>
       </span>
     ),
   },

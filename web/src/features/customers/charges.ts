@@ -19,6 +19,7 @@ const feeCodeLabels: Record<FeeCode, string> = {
   MeterTest: 'Meter test',
   Inspection: 'Inspection',
   UnauthorizedConnection: 'Unauthorised connection',
+  LateCharge: 'Late payment charge',
 };
 
 /**
@@ -67,6 +68,37 @@ export function chargeableAccounts(accounts: readonly ServiceAccount[]): Service
  */
 export function priceOf(schedule: readonly FeeScheduleEntry[], code: FeeCode): FeeScheduleEntry | undefined {
   return schedule.find((entry) => entry.code === code);
+}
+
+/**
+ * The published fees a rep may raise from this screen: the flat ones, and only the flat ones.
+ *
+ * **A rate fee is deliberately not offerable** (WP-2.19). The late charge is a percentage of a
+ * past-due balance the register computes, so it has no figure until something is charged on it — and
+ * a rep choosing it would have to supply the balance, which is the same thing as inventing one. The
+ * late-charge run raises it; this desk never does. That is the same argument the tab already makes
+ * for having no amount field, one level up.
+ *
+ * Driven off the schedule rather than off `feeCodes`, so a code the catalogue publishes no figure
+ * for today is not offered either — the host would refuse it, and a select that offered it would be
+ * a select that produces 400s.
+ */
+export function raisableFees(schedule: readonly FeeScheduleEntry[]): FeeScheduleEntry[] {
+  return schedule.filter((entry) => entry.basis === 'Flat' && entry.amount !== null);
+}
+
+/**
+ * What a charge's figure reads as beside its label: a flat fee is the amount, and a rate fee says
+ * what it was taken on.
+ *
+ * The three columns a rate charge stamps — the schedule row, the rate and the basis — are what let a
+ * clerk answer "why is this $2.35" years later without re-running an arrears query. This is where
+ * two of them reach a screen.
+ */
+export function chargeBasisNote(charge: AccountCharge): string | undefined {
+  if (charge.basis !== 'Rate' || charge.rate === null || charge.basisAmount === null) return undefined;
+
+  return `${(charge.rate * 100).toFixed(2)}% of ${charge.basisAmount.toFixed(2)} past due`;
 }
 
 /**

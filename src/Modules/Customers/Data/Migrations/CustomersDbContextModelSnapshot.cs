@@ -392,6 +392,193 @@ namespace GridCore.Modules.Customers.Data.Migrations
                     b.ToTable("customers", "customers");
                 });
 
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Delinquency.DunningNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<decimal>("ArrearsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("arrears_amount");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("CustomerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("customer_name");
+
+                    b.Property<int>("DaysPastDue")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_past_due");
+
+                    b.Property<Guid>("DunningStepId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dunning_step_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("NoticeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("notice_type");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<DateOnly>("ServedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("served_on");
+
+                    b.Property<Guid>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.Property<int>("WaitingPeriodDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("waiting_period_days");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dunning_notices");
+
+                    b.HasIndex("ServiceAccountId", "NoticeType", "ServedOn")
+                        .HasDatabaseName("ix_dunning_notices_account_type_served");
+
+                    b.ToTable("dunning_notices", "customers");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Delinquency.DunningStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("currency");
+
+                    b.Property<int>("DaysPastDue")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_past_due");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("message");
+
+                    b.Property<decimal>("MinimumArrears")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("minimum_arrears");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NoticeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("notice_type");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<int>("WaitingPeriodDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("waiting_period_days");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dunning_steps");
+
+                    b.HasIndex("NoticeType")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dunning_steps_notice_type");
+
+                    b.HasIndex("Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("ux_dunning_steps_sequence");
+
+                    b.ToTable("dunning_steps", "customers");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("01a04084-3000-7175-bbbf-a17e6e3d1550"),
+                            Currency = "USD",
+                            DaysPastDue = 10,
+                            Message = "Your account is past due. Please pay the outstanding balance to avoid further action. If you have already paid, thank you — please disregard this notice. Demo wording and demo timing following CUC's published customer-service information; not an authoritative notice.",
+                            MinimumArrears = 10.00m,
+                            Name = "Payment reminder",
+                            NoticeType = "Reminder",
+                            Sequence = 1,
+                            WaitingPeriodDays = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("01a04084-3000-7be2-b5b2-f1676c455930"),
+                            Currency = "USD",
+                            DaysPastDue = 30,
+                            Message = "Your account is delinquent. Pay the outstanding balance in full, or contact Customer Service to arrange payment, to avoid disconnection of service. Demo wording and demo timing following CUC's published customer-service information; not an authoritative notice.",
+                            MinimumArrears = 25.00m,
+                            Name = "Notice of delinquency",
+                            NoticeType = "Delinquency",
+                            Sequence = 2,
+                            WaitingPeriodDays = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("01a04084-3000-7913-a281-a6a386bcf4df"),
+                            Currency = "USD",
+                            DaysPastDue = 45,
+                            Message = "Service at this premise is scheduled for disconnection for non-payment. To avoid disconnection, pay the outstanding balance, or contact Customer Service to arrange payment, within ten days of the date of this notice. Any security deposit held will be applied to qualifying past-due amounts before service is disconnected. Demo wording and demo timing following CUC's published customer-service information and CNMI Public Law 16-17; not an authoritative notice.",
+                            MinimumArrears = 50.00m,
+                            Name = "Notice of disconnection",
+                            NoticeType = "Disconnection",
+                            Sequence = 3,
+                            WaitingPeriodDays = 10
+                        });
+                });
+
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Deposits.DepositEntry", b =>
                 {
                     b.Property<Guid>("Id")

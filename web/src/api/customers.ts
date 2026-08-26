@@ -1530,3 +1530,191 @@ export function useApplicationReference() {
     staleTime: Infinity,
   });
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Delinquency, dunning and the statutory deposit offset (WP-2.19)
+ * ---------------------------------------------------------------------------
+ */
+
+/** Mirrors `DunningNoticeType` — the notices the utility serves, in the order it serves them. */
+export const dunningNoticeTypes = ['Reminder', 'Delinquency', 'Disconnection'] as const;
+export type DunningNoticeType = (typeof dunningNoticeTypes)[number];
+
+/** Mirrors `ArrearsBucketResponse` — one band of the debtors' ageing. */
+export type ArrearsBucket = {
+  label: string;
+  fromDays: number;
+  toDays: number | null;
+  amount: number;
+};
+
+/** Mirrors `ArrearsBillResponse` — one outstanding bill behind the figures. */
+export type ArrearsBill = {
+  id: string;
+  billNumber: string;
+  dueDate: string | null;
+  balance: number;
+  daysPastDue: number;
+  isPastDue: boolean;
+};
+
+/**
+ * Mirrors `AccountArrearsResponse` — what an account owes, aged.
+ *
+ * `pastDueAmount` is not `outstandingAmount`, and the whole package turns on the difference: a bill
+ * issued last week and due next month is money the utility is owed and is not money the customer is
+ * late with.
+ */
+export type AccountArrears = {
+  currency: string;
+  asOf: string;
+  outstandingAmount: number;
+  pastDueAmount: number;
+  currentAmount: number;
+  oldestDueDate: string | null;
+  daysPastDue: number;
+  isInArrears: boolean;
+  buckets: ArrearsBucket[];
+  bills: ArrearsBill[];
+};
+
+/** Mirrors `DunningStepResponse` — one published step of the sequence. */
+export type DunningStep = {
+  noticeType: DunningNoticeType;
+  sequence: number;
+  daysPastDue: number;
+  minimumArrears: number;
+  waitingPeriodDays: number;
+  currency: string;
+  name: string;
+  message: string;
+};
+
+/** Mirrors `DunningNoticeResponse` — one notice served, with the day it went out. */
+export type DunningNotice = {
+  id: string;
+  serviceAccountId: string;
+  accountNumber: string;
+  customerId: string;
+  customerName: string;
+  noticeType: DunningNoticeType;
+  servedOn: string;
+  arrearsAmount: number;
+  currency: string;
+  daysPastDue: number;
+  waitingPeriodDays: number;
+  effectiveFrom: string | null;
+  notes: string | null;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/** Mirrors `EligibilityTestResponse` — one of the four tests, with the figures behind its answer. */
+export type EligibilityTest = { name: string; isSatisfied: boolean; detail: string };
+
+/**
+ * Mirrors `DisconnectionEligibilityResponse`.
+ *
+ * `isOffsetApplied` is the field that says whether the deposit movement described here has actually
+ * been made: false on the picture a screen opens with, true on the evaluation that made it happen.
+ */
+export type DisconnectionEligibility = {
+  serviceAccountId: string;
+  asOf: string;
+  currency: string;
+  arrearsBeforeOffset: number;
+  depositHeldBeforeOffset: number;
+  offsetAmount: number;
+  arrearsAfterOffset: number;
+  depositHeldAfterOffset: number;
+  threshold: number;
+  disconnectionNoticeServedOn: string | null;
+  waitingPeriodDays: number;
+  eligibleFrom: string | null;
+  arrangementStatus: string | null;
+  isEligible: boolean;
+  depositClearsArrears: boolean;
+  isOffsetApplied: boolean;
+  tests: EligibilityTest[];
+  blockers: string[];
+};
+
+/** Mirrors `DelinquencyResponse` — one account's whole delinquency picture, in one read. */
+export type Delinquency = {
+  serviceAccountId: string;
+  accountNumber: string;
+  customerId: string;
+  customerName: string;
+  accountStatus: string;
+  arrears: AccountArrears;
+  depositHeld: number;
+  steps: DunningStep[];
+  dueStep: DunningStep | null;
+  notices: DunningNotice[];
+  eligibility: DisconnectionEligibility;
+};
+
+/** Mirrors `DisconnectionEvaluationResponse` — what an evaluation did and what it decided. */
+export type DisconnectionEvaluation = {
+  eligibility: DisconnectionEligibility;
+  offsetAmount: number;
+  offsetEntries: DepositEntry[];
+};
+
+/** What a caller supplies to record that a dunning notice was served. */
+export type ServeNoticeInput = {
+  noticeType: DunningNoticeType;
+  servedOn?: string | null;
+  notes?: string | null;
+};
+
+export const delinquencyApi = {
+  /** One account's picture. A read: it moves nothing. Needs `customers.read`. */
+  get: (serviceAccountId: string, asOf?: string, signal?: AbortSignal) =>
+    api.get<Delinquency>(`/api/service-accounts/${serviceAccountId}/delinquency`, {
+      query: asOf ? { asOf } : undefined,
+      signal,
+    }),
+
+  /** Every notice served over an account, newest first. Needs `customers.read`. */
+  notices: (serviceAccountId: string, signal?: AbortSignal) =>
+    api.get<DunningNotice[]>(`/api/service-accounts/${serviceAccountId}/dunning-notices`, { signal }),
+
+  /** Records that a notice went out. Clerical — needs only `customers.write`. */
+  serve: (serviceAccountId: string, input: ServeNoticeInput) =>
+    api.post<DunningNotice>(`/api/service-accounts/${serviceAccountId}/dunning-notices`, { json: input }),
+
+  /**
+   * Evaluates the account for disconnection.
+   *
+   * **A POST because it moves money**: evaluating eligibility applies the held deposit to qualifying
+   * past-due amounts first, as CNMI Public Law 16-17 obliges. Needs `customers.deposit`, which is
+   * the permission for spending a deposit rather than the one for reading a balance.
+   */
+  evaluate: (serviceAccountId: string, asOf?: string) =>
+    api.post<DisconnectionEvaluation>(
+      `/api/service-accounts/${serviceAccountId}/disconnection-eligibility`,
+      { json: { asOf: asOf ?? null } },
+    ),
+};
+
+export const delinquencyKeys = {
+  all: ['delinquency'] as const,
+  detail: (serviceAccountId: string) => ['delinquency', 'detail', serviceAccountId] as const,
+};
+
+/**
+ * One account's delinquency picture.
+ *
+ * Takes `enabled` so the tab asks for nothing until a rep has chosen which supply they mean — a
+ * customer may hold an electric, a water and a wastewater account, and each is delinquent on its own.
+ */
+export function useDelinquency(serviceAccountId: string | undefined) {
+  return useQuery({
+    queryKey: delinquencyKeys.detail(serviceAccountId ?? ''),
+    queryFn: ({ signal }) => delinquencyApi.get(serviceAccountId!, undefined, signal),
+    enabled: Boolean(serviceAccountId),
+  });
+}

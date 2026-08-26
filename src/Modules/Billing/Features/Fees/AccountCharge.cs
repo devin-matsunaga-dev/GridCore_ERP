@@ -130,6 +130,34 @@ public sealed class AccountCharge
     /// <summary>What the line says when this reaches a bill. The schedule row's name, stamped.</summary>
     public string Description { get; private init; }
 
+    /// <summary>
+    /// How the schedule row arrived at its figure: a published amount, or a published rate on a
+    /// basis (WP-2.19).
+    /// </summary>
+    public FeeBasis Basis { get; private init; }
+
+    /// <summary>
+    /// The rate the charge was taken at, or <see langword="null"/> where the fee is a flat one.
+    /// </summary>
+    /// <remarks>
+    /// Stamped beside <see cref="FeeScheduleId"/> and for the same reason: the row it came from can
+    /// be superseded, and re-reading the catalogue to explain an old charge would explain it with a
+    /// figure that was not in force when it was raised.
+    /// </remarks>
+    public decimal? Rate { get; private init; }
+
+    /// <summary>
+    /// What the rate was taken on — the past-due balance, for a late charge. <see langword="null"/>
+    /// on a flat fee.
+    /// </summary>
+    /// <remarks>
+    /// <b>The third of the three columns that make a rate charge re-readable.</b> The schedule row
+    /// says which rule, the rate says what it was, and this says what it was applied to; together
+    /// they reproduce <see cref="Amount"/> exactly, years later, without anybody re-running an
+    /// arrears query over a register that has moved on.
+    /// </remarks>
+    public decimal? BasisAmount { get; private init; }
+
     /// <summary>What was charged, to the cent. The schedule's figure on <see cref="RaisedOn"/>.</summary>
     public decimal Amount { get; private init; }
 
@@ -207,17 +235,29 @@ public sealed class AccountCharge
         // the utility has waived), but raising one puts a line reading "0.00" on a customer's bill
         // and a row in a register nobody can reconcile — the argument WP-2.12 already makes for
         // having no deposit movement of zero.
-        if (assessment.Amount <= Money.Zero)
+        // AN UNPRICED ASSESSMENT IS REFUSED (WP-2.19). A rate fee comes off the catalogue with no
+        // figure at all — it has one only once something has been charged on it — so raising one
+        // without calling FeeAssessment.PriceOn is a caller that has not decided what the customer
+        // is being charged on. Refused here rather than defaulted to zero, because a zero would be
+        // caught by the next guard with a message about the schedule and blame the wrong thing.
+        if (assessment.Amount is not { } amount)
         {
             throw new BillingValidationException(
-                $"The schedule prices {assessment.Code} at {assessment.Amount} on {raisedOn:yyyy-MM-dd}, "
+                $"{assessment.Code} is published as a {assessment.Basis} fee and has no figure until it is priced on "
+                + "a basis. Charge it through the run that computes one, not from a screen.");
+        }
+
+        if (amount <= Money.Zero)
+        {
+            throw new BillingValidationException(
+                $"The schedule prices {assessment.Code} at {amount} on {raisedOn:yyyy-MM-dd}, "
                 + "which is not something to charge a customer for.");
         }
 
-        if (!Money.IsRounded(assessment.Amount))
+        if (!Money.IsRounded(amount))
         {
             throw new BillingValidationException(
-                $"The schedule prices {assessment.Code} at {assessment.Amount}, which is finer than a cent.");
+                $"The schedule prices {assessment.Code} at {amount}, which is finer than a cent.");
         }
 
         return new AccountCharge
@@ -231,7 +271,10 @@ public sealed class AccountCharge
             FeeScheduleId = assessment.FeeScheduleId,
             ScheduleEffectiveFrom = assessment.EffectiveFrom,
             Description = assessment.Name,
-            Amount = assessment.Amount,
+            Basis = assessment.Basis,
+            Rate = assessment.Rate,
+            BasisAmount = assessment.BasisAmount,
+            Amount = amount,
             Currency = assessment.Currency,
             RaisedOn = raisedOn,
             Reason = RegistryText.Clean(reason, ReasonLength)

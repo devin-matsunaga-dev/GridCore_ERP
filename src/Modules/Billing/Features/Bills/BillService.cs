@@ -148,6 +148,19 @@ public static class BillingTerms
     /// behind it, and inventing half of one here would be a setting nobody set.
     /// </summary>
     public const int DueDays = 21;
+
+    /// <summary>
+    /// The currency the utility bills in, used where there is no bill to read one off.
+    /// </summary>
+    /// <remarks>
+    /// A constant of the module rather than configuration, the same call <c>DepositRules.Currency</c>
+    /// and <c>FeeSchedules.Currency</c> already make: every tariff, fee and bill GridCore ships is in
+    /// US dollars, and a multi-currency utility is a real feature with real Finance consequences
+    /// rather than a setting. It is read in exactly one place — an arrears picture for an account
+    /// that has never been billed (WP-2.19) — because every other figure comes from a row that
+    /// carries its own code.
+    /// </remarks>
+    public const string Currency = "USD";
 }
 
 /// <summary>The billing register. Endpoints are a thin layer over it.</summary>

@@ -41,11 +41,26 @@ public sealed class FeeScheduleConfiguration : IEntityTypeConfiguration<FeeSched
             .HasMaxLength(FeeScheduleEntry.ServiceTypeNameLength)
             .IsRequired();
 
-        // Money is decimal with an explicit scale, never the provider's default.
+        // WP-2.19: which of the two figures below is this row's, stored by name like every other
+        // enum here.
+        builder.Property(entry => entry.Basis)
+            .HasColumnName("basis")
+            .HasConversion<string>()
+            .HasMaxLength(FeeScheduleEntry.BasisNameLength)
+            .IsRequired();
+
+        // Money is decimal with an explicit scale, never the provider's default. NULLABLE since
+        // WP-2.19: a rate row has no amount until something is charged on it, and a zero here would
+        // read as a fee the utility publishes at nothing.
         builder.Property(entry => entry.Amount)
             .HasColumnName("amount")
-            .HasPrecision(Bills.Bill.MoneyPrecision, Bills.Bill.MoneyScale)
-            .IsRequired();
+            .HasPrecision(Bills.Bill.MoneyPrecision, Bills.Bill.MoneyScale);
+
+        // A rate, not money — four decimal places, matching deposit_rules.usage_rate and the tariff
+        // tiers. Null on every flat row.
+        builder.Property(entry => entry.Rate)
+            .HasColumnName("rate")
+            .HasPrecision(FeeScheduleEntry.RatePrecision, FeeScheduleEntry.RateDecimalPlaces);
 
         builder.Property(entry => entry.Currency)
             .HasColumnName("currency")

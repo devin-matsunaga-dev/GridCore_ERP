@@ -134,6 +134,98 @@ public sealed record BillActivity(
     IReadOnlyList<BillCorrection> Corrections);
 
 /// <summary>
+/// One outstanding bill as an arrears picture reads it: what is still owed on it, when it fell due,
+/// and how long ago that was (WP-2.19).
+/// </summary>
+/// <remarks>
+/// <b>Deliberately thinner than <see cref="BillSummary"/>.</b> An arrears line answers "how old is
+/// this debt and how much of it is there", which is three columns; the summary answers "may this
+/// bill take a payment", which needs the printed total, the customer and the lifecycle status.
+/// Reusing the summary here would put a decade of unrelated columns behind a dunning screen and
+/// invite the next reader to check a deposit offset against the wrong figure.
+/// </remarks>
+/// <param name="Id">Identifier of the bill, in the Billing schema.</param>
+/// <param name="BillNumber">The number printed on it, e.g. <c>BIL-000001</c>.</param>
+/// <param name="DueDate">The day payment fell due.</param>
+/// <param name="Balance">What is still owed on it.</param>
+/// <param name="DaysPastDue">
+/// Days between <see cref="DueDate"/> and the day the picture was taken. <b>Zero on a bill that is
+/// not yet due</b>, never negative: "minus nine days overdue" is not a thing a rep says, and a
+/// negative here would sum into an ageing bucket that means nothing.
+/// </param>
+/// <param name="IsPastDue">Whether the due date has passed. What separates arrears from a balance.</param>
+public sealed record ArrearsBill(
+    Guid Id,
+    string BillNumber,
+    DateOnly? DueDate,
+    decimal Balance,
+    int DaysPastDue,
+    bool IsPastDue);
+
+/// <summary>
+/// One age band of an arrears picture — the row of a debtors' ageing, which is how every utility
+/// reads what it is owed.
+/// </summary>
+/// <param name="Label">What the band is called, e.g. <c>31-60 days</c>. Billing's wording, so a screen never invents one.</param>
+/// <param name="FromDays">The fewest days past due that fall in the band. Zero on the not-yet-due band.</param>
+/// <param name="ToDays">The most, or <see langword="null"/> on the open-ended oldest band.</param>
+/// <param name="Amount">What is owed in it.</param>
+public sealed record ArrearsBucket(string Label, int FromDays, int? ToDays, decimal Amount);
+
+/// <summary>
+/// What one service account owes, aged (WP-2.19) — the figure a late charge is taken on, a dunning
+/// notice is served over and a disconnection is judged against.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b><see cref="PastDueAmount"/> is not <see cref="OutstandingAmount"/>, and the whole package
+/// turns on the difference.</b> A bill issued on the 28th and due on the 19th of next month is money
+/// the utility is owed and is not money the customer is late with. The 1% late charge is taken on
+/// the past-due figure, and a disconnection threshold read against the outstanding one would
+/// disconnect a customer whose only sin is that the post has not arrived yet.
+/// </para>
+/// <para>
+/// <b>It names no customer and no account number, deliberately.</b> Every caller already holds the
+/// account it asked about — Customers owns the register the number is printed in — and a directory
+/// that echoed the identity back would be a directory whose answer for an account that has never
+/// been billed had to invent one.
+/// </para>
+/// <para>
+/// <b>A picture on a stated day, not "now".</b> <see cref="AsOf"/> is what every day count is
+/// measured from, so a late-charge run for last month and a screen opened today ask the same
+/// question of the same register and get answers they can each defend.
+/// </para>
+/// </remarks>
+/// <param name="ServiceAccountId">The account owing it.</param>
+/// <param name="Currency">
+/// ISO 4217 code every amount is expressed in — read off the account's own outstanding bills, and
+/// the module's shipped code where there are none to read one off.
+/// </param>
+/// <param name="AsOf">The day the picture was taken. Every day count is measured from it.</param>
+/// <param name="OutstandingAmount">Everything still owed, due or not.</param>
+/// <param name="PastDueAmount">The part of it whose due date has passed. What arrears means.</param>
+/// <param name="CurrentAmount">The rest — issued, owed, and not yet late.</param>
+/// <param name="OldestDueDate">The due date of the oldest past-due bill, or <see langword="null"/> where there is none.</param>
+/// <param name="DaysPastDue">How late the oldest past-due bill is. Zero where nothing is past due.</param>
+/// <param name="Buckets">The ageing, oldest band last.</param>
+/// <param name="Bills">The outstanding bills behind the figures, oldest due date first.</param>
+public sealed record AccountArrears(
+    Guid ServiceAccountId,
+    string Currency,
+    DateOnly AsOf,
+    decimal OutstandingAmount,
+    decimal PastDueAmount,
+    decimal CurrentAmount,
+    DateOnly? OldestDueDate,
+    int DaysPastDue,
+    IReadOnlyList<ArrearsBucket> Buckets,
+    IReadOnlyList<ArrearsBill> Bills)
+{
+    /// <summary>Whether the customer is late with anything at all.</summary>
+    public bool IsInArrears => PastDueAmount > 0m;
+}
+
+/// <summary>
 /// Read access to the billing register for modules that are not Billing.
 /// </summary>
 /// <remarks>
@@ -238,4 +330,35 @@ public interface IBillDirectory
     /// </remarks>
     /// <param name="customerId">Whose bills.</param>
     Task<DateOnly?> LastIssuedOnForCustomerAsync(Guid customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What <paramref name="serviceAccountId"/> owes on <paramref name="asOf"/>, aged (WP-2.19).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The third widening, and the first that is not about one bill.</b> WP-2.5 asked "how much
+    /// is owed on this bill", WP-2.14 asked "what has this customer been billed"; this asks "how
+    /// late is this account", which is a question about the register rather than about a row. It
+    /// lives here rather than in a fifth seam because the answer is composed from the same bills the
+    /// other calls return, and a directory per question is how a module ends up with four ways to
+    /// read one table.
+    /// </para>
+    /// <para>
+    /// <b>The ageing is Billing's, not the caller's.</b> Which bands exist, what they are called and
+    /// which side of a boundary a bill falls on are decisions about a debtors' ageing, and a caller
+    /// handed the raw bills would be a caller free to answer them differently from the late-charge
+    /// run that reads the same register. Customers consumes this to decide whether a supply may be
+    /// cut off; the arithmetic behind that had better be one implementation.
+    /// </para>
+    /// <para>
+    /// Drafts and cancelled bills are absent, for the reason <see cref="OutstandingForAccountAsync"/>
+    /// gives: a draft is owed by nobody and a withdrawn bill is owed by nobody any more.
+    /// </para>
+    /// </remarks>
+    /// <param name="serviceAccountId">The account asked about.</param>
+    /// <param name="asOf">The day to age against. Every day count on the answer is measured from it.</param>
+    Task<AccountArrears> ArrearsForAccountAsync(
+        Guid serviceAccountId,
+        DateOnly asOf,
+        CancellationToken cancellationToken = default);
 }

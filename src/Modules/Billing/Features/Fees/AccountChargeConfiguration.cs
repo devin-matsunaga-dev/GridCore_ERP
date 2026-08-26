@@ -52,6 +52,23 @@ public sealed class AccountChargeConfiguration : IEntityTypeConfiguration<Accoun
             .HasMaxLength(FeeScheduleEntry.NameLength)
             .IsRequired();
 
+        // WP-2.19: the three columns that make a rate charge re-readable without re-running the
+        // arithmetic — which rule, what the rate was, and what it was applied to. Null on every flat
+        // fee, which is every charge raised before this package.
+        builder.Property(charge => charge.Basis)
+            .HasColumnName("basis")
+            .HasConversion<string>()
+            .HasMaxLength(FeeScheduleEntry.BasisNameLength)
+            .IsRequired();
+
+        builder.Property(charge => charge.Rate)
+            .HasColumnName("rate")
+            .HasPrecision(FeeScheduleEntry.RatePrecision, FeeScheduleEntry.RateDecimalPlaces);
+
+        builder.Property(charge => charge.BasisAmount)
+            .HasColumnName("basis_amount")
+            .HasPrecision(Bills.Bill.MoneyPrecision, Bills.Bill.MoneyScale);
+
         // Money is decimal with an explicit scale, never the provider's default.
         builder.Property(charge => charge.Amount)
             .HasColumnName("amount")

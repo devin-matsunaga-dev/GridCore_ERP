@@ -30,7 +30,12 @@ public sealed record BillChargeRequest(string? Reason = null);
 /// <param name="Name">What the line says when it reaches a bill.</param>
 /// <param name="Description">What it covers and where the figure came from.</param>
 /// <param name="ServiceType">The service it is published against.</param>
-/// <param name="Amount">What it costs on that day.</param>
+/// <param name="Basis">Whether the row publishes an amount or a rate (WP-2.19).</param>
+/// <param name="Amount">
+/// What it costs on that day, or <see langword="null"/> on a rate fee — which has no figure until
+/// something is charged on it, and so cannot be offered on a screen that raises one.
+/// </param>
+/// <param name="Rate">The published rate as a fraction, or <see langword="null"/> on a flat fee.</param>
 /// <param name="Currency">ISO 4217 code the amount is expressed in.</param>
 /// <param name="EffectiveFrom">The day that figure took effect.</param>
 /// <param name="FeeScheduleId">Which schedule row answered — what a raised charge stamps.</param>
@@ -39,7 +44,9 @@ public sealed record FeeScheduleResponse(
     string Name,
     string Description,
     string ServiceType,
-    decimal Amount,
+    string Basis,
+    decimal? Amount,
+    decimal? Rate,
     string Currency,
     DateOnly EffectiveFrom,
     Guid FeeScheduleId)
@@ -54,7 +61,9 @@ public sealed record FeeScheduleResponse(
             assessment.Name,
             assessment.Description,
             assessment.ServiceType.ToString(),
+            assessment.Basis.ToString(),
             assessment.Amount,
+            assessment.Rate,
             assessment.Currency,
             assessment.EffectiveFrom,
             assessment.FeeScheduleId);
@@ -69,6 +78,9 @@ public sealed record FeeScheduleResponse(
 /// <param name="CustomerName">Their name at the time it was raised.</param>
 /// <param name="Code">Which published fee.</param>
 /// <param name="Description">What the line says on the bill.</param>
+/// <param name="Basis">Whether the schedule published an amount or a rate (WP-2.19).</param>
+/// <param name="Rate">The rate it was taken at, on a rate fee.</param>
+/// <param name="BasisAmount">What that rate was taken on — the past-due balance, for a late charge.</param>
 /// <param name="Amount">What was charged.</param>
 /// <param name="Currency">ISO 4217 code it is expressed in.</param>
 /// <param name="FeeScheduleId">The schedule row that priced it.</param>
@@ -93,6 +105,9 @@ public sealed record AccountChargeResponse(
     string CustomerName,
     string Code,
     string Description,
+    string Basis,
+    decimal? Rate,
+    decimal? BasisAmount,
     decimal Amount,
     string Currency,
     Guid FeeScheduleId,
@@ -123,6 +138,9 @@ public sealed record AccountChargeResponse(
             charge.CustomerName,
             charge.Code.ToString(),
             charge.Description,
+            charge.Basis.ToString(),
+            charge.Rate,
+            charge.BasisAmount,
             charge.Amount,
             charge.Currency,
             charge.FeeScheduleId,

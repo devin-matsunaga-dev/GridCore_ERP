@@ -2,13 +2,14 @@ using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Customers;
-using GridCore.Modules.Customers.Features.Transitions;
+using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Platform.Data;
 using GridCore.Platform.Modules;
@@ -183,6 +184,25 @@ public class CustomersModuleTests
         Assert.True(Registers<IValidator<LogNoteRequest>>(services));
         Assert.True(Registers<IValidator<CorrectNoteRequest>>(services));
         Assert.True(Registers<IValidator<PinNoteRequest>>(services));
+        Assert.True(Registers<IValidator<ServeNoticeRequest>>(services));
+    }
+
+    [Fact]
+    public void The_delinquency_register_is_composed_with_the_arrangement_seam_nobody_answers_yet()
+    {
+        // WP-2.19. The fourth disconnection test asks whether a payment arrangement protects the
+        // account, and WP-2.20 is what will answer it — so the seam is registered against the null
+        // implementation on purpose. This test is what makes replacing it a deliberate act rather
+        // than something a later package does without noticing the stub was load-bearing.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(DelinquencyService),
+            Assert.Single(services, service => service.ServiceType == typeof(IDelinquencyService)).ImplementationType);
+
+        Assert.Equal(
+            typeof(NoPaymentArrangements),
+            Assert.Single(services, service => service.ServiceType == typeof(IPaymentArrangementDirectory)).ImplementationType);
     }
 
     [Theory]

@@ -30,6 +30,7 @@ import { buildCustomerTimeline, customerBalance } from './customer-360';
 import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
 import { CustomerChargesCard } from './components/customer-charges-card';
+import { CustomerDelinquencyCard } from './components/customer-delinquency-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
 import { CustomerDepositCard } from './components/customer-deposit-card';
 import { CustomerDocumentsCard } from './components/customer-documents-card';
@@ -354,6 +355,14 @@ export function CustomerDetailPage() {
       {active === 'charges' && customerId && (
         <CustomerChargesCard customerId={customerId} accounts={accounts.data ?? []} />
       )}
+
+      {/*
+        The delinquency tab (WP-2.19) — the third tab holding its own queries, and for the charges
+        tab's reason twice over: an arrears picture is per SERVICE ACCOUNT rather than per customer,
+        so a page that fetched one on every open would fetch one per supply, for a tab most telephone
+        calls never reach.
+      */}
+      {active === 'delinquency' && <CustomerDelinquencyCard accounts={accounts.data ?? []} />}
 
       {/*
         The documents tab (WP-2.14) — the one tab whose queries do NOT live here. The 360's rule is

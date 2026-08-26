@@ -2,6 +2,7 @@ using FluentValidation;
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Delinquency;
 using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
@@ -108,6 +109,7 @@ public class BillingModuleTests
                 typeof(RaiseChargeRequest),
                 typeof(CancelChargeRequest),
                 typeof(BillChargeRequest),
+                typeof(LateChargeRunRequest),
             },
             registered);
     }

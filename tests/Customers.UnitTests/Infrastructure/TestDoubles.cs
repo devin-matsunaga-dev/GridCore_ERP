@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
 using GridCore.Contracts.Providers;
 using GridCore.Contracts.Services;
+using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -183,6 +184,7 @@ public sealed class FakeBillDirectory : IBillDirectory
 {
     private readonly Dictionary<Guid, BillSummary> _bills = [];
     private readonly Dictionary<Guid, List<BillActivity>> _history = [];
+    private readonly List<BillSummary> _outstanding = [];
     private int _ordinal;
 
     /// <summary>Every bill the ledger asked about, so a test can assert it went through the seam.</summary>
@@ -399,6 +401,124 @@ public sealed class FakeBillDirectory : IBillDirectory
         var history = History(customerId);
 
         return Task.FromResult(history.Count == 0 ? null : (DateOnly?)history.Max(bill => bill.IssuedOn));
+    }
+
+    /// <summary>
+    /// Adds an outstanding bill that is part of one account's arrears picture, and hands it back.
+    /// </summary>
+    /// <remarks>
+    /// <b>It seeds both halves.</b> A past-due bill is a <see cref="BillSummary"/> — because the
+    /// deposit offset applies to it through <c>ApplyAsync</c>, which asks this seam what is
+    /// outstanding — and an <see cref="ArrearsBill"/>, because the delinquency picture reads the
+    /// ageing. In the real system those are one row read two ways; here they are seeded together so
+    /// a test cannot state a debt that only half of the module can see.
+    /// </remarks>
+    /// <param name="customerId">Who owes it.</param>
+    /// <param name="serviceAccountId">The account it is billed to.</param>
+    /// <param name="dueDate">The day it fell due.</param>
+    /// <param name="balance">What is still owed on it.</param>
+    /// <param name="currency">What its amounts are expressed in.</param>
+    public BillSummary Outstanding(
+        Guid customerId,
+        Guid serviceAccountId,
+        DateOnly dueDate,
+        decimal balance = 120.00m,
+        string currency = "USD")
+    {
+        var id = Guid.CreateVersion7();
+        _ordinal++;
+
+        var bill = new BillSummary(
+            id,
+            $"BIL-{_ordinal:000000}",
+            serviceAccountId,
+            $"A-{_ordinal:000000}",
+            customerId,
+            $"Customer {_ordinal}",
+            currency,
+            TotalAmount: balance,
+            AmountDue: balance,
+            AmountPaid: 0m,
+            Balance: balance,
+            "Issued",
+            IsOutstanding: true,
+            dueDate);
+
+        _bills[id] = bill;
+        _outstanding.Add(bill);
+
+        return bill;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <b>The ageing bands are deliberately empty.</b> Which bands exist and where their boundaries
+    /// fall is Billing's policy, tested against the real <c>ArrearsAgeing</c> in that module's own
+    /// suite; a double that invented its own would have Customers' tests asserting something about
+    /// the fake. What this answers faithfully is everything the delinquency register actually reads:
+    /// what is past due, how late the oldest of it is, and which bills a deposit may be set against.
+    /// </remarks>
+    public Task<AccountArrears> ArrearsForAccountAsync(
+        Guid serviceAccountId,
+        DateOnly asOf,
+        CancellationToken cancellationToken = default)
+    {
+        var lines = _outstanding
+            .Where(bill => bill.ServiceAccountId == serviceAccountId && bill.Balance > 0m)
+            .Select(bill => new ArrearsBill(
+                bill.Id,
+                bill.BillNumber,
+                bill.DueDate,
+
+                // Read back off the dictionary rather than off the captured row, so a bill this
+                // double has since had a deposit applied to reports what it now owes.
+                _bills[bill.Id].Balance,
+                bill.DueDate is { } due ? Math.Max(0, asOf.DayNumber - due.DayNumber) : 0,
+                bill.DueDate is { } dueDate && dueDate < asOf))
+            .Where(line => line.Balance > 0m)
+            .OrderBy(line => line.DueDate ?? DateOnly.MaxValue)
+            .ThenBy(line => line.BillNumber, StringComparer.Ordinal)
+            .ToList();
+
+        var pastDue = lines.Where(line => line.IsPastDue).ToList();
+
+        return Task.FromResult(new AccountArrears(
+            serviceAccountId,
+            lines.Count is 0 ? "USD" : _bills[lines[0].Id].Currency,
+            asOf,
+            lines.Sum(line => line.Balance),
+            pastDue.Sum(line => line.Balance),
+            lines.Where(line => !line.IsPastDue).Sum(line => line.Balance),
+            pastDue.Count is 0 ? null : pastDue[0].DueDate,
+            pastDue.Count is 0 ? 0 : pastDue[0].DaysPastDue,
+            Buckets: [],
+            lines));
+    }
+
+    /// <summary>
+    /// Records that <paramref name="amount"/> was settled against a bill this double holds — what
+    /// Billing does when it consumes <c>CustomerDepositApplied</c>.
+    /// </summary>
+    /// <remarks>
+    /// The double does it synchronously, which the real system does not: there the reduction happens
+    /// in a consumer, after the transaction that wrote the deposit entry has committed. That is why
+    /// <c>DelinquencyService</c> computes its post-offset arrears rather than re-reading it, and why
+    /// this exists — a test that wants to see the arrears fall has to say when the other module
+    /// caught up.
+    /// </remarks>
+    public void Settle(Guid billId, decimal amount)
+    {
+        var bill = _bills[billId];
+        var paid = bill.AmountPaid + amount;
+        var balance = bill.AmountDue - paid;
+
+        _bills[billId] = bill with
+        {
+            AmountPaid = paid,
+            Balance = balance,
+            Status = balance <= 0m ? "Paid" : "PartiallyPaid",
+            IsOutstanding = balance > 0m,
+        };
     }
 
     private List<BillActivity> History(Guid customerId)
@@ -673,4 +793,33 @@ public sealed class FakeDocumentStore : IDocumentStore
 
         return Task.FromResult(_objects.GetValueOrDefault(key));
     }
+}
+
+/// <summary>
+/// The payment arrangements the fourth disconnection test asks about (WP-2.19), standing in for a
+/// register WP-2.20 has not built yet.
+/// </summary>
+/// <remarks>
+/// The production composition registers <c>NoPaymentArrangements</c>, which answers nothing for
+/// everybody — which is honest, and untestable: a test that wants to prove an arrangement suppresses
+/// disconnection needs to be able to say there is one. So the fast tier stands this in front of the
+/// seam, and <c>CustomersModuleTests</c> is what pins the real composition to the null one.
+/// </remarks>
+public sealed class FakePaymentArrangementDirectory : IPaymentArrangementDirectory
+{
+    private readonly Dictionary<Guid, PaymentArrangementStanding> _standings = [];
+
+    /// <summary>Puts an arrangement against an account that stops it being cut off.</summary>
+    public void Active(Guid serviceAccountId) =>
+        _standings[serviceAccountId] = new PaymentArrangementStanding(serviceAccountId, "Active", SuppressesDisconnection: true);
+
+    /// <summary>Puts a broken arrangement against an account, which protects it from nothing.</summary>
+    public void Broken(Guid serviceAccountId) =>
+        _standings[serviceAccountId] = new PaymentArrangementStanding(serviceAccountId, "Broken", SuppressesDisconnection: false);
+
+    /// <inheritdoc />
+    public Task<PaymentArrangementStanding?> StandingForAccountAsync(
+        Guid serviceAccountId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(_standings.GetValueOrDefault(serviceAccountId));
 }

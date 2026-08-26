@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
+using GridCore.Modules.Billing.Features.Delinquency;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Billing.Features.Bills;
@@ -146,6 +147,41 @@ public sealed class BillDirectory(BillingDbContext database) : IBillDirectory
             .Where(bill => bill.IssuedOn != null)
             .MaxAsync(bill => bill.IssuedOn, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<AccountArrears> ArrearsForAccountAsync(
+        Guid serviceAccountId,
+        DateOnly asOf,
+        CancellationToken cancellationToken = default)
+    {
+        // The same three statuses OutstandingForAccountAsync filters on, spelled out for the same
+        // reason: EF has to translate this into SQL, and a method call over an enum is not something
+        // it can. A draft is owed by nobody and a cancelled bill is owed by nobody any more, so
+        // neither can be in arrears.
+        var outstanding = await Bills()
+            .Where(bill => bill.ServiceAccountId == serviceAccountId)
+            .Where(bill =>
+                bill.Status == BillStatus.Issued
+                || bill.Status == BillStatus.PartiallyPaid
+                || bill.Status == BillStatus.Overdue)
+
+            // Oldest first: an ageing is read from the oldest debt down, and the oldest past-due
+            // bill is what a dunning step and a statutory waiting period are measured from.
+            .OrderBy(bill => bill.Id)
+            .Take(MaxHistorySize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return ArrearsAgeing.Compose(
+            serviceAccountId,
+
+            // Read off the account's own bills rather than assumed, and the module's shipped code
+            // only where there is nothing to read — see BillingTerms.Currency. An account with
+            // nothing outstanding has no arrears either way, so the fallback never reaches a figure.
+            outstanding.Count is 0 ? BillingTerms.Currency : outstanding[^1].Currency,
+            asOf,
+            outstanding.Select(bill => ArrearsAgeing.Line(bill.Id, bill.BillNumber, bill.DueDate, bill.Balance, asOf)));
     }
 
     /// <summary>

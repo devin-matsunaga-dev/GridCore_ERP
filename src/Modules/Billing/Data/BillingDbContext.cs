@@ -1,4 +1,5 @@
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Delinquency;
 using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,13 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options)
     /// so a charge still reports the figure it was raised at after the schedule has moved on.
     /// </summary>
     public DbSet<AccountCharge> AccountCharges => Set<AccountCharge>();
+
+    /// <summary>
+    /// Every late charge assessed against a bill, one row per bill per month (WP-2.19). The register
+    /// that makes the run idempotent: <c>ux_late_charge_assessments_bill_period</c> is what stops a
+    /// second run charging the same customer for the same month.
+    /// </summary>
+    public DbSet<LateChargeAssessment> LateChargeAssessments => Set<LateChargeAssessment>();
 
     /// <summary>
     /// Every bill raised. Append-only in spirit: a bill's lines are written once and a correction is

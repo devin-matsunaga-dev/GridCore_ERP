@@ -3,6 +3,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Documents;
 using GridCore.Modules.Customers.Features.Notes;
@@ -95,6 +96,19 @@ public sealed class CustomersModule : IModule
         // customers.transition is: WP-3.6's connection order will reach it in process.
         services.AddScoped<IServiceApplicationService, ServiceApplicationService>();
 
+        // Delinquency, dunning and the statutory deposit offset (WP-2.19). It reads what an account
+        // owes through IBillDirectory — Billing owns the register and the ageing bands — and moves a
+        // deposit only through ICustomerDepositService, which holds the gate, the audit entry and the
+        // event Finance posts from. The evaluation gates on customers.deposit inside the service as
+        // well as on the route, because it moves money whether or not there is any to move.
+        services.AddScoped<IDelinquencyService, DelinquencyService>();
+
+        // The fourth disconnection test's seam, answered by nobody until WP-2.20 builds payment
+        // arrangements. Registered against the null implementation deliberately: writing the test
+        // around a hole would mean rewriting it next package, and half an arrangements feature here
+        // would be building WP-2.20 badly.
+        services.AddScoped<IPaymentArrangementDirectory, NoPaymentArrangements>();
+
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
         // rules, and only one of them has a permission gate inside it.
@@ -144,6 +158,7 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<LogNoteRequest, LogNoteRequestValidator>();
         services.AddGridCoreValidator<CorrectNoteRequest, CorrectNoteRequestValidator>();
         services.AddGridCoreValidator<PinNoteRequest, PinNoteRequestValidator>();
+        services.AddGridCoreValidator<ServeNoticeRequest, ServeNoticeRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -171,5 +186,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapDocumentEndpoints();
         endpoints.MapTransitionEndpoints();
         endpoints.MapApplicationEndpoints();
+        endpoints.MapDelinquencyEndpoints();
     }
 }

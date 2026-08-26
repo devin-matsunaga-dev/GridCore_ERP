@@ -93,12 +93,16 @@ public class FeeSchedulesTests
 
     [Fact]
     public void Every_shipped_figure_is_a_positive_whole_number_of_cents() =>
+        // Flat rows only. WP-2.19's late charge publishes a RATE and no amount, so asking it for a
+        // whole number of cents would be asking the wrong question of the one row in the catalogue
+        // that has no figure until something is charged on it.
         Assert.All(
-            FeeSchedules.All,
+            FeeSchedules.All.Where(entry => entry.Basis is FeeBasis.Flat),
             entry =>
             {
+                Assert.NotNull(entry.Amount);
                 Assert.True(entry.Amount > Money.Zero);
-                Assert.True(Money.IsRounded(entry.Amount));
+                Assert.True(Money.IsRounded(entry.Amount.Value));
             });
 
     [Fact]
@@ -153,4 +157,61 @@ public class FeeSchedulesTests
         Assert.Equal(
             FeeCode.MeterTest,
             FeeScheduleSelector.InForceOn(FeeSchedules.All, FeeCode.MeterTest, new DateOnly(2030, 1, 1))!.Code);
+
+    [Fact]
+    public void The_late_charge_is_published_as_a_rate_and_has_no_amount()
+    {
+        // WP-2.19's one rate row. A flat late charge would ask the same of a customer $40 behind as
+        // of one $4,000 behind, which is why the legislature expresses it as a percentage — and why
+        // this row carries a rate and, deliberately, nothing in the amount column.
+        var row = Assert.Single(FeeSchedules.VersionsOf(FeeCode.LateCharge));
+
+        Assert.Equal(FeeBasis.Rate, row.Basis);
+        Assert.Equal(FeeSchedules.LateChargeMonthlyRate, row.Rate);
+        Assert.Null(row.Amount);
+    }
+
+    [Fact]
+    public void Every_other_shipped_fee_is_flat_and_carries_no_rate() =>
+        Assert.All(
+            FeeSchedules.All.Where(entry => entry.Code != FeeCode.LateCharge),
+            entry =>
+            {
+                Assert.Equal(FeeBasis.Flat, entry.Basis);
+                Assert.Null(entry.Rate);
+            });
+
+    [Fact]
+    public void A_rate_row_prices_a_basis_to_the_cent()
+    {
+        // Rounded at the figure, half away from zero — Money's rule, and the one a customer checking
+        // the arithmetic on the back of an envelope gets the same answer from.
+        var row = FeeSchedules.InForceOn(FeeCode.LateCharge, FeeSchedules.OriginalEffectiveFrom)!;
+
+        Assert.Equal(2.00m, row.PriceOn(200.00m));
+        Assert.Equal(2.35m, row.PriceOn(234.56m));
+        Assert.Equal(0.40m, row.PriceOn(40.00m));
+    }
+
+    [Fact]
+    public void A_flat_row_refuses_to_be_priced_on_a_basis() =>
+        Assert.Throws<BillingValidationException>(() =>
+            FeeSchedules.InForceOn(FeeCode.Reconnection, FeeSchedules.OriginalEffectiveFrom)!.PriceOn(200.00m));
+
+    [Fact]
+    public void A_published_rate_must_be_positive_and_no_finer_than_the_column()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => Rate(0m));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Rate(-0.01m));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Rate(0.012345m));
+
+        static FeeScheduleEntry Rate(decimal rate) => FeeScheduleEntry.ReferenceRate(
+            FeeCode.LateCharge,
+            "Late payment charge",
+            ServiceType.Electricity,
+            rate,
+            FeeSchedules.Currency,
+            FeeSchedules.OriginalEffectiveFrom,
+            "A rate row.");
+    }
 }

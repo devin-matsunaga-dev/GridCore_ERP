@@ -1,6 +1,7 @@
 using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
@@ -70,6 +71,20 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// read without loading the application, and append-only like every other register here.
     /// </summary>
     public DbSet<ApplicationDocument> ApplicationDocuments => Set<ApplicationDocument>();
+
+    /// <summary>
+    /// The dunning sequence the utility serves — reminder, delinquency notice, disconnection notice
+    /// (WP-2.19). Reference data shipped by migration (invariant 8), not a seeder and not a constant
+    /// in the domain.
+    /// </summary>
+    public DbSet<DunningStep> DunningSteps => Set<DunningStep>();
+
+    /// <summary>
+    /// Every dunning notice served, with the day it went out (WP-2.19). Append-only, and the whole of
+    /// what makes "the customer had an opportunity to pay before disconnection" provable rather than
+    /// asserted.
+    /// </summary>
+    public DbSet<DunningNotice> DunningNotices => Set<DunningNotice>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

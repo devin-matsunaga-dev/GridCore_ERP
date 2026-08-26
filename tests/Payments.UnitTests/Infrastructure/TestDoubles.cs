@@ -219,6 +219,28 @@ public sealed class FakeBillDirectory : IBillDirectory
         Task.FromResult<DateOnly?>(null);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Nor this — WP-2.19's arrears is asked by the Customers delinquency register, which decides
+    /// whether a supply may be cut off. An empty picture for the reason the two answers above are
+    /// empty: a module that seeds no due dates has nothing honest to age.
+    /// </remarks>
+    public Task<AccountArrears> ArrearsForAccountAsync(
+        Guid serviceAccountId,
+        DateOnly asOf,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new AccountArrears(
+            serviceAccountId,
+            "USD",
+            asOf,
+            OutstandingAmount: 0m,
+            PastDueAmount: 0m,
+            CurrentAmount: 0m,
+            OldestDueDate: null,
+            DaysPastDue: 0,
+            Buckets: [],
+            Bills: []));
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<BillSummary>> OutstandingForAccountAsync(
         Guid serviceAccountId,
         int limit,

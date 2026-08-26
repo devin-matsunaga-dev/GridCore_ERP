@@ -292,8 +292,20 @@ export const feeCodes = [
   'MeterTest',
   'Inspection',
   'UnauthorizedConnection',
+  'LateCharge',
 ] as const;
 export type FeeCode = (typeof feeCodes)[number];
+
+/**
+ * Mirrors `FeeBasis` (WP-2.19) — how a published fee arrives at its figure.
+ *
+ * A `Flat` fee is what the schedule says, whatever the account owes. A `Rate` fee is a percentage of
+ * something the register computes, which today is the 1%-a-month late charge. The distinction is
+ * what stops a rate fee ever appearing in the counter's fee picker: it has no amount until something
+ * is charged on it, and nothing a rep could type would be anything but an invented balance.
+ */
+export const feeBases = ['Flat', 'Rate'] as const;
+export type FeeBasis = (typeof feeBases)[number];
 
 /** Mirrors `AccountChargeStatus`. `Billed` is terminal — correcting one is an adjustment to its bill. */
 export const accountChargeStatuses = ['Pending', 'Billed', 'Cancelled'] as const;
@@ -305,7 +317,11 @@ export type FeeScheduleEntry = {
   name: string;
   description: string;
   serviceType: string;
-  amount: number;
+  basis: FeeBasis;
+  /** Null on a rate fee, which has no figure until something is charged on it. */
+  amount: number | null;
+  /** The published rate as a fraction — `0.01` for one per cent. Null on a flat fee. */
+  rate: number | null;
   currency: string;
   effectiveFrom: string;
   feeScheduleId: string;
@@ -320,6 +336,11 @@ export type AccountCharge = {
   customerName: string;
   code: FeeCode;
   description: string;
+  basis: FeeBasis;
+  /** The rate it was taken at, on a rate fee (WP-2.19). Null on a flat one. */
+  rate: number | null;
+  /** What that rate was taken on — the past-due balance, for a late charge. Null on a flat one. */
+  basisAmount: number | null;
   amount: number;
   currency: string;
   feeScheduleId: string;

@@ -54,6 +54,18 @@ public static class FeeSchedules
     public static readonly DateOnly ReconnectionRevisionFrom = new(2026, 7, 1);
 
     /// <summary>
+    /// The rate the late charge is published at: one per cent of the past-due balance a month
+    /// (WP-2.19).
+    /// </summary>
+    /// <remarks>
+    /// A named constant only because the seed list and its test both have to say the same number;
+    /// the <i>authority</i> is the row in <c>billing.fee_schedule</c>, which is what
+    /// <c>LateChargeService</c> reads and what a raised charge stamps. Repricing it is a second
+    /// effective-dated row in a migration, exactly as repricing the reconnection fee was.
+    /// </remarks>
+    public const decimal LateChargeMonthlyRate = 0.0100m;
+
+    /// <summary>
     /// The currency the shipped schedule is in. The demo utility bills in US dollars, as the rate
     /// plans and the deposit rules do.
     /// </summary>
@@ -124,6 +136,22 @@ public static class FeeSchedules
             "The penalty for taking supply without an account or interfering with a meter, levied on top of "
             + "an estimate of the unbilled usage. Demo figure following CUC's published customer-service "
             + "information; not an authoritative charge."),
+
+        // THE ONE RATE ROW (WP-2.19). Published as a fraction of what is past due rather than as a
+        // figure, because that is how CNMI Public Law 16-17's delinquency regime and CUC's own
+        // published terms express it — and because a flat late charge would ask the same of a
+        // customer $40 behind as of one $4,000 behind.
+        FeeScheduleEntry.ReferenceRate(
+            FeeCode.LateCharge,
+            "Late payment charge",
+            ServiceType.Electricity,
+            LateChargeMonthlyRate,
+            Currency,
+            OriginalEffectiveFrom,
+            "One per cent per month of the past-due balance, assessed once per bill per month while it "
+            + "remains unpaid. Demo figure following CUC's published customer-service information and the "
+            + "delinquency regime of CNMI Public Law 16-17; that schedule changes without notice, so this "
+            + "is a demo rate and not an authoritative charge."),
 
         // The repricing. A second version of one code rather than a seventh code, so effective
         // dating is exercised by the shipped data itself.

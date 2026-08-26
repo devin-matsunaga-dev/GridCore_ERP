@@ -333,6 +333,105 @@ namespace GridCore.Modules.Billing.Data.Migrations
                     b.ToTable("bill_lines", "billing");
                 });
 
+            modelBuilder.Entity("GridCore.Modules.Billing.Features.Delinquency.LateChargeAssessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountChargeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_charge_id");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("account_number");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("AssessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assessed_at");
+
+                    b.Property<DateOnly>("AssessedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("assessed_on");
+
+                    b.Property<decimal>("BasisAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("basis_amount");
+
+                    b.Property<Guid>("BillId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bill_id");
+
+                    b.Property<string>("BillNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("bill_number");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<int>("DaysPastDue")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_past_due");
+
+                    b.Property<Guid>("FeeScheduleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fee_schedule_id");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("rate");
+
+                    b.Property<Guid>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_late_charge_assessments");
+
+                    b.HasIndex("BillId", "PeriodStart")
+                        .IsUnique()
+                        .HasDatabaseName("ux_late_charge_assessments_bill_period");
+
+                    b.HasIndex("ServiceAccountId", "PeriodStart")
+                        .HasDatabaseName("ix_late_charge_assessments_account_period");
+
+                    b.ToTable("late_charge_assessments", "billing");
+                });
+
             modelBuilder.Entity("GridCore.Modules.Billing.Features.Fees.AccountCharge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -360,6 +459,17 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
+
+                    b.Property<string>("Basis")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("basis");
+
+                    b.Property<decimal?>("BasisAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("basis_amount");
 
                     b.Property<Guid?>("BillId")
                         .HasColumnType("uuid")
@@ -410,6 +520,11 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .HasColumnType("date")
                         .HasColumnName("raised_on");
 
+                    b.Property<decimal?>("Rate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("rate");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(512)
@@ -457,10 +572,16 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<decimal>("Amount")
+                    b.Property<decimal?>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
+
+                    b.Property<string>("Basis")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("basis");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -490,6 +611,11 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("name");
 
+                    b.Property<decimal?>("Rate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("rate");
+
                     b.Property<string>("ServiceType")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -510,6 +636,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7e9d-876d-604b24264e33"),
                             Amount = 135.00m,
+                            Basis = "Flat",
                             Code = "ServiceConnection",
                             Currency = "USD",
                             Description = "Levied once when supply is established at a premise, covering the meter and the service drop. Demo figure following CUC's published customer-service information; that schedule changes without notice, so this is a demo schedule and not an authoritative charge.",
@@ -521,6 +648,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7726-bbcd-93fad896309f"),
                             Amount = 50.00m,
+                            Basis = "Flat",
                             Code = "Reconnection",
                             Currency = "USD",
                             Description = "Levied when supply is restored after it was cut for non-payment. Demo figure following CUC's published customer-service information; not an authoritative charge.",
@@ -532,6 +660,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7f1a-99ee-1a8a6b1ee323"),
                             Amount = 25.00m,
+                            Basis = "Flat",
                             Code = "ReturnedPayment",
                             Currency = "USD",
                             Description = "Levied when a payment that settled is returned unpaid by the bank. Demo figure following CUC's published customer-service information; not an authoritative charge.",
@@ -543,6 +672,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7e49-8b5b-7db00eb0ae92"),
                             Amount = 75.00m,
+                            Basis = "Flat",
                             Code = "MeterTest",
                             Currency = "USD",
                             Description = "Levied when a customer asks for their meter to be tested. Refundable where the meter is found to be faulty, which is WP-3.8's business rather than the schedule's. Demo figure following CUC's published customer-service information; not an authoritative charge.",
@@ -554,6 +684,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7935-ae46-cb50fc10e937"),
                             Amount = 50.00m,
+                            Basis = "Flat",
                             Code = "Inspection",
                             Currency = "USD",
                             Description = "Levied for inspecting a customer's installation before supply is established. Demo figure following CUC's published customer-service information; not an authoritative charge.",
@@ -565,6 +696,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         {
                             Id = new Guid("01a03b5d-d400-7903-9ba4-0e2b130bef15"),
                             Amount = 550.00m,
+                            Basis = "Flat",
                             Code = "UnauthorizedConnection",
                             Currency = "USD",
                             Description = "The penalty for taking supply without an account or interfering with a meter, levied on top of an estimate of the unbilled usage. Demo figure following CUC's published customer-service information; not an authoritative charge.",
@@ -574,8 +706,21 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         },
                         new
                         {
+                            Id = new Guid("01a03b5d-d400-7f47-8dfa-fb2ea961cf60"),
+                            Basis = "Rate",
+                            Code = "LateCharge",
+                            Currency = "USD",
+                            Description = "One per cent per month of the past-due balance, assessed once per bill per month while it remains unpaid. Demo figure following CUC's published customer-service information and the delinquency regime of CNMI Public Law 16-17; that schedule changes without notice, so this is a demo rate and not an authoritative charge.",
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
+                            Name = "Late payment charge",
+                            Rate = 0.0100m,
+                            ServiceType = "Electricity"
+                        },
+                        new
+                        {
                             Id = new Guid("01a03b5d-d400-7e42-80c3-b9f9b4e18513"),
                             Amount = 60.00m,
+                            Basis = "Flat",
                             Code = "Reconnection",
                             Currency = "USD",
                             Description = "Republished figure, effective 1 July 2026. Demo figure following CUC's published customer-service information; not an authoritative charge.",

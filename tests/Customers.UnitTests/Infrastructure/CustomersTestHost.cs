@@ -4,6 +4,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Documents;
 using GridCore.Modules.Customers.Features.Notes;
@@ -100,6 +101,13 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
         services.AddScoped<ICustomerTransitionService, CustomerTransitionService>();
         services.AddScoped<IServiceApplicationService, ServiceApplicationService>();
+
+        // Delinquency, dunning and the statutory deposit offset (WP-2.19). The arrangement seam is
+        // the fake below rather than NoPaymentArrangements: WP-2.20 has not been built, and a test
+        // that wants to prove an arrangement suppresses disconnection has to be able to say there is
+        // one. CustomersModuleTests is what pins the real composition to the null implementation.
+        services.AddSingleton<IPaymentArrangementDirectory>(Arrangements);
+        services.AddScoped<IDelinquencyService, DelinquencyService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -125,6 +133,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>The object store an application's documents are filed in (WP-2.18).</summary>
     public FakeDocumentStore Documents { get; } = new();
+
+    /// <summary>The payment arrangements the fourth disconnection test asks about (WP-2.19).</summary>
+    public FakePaymentArrangementDirectory Arrangements { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -355,6 +366,47 @@ public sealed class CustomersTestHost : IDisposable
             services.GetRequiredService<IDepositReassessmentService>(),
             Documents,
             services.GetRequiredService<IRegistryNumberGenerator>(),
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the delinquency register, in its own scope (WP-2.19).</summary>
+    public Task<TResult> WithDelinquencyAsync<TResult>(Func<IDelinquencyService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IDelinquencyService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the delinquency register as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape every other refusal in this module takes, and needed for the sharpest reason
+    /// yet: evaluating an account for disconnection sets a customer's deposit against what they owe,
+    /// so it is gated on <c>customers.deposit</c> inside the service — and proving that refusal means
+    /// a caller who does not hold it judging an account somebody who does has already put in arrears.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<IDelinquencyService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new DelinquencyService(
+            services.GetRequiredService<CustomersDbContext>(),
+            Bills,
+            new CustomerDepositService(
+                services.GetRequiredService<CustomersDbContext>(),
+                services.GetRequiredService<IDepositReassessmentService>(),
+                Bills,
+                services.GetRequiredService<IUnitOfWork>(),
+                services.GetRequiredService<IAuditLog>(),
+                Events,
+                caller,
+                services.GetRequiredService<TimeProvider>()),
+            Arrangements,
             services.GetRequiredService<IUnitOfWork>(),
             services.GetRequiredService<IAuditLog>(),
             caller,

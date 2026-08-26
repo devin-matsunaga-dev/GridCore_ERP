@@ -284,6 +284,36 @@ public static class AuditActions
     public const string AccountChargeBilled = "account_charge.bill";
 
     /// <summary>
+    /// The late-charge run raised the published monthly rate against every past-due bill (WP-2.19).
+    /// One entry for the run, for the reason a billing run and an overdue review each get one — each
+    /// charge it raised carries its own <see cref="AccountChargeRaised"/> entry.
+    /// </summary>
+    public const string LateChargeRun = "late_charge.run";
+
+    /// <summary>
+    /// A dunning notice was served on a customer (WP-2.19) — a reminder, a delinquency notice or a
+    /// disconnection notice.
+    /// </summary>
+    /// <remarks>
+    /// Sensitive, and not because it moves money. The served notice is the whole of what makes "the
+    /// customer had an opportunity to pay before their supply was cut off" provable rather than
+    /// asserted, so who recorded it and when is the fact somebody will come looking for years later.
+    /// </remarks>
+    public const string DunningNoticeServed = "dunning_notice.serve";
+
+    /// <summary>
+    /// An account was evaluated for disconnection under CNMI Public Law 16-17 (WP-2.19), which
+    /// applies the held deposit to qualifying past-due amounts before it answers.
+    /// </summary>
+    /// <remarks>
+    /// The snapshot carries the arrears before and after the offset, every test the answer turned
+    /// on, and the deposit entries the evaluation wrote — because "why was this customer eligible"
+    /// has to be answerable from the trail without re-running an arrears query over a register that
+    /// has since moved.
+    /// </remarks>
+    public const string DisconnectionEligibilityEvaluated = "disconnection.evaluate";
+
+    /// <summary>
     /// An approved payment was applied to a bill, reducing what is owed. Recorded against
     /// <c>system</c>: this happens in a consumer rather than at somebody's keyboard, and the clerk
     /// who took the money is named on the payment's own entry.
@@ -419,6 +449,18 @@ public static class AuditEntityTypes
     /// </remarks>
     public const string ServiceApplication = "customers.service_application";
 
+    /// <summary>
+    /// A row of <c>customers.dunning_notices</c> (WP-2.19) — one notice served on one account, with
+    /// the day it was served.
+    /// </summary>
+    /// <remarks>
+    /// Its own entity rather than a line of the service account's, unlike an account's history: the
+    /// record IS the evidence that the customer was warned, and a trail that pointed at the account
+    /// would make "produce the disconnection notice served on 3 August" a search rather than a
+    /// lookup.
+    /// </remarks>
+    public const string DunningNotice = "customers.dunning_notice";
+
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";
 
@@ -470,6 +512,13 @@ public static class AuditEntityTypes
     /// a document that does not exist yet. Once it is billed, the bill's own entries take over.
     /// </remarks>
     public const string AccountCharge = "billing.account_charge";
+
+    /// <summary>
+    /// A late-charge run, identified by the month it charged for (e.g. <c>2026-08</c>). Not a table:
+    /// a run raises many charges in one act, and one entry naming the period is what an auditor
+    /// reads back — each assessment is already its own row and each charge its own entry.
+    /// </summary>
+    public const string LateChargeRun = "billing.late_charge_run";
 
     /// <summary>
     /// A billing run, identified by the reading cycle it priced. Not a table: a run raises many
