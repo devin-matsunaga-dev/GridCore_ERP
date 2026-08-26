@@ -1,5 +1,6 @@
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -315,8 +316,13 @@ public class ServiceAccountServiceTests
         var customer = await ACustomerAsync(host);
         var premise = await APremiseAsync(host);
 
-        await host.WithCustomersAsync(customers => customers.ChangeStatusAsync(customer.Id, CustomerStatus.Active, null));
-        await host.WithCustomersAsync(customers => customers.ChangeStatusAsync(customer.Id, CustomerStatus.Suspended, "Unpaid balance"));
+        await host.WithTransitionsAsync(transitions => transitions.ChangeStatusAsync(
+            customer.Id,
+            new ChangeCustomerStatusInput(CustomerStatus.Active, TransitionReasonCode.CustomerRequest)));
+
+        await host.WithTransitionsAsync(transitions => transitions.ChangeStatusAsync(
+            customer.Id,
+            new ChangeCustomerStatusInput(CustomerStatus.Suspended, TransitionReasonCode.UnpaidBalance)));
 
         var failure = await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
             host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id))));

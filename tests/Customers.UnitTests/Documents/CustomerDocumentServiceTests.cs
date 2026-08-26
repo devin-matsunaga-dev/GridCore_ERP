@@ -2,6 +2,9 @@ using System.Text.Json;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Documents;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
+using GridCore.Modules.Customers.Features.ServiceLocations;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
 using GridCore.Platform.Audit;
@@ -89,6 +92,52 @@ public class CustomerDocumentServiceTests
 
         Assert.Equal(-75.00m, applied.Amount);
         Assert.Equal(-75.00m, applied.DepositAmount);
+    }
+
+    [Fact]
+    public async Task A_deposit_CARRIED_on_a_transfer_appears_on_the_statement_and_moves_neither_balance()
+    {
+        // WP-2.15, end to end: the transfer is the transition register's, the ledger row is the
+        // deposit's, and the statement is where a customer sees that their deposit survived the move.
+        // The line is on the document because a deposit that vanished from one account and reappeared
+        // on another with no line between them is exactly what a customer rings up about.
+        using var host = NewHost();
+
+        var customer = await ARegisteredCustomerAsync(host);
+        var premise = await host.WithLocationsAsync(locations => locations.RegisterAsync(
+            new ServiceLocationInput(Address.Create("1 Songsong Road", "Songsong", "Rota", "MP", postalCode: "96951"), "House")));
+
+        var destination = await host.WithLocationsAsync(locations => locations.RegisterAsync(
+            new ServiceLocationInput(Address.Create("9 As Nieves Road", "Songsong", "Rota", "MP", postalCode: "96951"), "House")));
+
+        var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(
+            new OpenServiceAccountInput(customer.Id, premise.Id)));
+
+        host.Bills.Issued(customer.Id, new DateOnly(2026, 8, 5), totalAmount: 120.00m);
+
+        await host.WithDepositsAsync(deposits => deposits.CollectAsync(customer.Id, new CollectDepositInput(250.00m)));
+
+        await host.WithTransitionsAsync(transitions => transitions.TransferAsync(
+            customer.Id,
+            new TransferServiceInput(account.Id, destination.Id, TransitionReasonCode.Relocation)));
+
+        var statement = await host.WithDocumentsAsync(documents =>
+            documents.StatementAsync(customer.Id, new StatementRange(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31))));
+
+        // The statement proves out with a zero-effect line in the middle of it, which is the property
+        // AccountStatement.Compose's guard exists to hold.
+        Assert.Equal(120.00m, statement.ClosingBalance);
+        Assert.Equal(250.00m, statement.ClosingDepositHeld);
+        Assert.Equal(0m, statement.DepositApplied);
+
+        var carry = statement.Entries.Single(entry => entry.Kind is StatementEntryKind.DepositTransferred);
+
+        Assert.Equal(0m, carry.Amount);
+        Assert.Equal(0m, carry.DepositAmount);
+
+        // The description names both accounts, because the ledger row stores neither — it is the one
+        // deposit line whose words carry the whole fact.
+        Assert.Contains(account.AccountNumber, carry.Description, StringComparison.Ordinal);
     }
 
     [Fact]

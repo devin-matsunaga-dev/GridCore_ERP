@@ -209,6 +209,45 @@ public sealed class DepositEntry
     }
 
     /// <summary>
+    /// Carries the whole held deposit from one of the customer's service accounts to another, on a
+    /// transfer (WP-2.15).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing moves, and the entry is still written.</b>
+    /// <see cref="DepositEntryKind.Transferred"/> has a direction of zero, so
+    /// <see cref="Customer.RecordDepositMovement"/> is called with zero and the balance comes back
+    /// out unchanged — which is what makes <see cref="BalanceAfter"/> honest without a special case.
+    /// The row exists so that a deposit which survived a house move reads as having survived it.
+    /// </para>
+    /// <para>
+    /// <b>The caller must not call this for a customer holding nothing.</b> The positive-amount guard
+    /// in <see cref="Record"/> refuses it, and that is the right answer: an entry of zero is a row
+    /// nobody can reconcile. <c>CustomerTransitionService</c> checks the balance before it asks.
+    /// </para>
+    /// <para>
+    /// <b>Neither account is stored on the entry.</b> <see cref="ServiceAccountId"/> means "the
+    /// account whose bill this settled" and giving it a second meaning here would make the column
+    /// unreadable without knowing the kind first. Which two accounts the deposit moved between is
+    /// <c>customers.account_transitions</c>' business — that is the register the linkage belongs to —
+    /// and <paramref name="reason"/> is what says it in words on the ledger itself.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="RegistryValidationException">The amount is not positive, or is finer than a cent.</exception>
+    public static DepositEntry Carry(
+        Customer customer,
+        decimal amount,
+        string currency,
+        string? reason,
+        RegistryActor actor,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(customer);
+
+        return Record(customer, DepositEntryKind.Transferred, amount, currency, reason, actor, now);
+    }
+
+    /// <summary>
     /// Builds the entry and moves the customer's balance in one act.
     /// </summary>
     /// <remarks>

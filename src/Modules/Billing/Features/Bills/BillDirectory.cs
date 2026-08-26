@@ -133,6 +133,21 @@ public sealed class BillDirectory(BillingDbContext database) : IBillDirectory
         return found.ConvertAll(Activity);
     }
 
+    /// <inheritdoc />
+    public async Task<DateOnly?> LastIssuedOnForCustomerAsync(Guid customerId, CancellationToken cancellationToken = default)
+    {
+        // Max over the column rather than ordering and taking one: this is an aggregate the database
+        // answers off the index, and it is the whole answer — there is nothing to project.
+        // MaxAsync over a nullable projection, so a customer with no issued bill comes back null
+        // instead of throwing the way MaxAsync over an empty non-nullable sequence does.
+        return await database.Bills
+            .AsNoTracking()
+            .Where(bill => bill.CustomerId == customerId)
+            .Where(bill => bill.IssuedOn != null)
+            .MaxAsync(bill => bill.IssuedOn, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     /// <summary>
     /// The register as this seam reads it. Untracked, and without lines or adjustments: a caller
     /// outside Billing has no business with either, and loading a decade of corrections to answer

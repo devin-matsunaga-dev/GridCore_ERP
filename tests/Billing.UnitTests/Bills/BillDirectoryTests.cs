@@ -45,6 +45,30 @@ public sealed class BillDirectoryTests : IDisposable
         return Assert.Single(run.Bills);
     }
 
+    /// <summary>An issued bill on an EXISTING premise, dated by the caller.</summary>
+    /// <remarks>
+    /// Unlike <see cref="AnIssuedBillAsync"/>, which mints a fresh premise and therefore a fresh
+    /// customer, this raises another bill against a premise the caller has already added — which is
+    /// what makes several bills belong to one person.
+    /// </remarks>
+    private async Task<Bill> ABillIssuedOnAsync(Guid premise, string cycleCode, DateOnly issuedOn)
+    {
+        _host.Readings.Add(premise, consumption: 400m, cycleCode: cycleCode, readingDate: Now.AddDays(-20));
+
+        var run = await _host.WithBillsAsync(register => register.RunAsync(new RunBillingInput(cycleCode)));
+
+        // A step between writes: Guid v7 takes its timestamp from the clock, so rows minted inside
+        // one frozen millisecond have no defined order at all.
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        var issued = await _host.WithBillsAsync(register =>
+            register.IssueAsync(run.Bills[0].Id, new IssueBillInput(issuedOn)));
+
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        return issued;
+    }
+
     private async Task<Bill> AnIssuedBillAsync(string cycleCode = "2026-07")
     {
         var draft = await ADraftAsync(cycleCode);
@@ -195,6 +219,56 @@ public sealed class BillDirectoryTests : IDisposable
         Assert.Equal("Credit", correction.Kind);
         Assert.Equal(-20.00m, correction.Amount);
         Assert.Equal("Meter misread", correction.Reason);
+    }
+
+    [Fact]
+    public async Task The_last_day_a_customer_was_billed_is_the_newest_issue_date()
+    {
+        // The seam WP-2.15 widened, and the whole of it: how far back a class change may be dated.
+        // Deliberately narrower than the history above — that call hands over a decade of bills and
+        // their corrections because a statement's opening balance is made of them, while this is one
+        // date and asking it through the history would fetch all of that to read one column.
+        //
+        // Two bills on ONE premise, so they are one customer's: every Accounts.Add mints a fresh
+        // account under a fresh customer, and two bills belonging to two people would not be a test
+        // of "newest" at all.
+        var premise = Guid.CreateVersion7(_clock.GetUtcNow());
+
+        _host.Accounts.Add(premise);
+
+        var june = await ABillIssuedOnAsync(premise, "2026-06", new DateOnly(2026, 6, 5));
+
+        await ABillIssuedOnAsync(premise, "2026-07", new DateOnly(2026, 7, 5));
+
+        // Deliberately issued out of order, so a query that returned "the last row written" rather
+        // than the greatest date would come back with August's — the mistake MaxAsync cannot make.
+        await ABillIssuedOnAsync(premise, "2026-05", new DateOnly(2026, 5, 5));
+
+        var lastIssued = await WithDirectoryAsync(directory =>
+            directory.LastIssuedOnForCustomerAsync(june.CustomerId));
+
+        Assert.Equal(new DateOnly(2026, 7, 5), lastIssued);
+    }
+
+    [Fact]
+    public async Task A_customer_who_has_never_been_billed_has_no_last_issue_date()
+    {
+        // Null rather than a throw or a default date, and it is the answer the guard depends on: a
+        // customer with nothing behind them may be re-classified from any date, while DateOnly's own
+        // default would silently become a floor of 0001-01-01 that every request sails past.
+        Assert.Null(await WithDirectoryAsync(directory =>
+            directory.LastIssuedOnForCustomerAsync(Guid.CreateVersion7(Now))));
+    }
+
+    [Fact]
+    public async Task A_DRAFT_does_not_count_as_a_day_the_customer_was_billed()
+    {
+        // A draft has never been priced AT a customer, so re-classifying behind one changes nothing
+        // anybody has seen. Consistent with the history above, which omits drafts for the same reason.
+        var draft = await ADraftAsync("2026-09");
+
+        Assert.Null(await WithDirectoryAsync(directory =>
+            directory.LastIssuedOnForCustomerAsync(draft.CustomerId)));
     }
 
     [Fact]

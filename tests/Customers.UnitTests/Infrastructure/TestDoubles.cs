@@ -385,6 +385,20 @@ public sealed class FakeBillDirectory : IBillDirectory
         return Task.FromResult(found);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Read off the same history the statement reads, so a test that seeds an issued bill for the
+    /// statement has also seeded the date a class change is measured against — one fact, one place.
+    /// Answers <see langword="null"/> for a customer with no issued bill, which is what lets the
+    /// effective-date guard say "there is nothing behind this date" rather than assuming a floor.
+    /// </remarks>
+    public Task<DateOnly?> LastIssuedOnForCustomerAsync(Guid customerId, CancellationToken cancellationToken = default)
+    {
+        var history = History(customerId);
+
+        return Task.FromResult(history.Count == 0 ? null : (DateOnly?)history.Max(bill => bill.IssuedOn));
+    }
+
     private List<BillActivity> History(Guid customerId)
     {
         if (!_history.TryGetValue(customerId, out var bills))

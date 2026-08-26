@@ -50,6 +50,13 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
         builder.Property(customer => customer.StatusChangedAt).HasColumnName("status_changed_at");
         builder.Property(customer => customer.StatusReason).HasColumnName("status_reason").HasMaxLength(Customer.ReasonLength);
 
+        // WP-2.15's effective dates. Both nullable, and null means "since registration" rather than
+        // "unknown": a customer who has never been re-classified is on the class they were opened
+        // under, from the day they were opened.
+        builder.Property(customer => customer.StatusEffectiveOn).HasColumnName("status_effective_on");
+        builder.Property(customer => customer.ClassChangedAt).HasColumnName("class_changed_at");
+        builder.Property(customer => customer.ClassEffectiveOn).HasColumnName("class_effective_on");
+
         // The account number is quoted by people and matched by machines; the index is what makes
         // "one number, one customer" a database fact rather than a hope the number generator holds.
         builder.HasIndex(customer => customer.AccountNumber).HasDatabaseName("ux_customers_account_number").IsUnique();

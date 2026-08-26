@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Platform.Serialization;
@@ -44,14 +45,31 @@ public class RegistryRequestBindingTests
     }
 
     [Fact]
-    public void A_status_change_is_read_from_the_status_name()
+    public void A_status_change_is_read_from_the_status_and_reason_code_names()
     {
         var body = JsonSerializer.Deserialize<ChangeCustomerStatusRequest>(
-            """{"status":"Suspended","reason":"Non-payment"}""",
+            """{"status":"Suspended","reasonCode":"UnpaidBalance","effectiveOn":"2026-09-01","notes":"Third reminder unanswered."}""",
             Options);
 
         Assert.NotNull(body);
         Assert.Equal(CustomerStatus.Suspended, body.Status);
+        Assert.Equal(TransitionReasonCode.UnpaidBalance, body.ReasonCode);
+        Assert.Equal(new DateOnly(2026, 9, 1), body.EffectiveOn);
+        Assert.Equal("Third reminder unanswered.", body.Notes);
+    }
+
+    [Fact]
+    public void A_transition_with_no_effective_date_arrives_as_null_rather_than_as_a_default_date()
+    {
+        // The difference matters: null means "the host dates it today", while DateOnly's own default
+        // is 0001-01-01 — a date that would sail past every "not before" guard in the register.
+        var body = JsonSerializer.Deserialize<ChangeCustomerClassRequest>(
+            """{"class":"Commercial","reasonCode":"PremiseNowTrading"}""",
+            Options);
+
+        Assert.NotNull(body);
+        Assert.Null(body.EffectiveOn);
+        Assert.Null(body.Notes);
     }
 
     [Fact]

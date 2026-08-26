@@ -14,7 +14,6 @@ public abstract class CustomerDetailsValidator<TRequest> : AbstractValidator<TRe
     protected CustomerDetailsValidator()
     {
         RuleFor(request => request.Name).NotEmpty().MaximumLength(Customer.NameLength);
-        RuleFor(request => request.Class).IsInEnum();
         RuleFor(request => request.ContactName!).MaximumLength(Customer.NameLength);
         RuleFor(request => request.Phone!).MaximumLength(Customer.PhoneLength);
 
@@ -24,28 +23,22 @@ public abstract class CustomerDetailsValidator<TRequest> : AbstractValidator<TRe
             .When(request => !string.IsNullOrWhiteSpace(request.Email));
 
         // No deposit rule: since WP-2.12 neither body carries one. The deposit's own validators live
-        // beside the lifecycle that moves it.
+        // beside the lifecycle that moves it. No class rule either, since WP-2.15: only a
+        // registration states one, so the rule sits on the one body that still carries it.
     }
 }
 
 /// <summary>Rules for registering a customer.</summary>
-public sealed class CreateCustomerRequestValidator : CustomerDetailsValidator<CreateCustomerRequest>;
-
-/// <summary>Rules for correcting a customer's details.</summary>
-public sealed class UpdateCustomerRequestValidator : CustomerDetailsValidator<UpdateCustomerRequest>;
-
-/// <summary>Rules for moving a customer to another status.</summary>
-/// <remarks>
-/// Only that the status is one GridCore declares. Whether the move is <i>legal</i> depends on where
-/// the customer is now, which the validator cannot see and <see cref="CustomerTransitions"/> can —
-/// so that answer is a 409 from the aggregate, not a 400 from here.
-/// </remarks>
-public sealed class ChangeCustomerStatusRequestValidator : AbstractValidator<ChangeCustomerStatusRequest>
+public sealed class CreateCustomerRequestValidator : CustomerDetailsValidator<CreateCustomerRequest>
 {
     /// <summary>Builds the rules.</summary>
-    public ChangeCustomerStatusRequestValidator()
-    {
-        RuleFor(request => request.Status).IsInEnum();
-        RuleFor(request => request.Reason!).MaximumLength(Customer.ReasonLength);
-    }
+    public CreateCustomerRequestValidator() => RuleFor(request => request.Class).IsInEnum();
 }
+
+/// <summary>Rules for correcting a customer's details.</summary>
+/// <remarks>
+/// No class rule, because there is no class field: since WP-2.15 it moves through the transition
+/// register with a reason code and an effective date. The status rules moved there with it —
+/// <c>ChangeCustomerStatusRequestValidator</c> now lives beside the route that uses it.
+/// </remarks>
+public sealed class UpdateCustomerRequestValidator : CustomerDetailsValidator<UpdateCustomerRequest>;

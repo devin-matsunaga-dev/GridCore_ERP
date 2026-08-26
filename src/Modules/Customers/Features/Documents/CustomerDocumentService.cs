@@ -390,6 +390,7 @@ public sealed class CustomerDocumentService(
                 DepositEntryKind.Collected => StatementEntryKind.DepositCollected,
                 DepositEntryKind.Applied => StatementEntryKind.DepositApplied,
                 DepositEntryKind.Refunded => StatementEntryKind.DepositRefunded,
+                DepositEntryKind.Transferred => StatementEntryKind.DepositTransferred,
                 _ => throw new RegistryValidationException(
                     $"A statement does not know what a '{entry.Kind}' deposit movement does to a balance."),
             };
@@ -406,6 +407,11 @@ public sealed class CustomerDocumentService(
                 // statement that put them in the balance column would tell a customer their deposit
                 // had paid for something.
                 kind is StatementEntryKind.DepositApplied ? entry.SignedAmount : Money.Zero,
+
+                // SignedAmount, not Amount — and on a carry (WP-2.15) that is deliberately ZERO.
+                // A transfer moves a deposit between two of one customer's accounts, so the utility
+                // holds exactly what it held; the line is on the statement to say the deposit
+                // survived the move, and Compose carries both running totals through it.
                 entry.SignedAmount,
                 entry.Currency,
                 BillId: entry.BillId,
@@ -420,7 +426,11 @@ public sealed class CustomerDocumentService(
             DepositEntryKind.Collected => "Security deposit received",
             DepositEntryKind.Applied when entry.BillNumber is { } number => $"Deposit applied to bill {number}",
             DepositEntryKind.Applied => "Deposit applied to a bill",
-            _ => "Security deposit refunded",
+            DepositEntryKind.Refunded => "Security deposit refunded",
+
+            // The carry's own reason names the two accounts, because nothing else on the line can:
+            // no figure moves and the entry stores neither account. See DepositEntry.Carry.
+            _ => entry.Reason ?? "Security deposit carried on a transfer",
         };
 
     private async Task<Customer> RequireCustomerAsync(Guid customerId, CancellationToken cancellationToken) =>

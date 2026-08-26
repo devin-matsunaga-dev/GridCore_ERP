@@ -1,5 +1,6 @@
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
 using GridCore.Platform.Audit;
@@ -102,7 +103,7 @@ public class CustomerServiceTests
 
         await host.WithCustomersAsync(customers => customers.UpdateAsync(
             customer.Id,
-            new UpdateCustomerInput("Sablan Family Trust", CustomerClass.Commercial)));
+            new UpdateCustomerInput("Sablan Family Trust", ContactName: "Maria Sablan")));
 
         await using var platform = host.NewPlatformContext();
 
@@ -114,7 +115,9 @@ public class CustomerServiceTests
         Assert.Contains("Sablan Family Trust", entry.AfterJson);
 
         // Stored by name, not by number: the entry has to still make sense if the enum is reordered.
-        Assert.Contains(nameof(CustomerClass.Commercial), entry.AfterJson);
+        // The class is on the snapshot and unchanged by a correction — since WP-2.15 it can only move
+        // through the transition register.
+        Assert.Contains(nameof(CustomerClass.Residential), entry.AfterJson);
     }
 
     [Fact]
@@ -125,48 +128,12 @@ public class CustomerServiceTests
         await Assert.ThrowsAsync<CustomerNotFoundException>(() =>
             host.WithCustomersAsync(customers => customers.UpdateAsync(
                 Guid.CreateVersion7(Now),
-                new UpdateCustomerInput("Nobody", CustomerClass.Residential))));
+                new UpdateCustomerInput("Nobody"))));
     }
 
-    [Fact]
-    public async Task Changing_status_is_audited_and_recorded_on_the_customer()
-    {
-        using var host = NewHost();
-
-        var customer = await host.WithCustomersAsync(customers => customers.RegisterAsync(AResidentialCustomer()));
-
-        var active = await host.WithCustomersAsync(customers =>
-            customers.ChangeStatusAsync(customer.Id, CustomerStatus.Active, "Deposit received."));
-
-        Assert.Equal(CustomerStatus.Active, active.Status);
-        Assert.Equal(Now, active.StatusChangedAt);
-
-        await using var platform = host.NewPlatformContext();
-
-        Assert.Single(await platform.AuditEntries
-            .Where(entry => entry.Action == AuditActions.CustomerStatusChanged)
-            .ToListAsync());
-    }
-
-    [Fact]
-    public async Task An_illegal_status_change_leaves_the_customer_alone()
-    {
-        // Failure path: the endpoint answers 409, and nothing about the customer moved — including
-        // the "why" recorded against the last legal change.
-        using var host = NewHost();
-
-        var customer = await host.WithCustomersAsync(customers => customers.RegisterAsync(AResidentialCustomer()));
-
-        await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
-            host.WithCustomersAsync(customers => customers.ChangeStatusAsync(customer.Id, CustomerStatus.Suspended, reason: null)));
-
-        await using var database = host.NewCustomersContext();
-
-        var stored = await database.Customers.SingleAsync();
-
-        Assert.Equal(CustomerStatus.Prospect, stored.Status);
-        Assert.Null(stored.StatusChangedAt);
-    }
+    // The status-change tests moved to TransitionServiceTests with WP-2.15: a status no longer moves
+    // through ICustomerService at all, because it needs a reason code from a fixed list, an effective
+    // date and a row in the transition register.
 
     [Fact]
     public async Task The_registry_list_filters_on_status_class_and_a_search_term()
@@ -177,7 +144,9 @@ public class CustomerServiceTests
         await host.WithCustomersAsync(customers => customers.RegisterAsync(
             new RegisterCustomerInput("Songsong Village Market", CustomerClass.Commercial)));
 
-        await host.WithCustomersAsync(customers => customers.ChangeStatusAsync(residential.Id, CustomerStatus.Active, null));
+        await host.WithTransitionsAsync(transitions => transitions.ChangeStatusAsync(
+            residential.Id,
+            new ChangeCustomerStatusInput(CustomerStatus.Active, TransitionReasonCode.CustomerRequest)));
 
         Assert.Equal(
             ["Taisacan Household"],

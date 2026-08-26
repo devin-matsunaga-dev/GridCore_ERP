@@ -1,6 +1,7 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
 import type {
   AccountStatement,
+  AccountTransition,
   ContactMethod,
   Customer,
   CustomerContact,
@@ -35,6 +36,12 @@ export function customer(overrides: Partial<Customer> = {}): Customer {
     registeredAt: '2026-02-11T00:30:00+00:00',
     statusChangedAt: '2026-03-01T00:30:00+00:00',
     statusReason: 'Service started',
+    statusEffectiveOn: '2026-03-01',
+
+    // Still on the class they were registered under, which is the ordinary case and the one a
+    // screen has to read as "since registration" rather than as "unknown".
+    classChangedAt: null,
+    classEffectiveOn: null,
     ...overrides,
   };
 }
@@ -267,6 +274,34 @@ export function meter(overrides: Partial<Meter> = {}): Meter {
     statusChangedAt: '2026-02-14T00:30:00+00:00',
     statusReason: 'New connection, meter set on the north wall',
     history: [],
+    ...overrides,
+  };
+}
+
+/**
+ * One row of the transition register (WP-2.15).
+ *
+ * Defaults to a class change, which is the kind with both sides filled in — the move kinds are the
+ * ones with a null on one side, so a test that wants one says so and gets a row that reads correctly.
+ */
+export function accountTransition(overrides: Partial<AccountTransition> = {}): AccountTransition {
+  return {
+    id: '0192f000-0000-7000-8000-000000000401',
+    customerId: customer().id,
+    kind: 'ClassChanged',
+    reasonCode: 'PremiseNowTrading',
+    notes: 'Bakery opened in the front room.',
+    effectiveOn: '2026-09-01',
+    fromValue: 'Residential',
+    toValue: 'Commercial',
+    fromServiceAccountId: null,
+    toServiceAccountId: null,
+    depositCarried: 0,
+    currency: null,
+    depositEntryId: null,
+    actorId: 'demo:agent',
+    actorName: 'Ana Cruz (demo)',
+    recordedAt: '2026-08-26T10:15:00+00:00',
     ...overrides,
   };
 }

@@ -171,11 +171,23 @@ public static class ServiceAccountEndpoints
             .WithValidation<OpenServiceAccountRequest>()
             .WithName("OpenServiceAccount");
 
-        // Start, stop and close are transitions, not field edits, so each is its own POST
-        // sub-resource per CONVENTIONS.md — and an illegal one is a 409 from the aggregate.
+        // Start and stop are transitions, not field edits, so each is its own POST sub-resource per
+        // CONVENTIONS.md — and an illegal one is a 409 from the aggregate.
+        //
+        // They keep customers.write and their free-text reason, unlike closing, and that asymmetry is
+        // deliberate (WP-2.15): a disconnection is an operational act that leaves the account open
+        // and reversible — the supply goes off and can go back on tomorrow — while a closure ends the
+        // service period, releases the premise and is what triggers a final bill. The first is
+        // clerical; the second is a move-out.
         MapTransition(group, "start", "StartService", (accounts, id, reason, ct) => accounts.StartServiceAsync(id, reason, ct));
         MapTransition(group, "stop", "StopService", (accounts, id, reason, ct) => accounts.StopServiceAsync(id, reason, ct));
-        MapTransition(group, "close", "CloseServiceAccount", (accounts, id, reason, ct) => accounts.CloseAsync(id, reason, ct));
+
+        // NO close route since WP-2.15. Closing an account IS a move-out, so it moved to
+        // POST /api/customers/{customerId}/transitions/move-out, which demands a reason code from the
+        // fixed list, the day service ended and the narrower customers.transition permission. Leaving
+        // this one here beside it would have been the bypass that makes "every transition carries a
+        // reason code" untrue. IServiceAccountService.CloseAsync is unchanged and is what the
+        // transition service calls — the state machine did not move, only the way in.
 
         return endpoints;
     }

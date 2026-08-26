@@ -6,6 +6,7 @@ using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
+using GridCore.Modules.Customers.Features.Transitions;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Customers.Data;
@@ -47,6 +48,12 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// new row pointing at the one it supersedes, and the only column that ever moves is the pin.
     /// </summary>
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
+
+    /// <summary>
+    /// Every class change, status change, move-in, move-out and transfer — WP-2.15. Append-only: a
+    /// transition that turned out to be wrong is a new transition back, never an edited row.
+    /// </summary>
+    public DbSet<AccountTransition> AccountTransitions => Set<AccountTransition>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

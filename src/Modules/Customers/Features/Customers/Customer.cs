@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Platform.Monetary;
 using GridCore.Platform.Registry;
 
@@ -52,7 +53,17 @@ public sealed class Customer
     /// <summary>Where to call them.</summary>
     public string? Phone { get; private set; }
 
-    /// <summary>Residential or commercial.</summary>
+    /// <summary>
+    /// Residential or commercial. Decides which tariff applies.
+    /// </summary>
+    /// <remarks>
+    /// <b>No longer correctable (WP-2.15), and that is the package.</b> It left
+    /// <see cref="UpdateDetails"/> for the reason <c>DepositHeld</c> left it in WP-2.12: a field a
+    /// correction form can type over is a field that moves without a reason, without a date and
+    /// without a record — and this one decides what the customer is charged. It moves through
+    /// <see cref="ChangeClass"/>, which demands a reason code from the fixed list and the day the
+    /// new class applies from.
+    /// </remarks>
     public CustomerClass Class { get; private set; }
 
     /// <summary>Where they stand with the utility.</summary>
@@ -81,6 +92,29 @@ public sealed class Customer
 
     /// <summary>Why it last moved.</summary>
     public string? StatusReason { get; private set; }
+
+    /// <summary>
+    /// The day the current status applies from, or <see langword="null"/> for a customer whose
+    /// status has never moved since registration.
+    /// </summary>
+    public DateOnly? StatusEffectiveOn { get; private set; }
+
+    /// <summary>When the class last moved, or <see langword="null"/> if it never has.</summary>
+    public DateTimeOffset? ClassChangedAt { get; private set; }
+
+    /// <summary>
+    /// The day the current class applies from, or <see langword="null"/> for a customer still on the
+    /// class they were registered under.
+    /// </summary>
+    /// <remarks>
+    /// <b>A projection of the transition register, kept here because billing reads it on every
+    /// price.</b> The register holds the whole history and the reason each move was made under; this
+    /// column answers the one question a rate lookup asks — "from when is this customer commercial" —
+    /// without loading it. The same call <c>DepositHeld</c> makes about the deposit ledger. The
+    /// reason code deliberately does <b>not</b> follow it up here: a code without the free text and
+    /// the date beside it is half a story, and the register is one query away for anyone who wants it.
+    /// </remarks>
+    public DateOnly? ClassEffectiveOn { get; private set; }
 
     /// <summary>The statuses this customer may move to, for rendering transition buttons.</summary>
     public IReadOnlyList<CustomerStatus> AllowedTransitions => CustomerTransitions.AllowedFrom(Status);
@@ -131,31 +165,93 @@ public sealed class Customer
     /// registration.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>The deposit is not among them either (WP-2.12).</b> It is a balance made of immutable
     /// entries, so it moves by collecting, applying or refunding — never by a correction to a
     /// customer record. See <see cref="RecordDepositMovement"/>.
+    /// </para>
+    /// <para>
+    /// <b>Nor is the class, since WP-2.15.</b> It decides the tariff, so it moves through
+    /// <see cref="ChangeClass"/> with a reason code and an effective date — the same removal WP-2.12
+    /// made, for the same reason. A form that could type over it is a form that changes what somebody
+    /// is billed and leaves no record of why.
+    /// </para>
     /// </remarks>
     /// <exception cref="RegistryValidationException">A required field is missing.</exception>
     public void UpdateDetails(
         string name,
-        CustomerClass customerClass,
         string? contactName,
         string? email,
         string? phone)
     {
         Require(name, nameof(name));
-        RequireDeclared(customerClass);
 
         Name = RegistryText.Clean(name, NameLength)!;
-        Class = customerClass;
         ContactName = RegistryText.Clean(contactName, NameLength);
         Email = RegistryText.Clean(email, EmailLength);
         Phone = RegistryText.Clean(phone, PhoneLength);
     }
 
-    /// <summary>Moves the customer to <paramref name="status"/>.</summary>
+    /// <summary>
+    /// Moves the customer between classes, from <paramref name="effectiveOn"/> forward.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The reason code is a parameter, not a courtesy.</b> WORK_PACKAGES.md WP-2.15 requires one
+    /// from a fixed list on every transition, and a rule enforced only at the edge is a rule the next
+    /// in-process caller is added without. Taking it here makes "a class moved with no reason
+    /// recorded" a state the module cannot reach — the shape <c>RecordDepositMovement</c> already
+    /// gives the deposit.
+    /// </para>
+    /// <para>
+    /// <b>Whether the date is too far back is not this method's question.</b> A class change may not
+    /// be dated behind a bill that has already gone out, and what has gone out lives in Billing —
+    /// reached through <c>IBillDirectory</c> by the service, because an aggregate cannot ask another
+    /// module anything.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="RegistryValidationException">The class or reason code is not one GridCore declares, or the code does not fit a class change.</exception>
+    /// <exception cref="RegistryWorkflowException">The customer is already of that class.</exception>
+    public void ChangeClass(CustomerClass customerClass, TransitionReasonCode reasonCode, DateOnly effectiveOn, DateTimeOffset now)
+    {
+        RequireDeclared(customerClass);
+
+        if (Class == customerClass)
+        {
+            // A 409, never a 400: whether this is a move at all depends on where the customer is
+            // now, which edge validation cannot see. The call CustomerTransitions already makes.
+            throw new RegistryWorkflowException($"Customer {AccountNumber} is already {Class}.");
+        }
+
+        if (!TransitionReasons.IsAllowed(AccountTransitionKind.ClassChanged, reasonCode))
+        {
+            throw new RegistryValidationException(
+                $"'{reasonCode}' is not a reason a customer's class may be changed for. "
+                + $"Allowed: {string.Join(", ", TransitionReasons.For(AccountTransitionKind.ClassChanged))}.");
+        }
+
+        Class = customerClass;
+        ClassChangedAt = now;
+        ClassEffectiveOn = effectiveOn;
+    }
+
+    /// <summary>
+    /// Moves the customer to <paramref name="status"/>, from <paramref name="effectiveOn"/> forward.
+    /// </summary>
+    /// <remarks>
+    /// <b>WP-1.2's machine is untouched.</b> <see cref="CustomerTransitions"/> still decides what is
+    /// legal and an illegal move is still a 409; WP-2.15 adds the reason code and the effective date
+    /// beside it, and takes the code here rather than at the edge so no caller can skip it. See
+    /// <see cref="ChangeClass"/> for why that matters.
+    /// </remarks>
+    /// <exception cref="RegistryValidationException">The status or reason code is not one GridCore declares, or the code does not fit a status change.</exception>
     /// <exception cref="RegistryWorkflowException">The move is not one <see cref="CustomerTransitions"/> allows.</exception>
-    public void ChangeStatus(CustomerStatus status, string? reason, DateTimeOffset now)
+    public void ChangeStatus(
+        CustomerStatus status,
+        TransitionReasonCode reasonCode,
+        DateOnly effectiveOn,
+        string? reason,
+        DateTimeOffset now)
     {
         RequireDeclared(status);
 
@@ -167,8 +263,16 @@ public sealed class Customer
                     : $"Customer {AccountNumber} cannot go from {Status} to {status}.");
         }
 
+        if (!TransitionReasons.IsAllowed(AccountTransitionKind.StatusChanged, reasonCode))
+        {
+            throw new RegistryValidationException(
+                $"'{reasonCode}' is not a reason a customer's status may be changed for. "
+                + $"Allowed: {string.Join(", ", TransitionReasons.For(AccountTransitionKind.StatusChanged))}.");
+        }
+
         Status = status;
         StatusChangedAt = now;
+        StatusEffectiveOn = effectiveOn;
         StatusReason = RegistryText.Clean(reason, ReasonLength);
     }
 

@@ -34,6 +34,19 @@ public enum StatementEntryKind
 
     /// <summary>A deposit was given back. The same, in reverse.</summary>
     DepositRefunded = 7,
+
+    /// <summary>
+    /// A held deposit was carried between two of the customer's service accounts on a transfer
+    /// (WP-2.15). Moves <b>neither</b> balance — it is on the statement to say the deposit survived
+    /// the move, not to change a figure.
+    /// </summary>
+    /// <remarks>
+    /// The one line on a statement that is purely a statement of fact, and the one the composer's
+    /// proof was written for: a movement given zero effect on a column has to be carried forward on
+    /// both running totals anyway, or the balance printed against the last line stops agreeing with
+    /// the closing balance. See <c>AccountStatement.Compose</c>.
+    /// </remarks>
+    DepositTransferred = 8,
 }
 
 /// <summary>

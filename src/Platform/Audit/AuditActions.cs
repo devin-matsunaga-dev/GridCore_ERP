@@ -28,8 +28,45 @@ public static class AuditActions
     /// <summary>A customer's details were changed.</summary>
     public const string CustomerUpdated = "customer.update";
 
-    /// <summary>A customer moved to another status.</summary>
+    /// <summary>
+    /// A customer moved to another status (WP-2.15 gave it a reason code and an effective date).
+    /// </summary>
+    /// <remarks>
+    /// Still <c>customer.status</c> rather than a new action. What happened is what always happened
+    /// — a customer's status moved — and re-cutting the verb would leave every entry written before
+    /// WP-2.15 unfindable by the filter that finds the ones written after it. The reason code and the
+    /// effective date arrive in the snapshot, which is where facts about the change belong.
+    /// </remarks>
     public const string CustomerStatusChanged = "customer.status";
+
+    /// <summary>
+    /// A customer moved between classes — residential to commercial or back (WP-2.15). Sensitive: it
+    /// picks a different tariff from the effective date forward, so it is permission-gated on
+    /// <c>customers.transition</c> and audited (invariant 5).
+    /// </summary>
+    public const string CustomerClassChanged = "customer.class";
+
+    /// <summary>
+    /// A customer took service at a premise they were not being served at (WP-2.15) — the standalone
+    /// move-in. The account's own opening is audited separately as
+    /// <see cref="ServiceAccountOpened"/>; this is the entry that carries the reason code, the
+    /// effective date and the before/after of the customer it was done for.
+    /// </summary>
+    public const string ServiceMovedIn = "service_account.move_in";
+
+    /// <summary>
+    /// Service ended at a premise and the account was closed (WP-2.15) — the standalone move-out,
+    /// which is also what triggers the final bill the billing pass will raise.
+    /// </summary>
+    public const string ServiceMovedOut = "service_account.move_out";
+
+    /// <summary>
+    /// Service moved from one premise to another for the same customer, as one linked act (WP-2.15).
+    /// Its own action rather than a move-out beside a move-in, because a transfer is the thing that
+    /// carries the deposit — reading it as two entries would lose the fact that no money changed
+    /// hands between them.
+    /// </summary>
+    public const string ServiceTransferred = "service_account.transfer";
 
     /// <summary>
     /// A security deposit was assessed and collected from a customer. Sensitive: money changing
@@ -287,6 +324,21 @@ public static class AuditEntityTypes
     /// <see cref="Bill"/> instead, because there a row genuinely is the document.
     /// </remarks>
     public const string CustomerDocument = "customers.customer_document";
+
+    /// <summary>
+    /// A row of <c>customers.account_transitions</c> (WP-2.15) — a class change, a status change, a
+    /// move-in, a move-out or a transfer.
+    /// </summary>
+    /// <remarks>
+    /// Every transition is audited against <b>this</b> entity rather than against the customer or the
+    /// account it moved, and uniformly across all five kinds. The alternative — a class change
+    /// audited against the customer and a transfer against one of two accounts — would make "show me
+    /// every transition this customer has been through" a query that has to know which kind it is
+    /// looking for before it can find it. The row is what the trail points at; the snapshot on either
+    /// side carries the customer's class, status, deposit and account, which is the before/after
+    /// WORK_PACKAGES.md asks for and reads the same way whichever kind moved.
+    /// </remarks>
+    public const string AccountTransition = "customers.account_transition";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

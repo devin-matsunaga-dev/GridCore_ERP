@@ -23,6 +23,7 @@ const kindLabels: Record<StatementEntryKind, string> = {
   DepositApplied: 'Deposit applied',
   DepositCollected: 'Deposit received',
   DepositRefunded: 'Deposit refunded',
+  DepositTransferred: 'Deposit carried',
 };
 
 /**
@@ -40,6 +41,7 @@ const kindTones: Record<StatementEntryKind, StatusTone> = {
   DepositApplied: 'info',
   DepositCollected: 'success',
   DepositRefunded: 'neutral',
+  DepositTransferred: 'neutral',
 };
 
 /** What a statement line's kind reads as. */

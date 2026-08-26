@@ -21,8 +21,15 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
  * then sends them; and it sits before `timeline`, which reports rather than produces. `notes` (WP-2.13) sits beside `contacts` at the front, with
  * the other things that are about the *person* rather than about their money — it is what a rep
  * reads while the customer is still on the telephone, so it belongs before the registers rather than
- * after them. Adding a tab here adds a route, so an id is part of the URL vocabulary: renaming one
- * breaks every link a rep has sent.
+ * after them.
+ *
+ * `transitions` (WP-2.15) sits AFTER everything it might depend on and before the feed that reports
+ * on all of it: a rep reads the deposit before they transfer it and runs a statement before they
+ * close an account, and both of those tabs are to its left. It is the last thing done on a call
+ * rather than the first, which is also where it reads.
+ *
+ * Adding a tab here adds a route, so an id is part of the URL vocabulary: renaming one breaks every
+ * link a rep has sent.
  */
 export const customer360TabIds = [
   'summary',
@@ -32,6 +39,7 @@ export const customer360TabIds = [
   'payments',
   'deposit',
   'documents',
+  'transitions',
   'timeline',
   'work-orders',
 ] as const;
@@ -48,6 +56,7 @@ const tabLabels: Record<Customer360TabId, string> = {
   payments: 'Payments',
   deposit: 'Deposit',
   documents: 'Documents',
+  transitions: 'Transitions',
   timeline: 'Timeline',
   'work-orders': 'Work orders',
 };

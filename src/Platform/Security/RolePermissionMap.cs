@@ -35,6 +35,12 @@ public static class RolePermissionMap
                 // producing documents needs supervising.
                 Permissions.Customers.Documents,
 
+                // The desk that takes the telephone call is the desk that moves somebody in, moves
+                // them out and re-classifies them (WP-2.15). Held beside customers.write and
+                // separate from it, so a utility that decides a re-classification needs a supervisor
+                // moves one line here rather than editing every call site.
+                Permissions.Customers.Transition,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
@@ -113,6 +119,11 @@ public static class RolePermissionMap
                 // A manager who may credit a disputed bill has to be able to read the document that
                 // was disputed.
                 Permissions.Customers.Documents,
+
+                // A manager signs off the transitions the front desk cannot — a customer moved to a
+                // commercial tariff, a transfer between premises. The role that may credit a bill is
+                // the role that may change what the next one is raised on.
+                Permissions.Customers.Transition,
 
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,

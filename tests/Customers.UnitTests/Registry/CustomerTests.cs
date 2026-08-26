@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Shared;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;
@@ -10,6 +11,9 @@ namespace GridCore.Modules.Customers.UnitTests.Registry;
 public class CustomerTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 24, 9, 0, 0, TimeSpan.Zero);
+
+    /// <summary>The day <see cref="Now"/> falls on — what a transition dated "today" carries.</summary>
+    private static readonly DateOnly Today = DateOnly.FromDateTime(Now.UtcDateTime);
 
     private static Customer ARegisteredCustomer(CustomerStatus status = CustomerStatus.Prospect) =>
         Customer.Register("C-000001", "Sablan Family Residence", CustomerClass.Residential, Now, status: status);
@@ -73,46 +77,115 @@ public class CustomerTests
             Customer.Register("C-000001", "Sablan Family Residence", (CustomerClass)99, Now));
 
     [Fact]
-    public void Updating_details_changes_everything_except_the_account_number()
+    public void Updating_details_changes_everything_except_the_account_number_and_the_class()
     {
         var customer = ARegisteredCustomer();
 
-        customer.UpdateDetails("Sablan Family Trust", CustomerClass.Commercial, "Maria Sablan", "maria@example.com", "+1-670-532-0114");
+        customer.UpdateDetails("Sablan Family Trust", "Maria Sablan", "maria@example.com", "+1-670-532-0114");
 
         Assert.Equal("C-000001", customer.AccountNumber);
         Assert.Equal("Sablan Family Trust", customer.Name);
-        Assert.Equal(CustomerClass.Commercial, customer.Class);
 
-        // Untouched by an update: it is quoted on bills and referred to by every other module.
+        // The class is no longer correctable (WP-2.15) — it decides the tariff, so it moves through
+        // ChangeClass with a reason code and an effective date. Untouched here, as the account number
+        // and the status are, and for the same kind of reason: other things depend on it.
+        Assert.Equal(CustomerClass.Residential, customer.Class);
         Assert.Equal(CustomerStatus.Prospect, customer.Status);
     }
 
     [Fact]
     public void A_rejected_correction_leaves_the_customer_exactly_as_it_was()
     {
-        // Failure path: the guards run before the first assignment, so an undeclared class cannot
-        // take the name with it. The transaction would roll the database back either way — this is
-        // about the entity a caller still holds on the error path.
+        // Failure path: the guards run before the first assignment, so an empty name cannot take the
+        // rest of the record with it. The transaction would roll the database back either way — this
+        // is about the entity a caller still holds on the error path.
         var customer = ARegisteredCustomer();
 
         Assert.Throws<RegistryValidationException>(() =>
-            customer.UpdateDetails("Sablan Family Trust", (CustomerClass)99, null, null, null));
+            customer.UpdateDetails("   ", "Maria Sablan", "maria@example.com", null));
 
         Assert.Equal("Sablan Family Residence", customer.Name);
-        Assert.Equal(CustomerClass.Residential, customer.Class);
+        Assert.Null(customer.ContactName);
     }
 
     [Fact]
-    public void Changing_status_records_when_and_why()
+    public void Changing_status_records_when_it_moved_why_and_from_when()
     {
         var customer = ARegisteredCustomer();
         var later = Now.AddDays(3);
+        var effectiveOn = new DateOnly(2026, 9, 1);
 
-        customer.ChangeStatus(CustomerStatus.Active, "Deposit received, service starts Monday.", later);
+        customer.ChangeStatus(
+            CustomerStatus.Active,
+            TransitionReasonCode.CustomerRequest,
+            effectiveOn,
+            "Deposit received, service starts Monday.",
+            later);
 
         Assert.Equal(CustomerStatus.Active, customer.Status);
         Assert.Equal(later, customer.StatusChangedAt);
+
+        // Two different dates on purpose (WP-2.15): StatusChangedAt is when a rep typed it,
+        // StatusEffectiveOn is when the utility says it happened.
+        Assert.Equal(effectiveOn, customer.StatusEffectiveOn);
         Assert.Equal("Deposit received, service starts Monday.", customer.StatusReason);
+    }
+
+    [Fact]
+    public void A_status_change_under_a_reason_code_that_does_not_fit_it_is_refused()
+    {
+        // Failure path, and the rule is in the AGGREGATE rather than only at the edge — so a seeder
+        // and a later in-process caller meet it too. PremiseNowTrading explains a class change; it
+        // says nothing about why somebody was suspended.
+        var customer = ARegisteredCustomer();
+
+        Assert.Throws<RegistryValidationException>(() =>
+            customer.ChangeStatus(CustomerStatus.Active, TransitionReasonCode.PremiseNowTrading, Today, null, Now));
+
+        Assert.Equal(CustomerStatus.Prospect, customer.Status);
+        Assert.Null(customer.StatusEffectiveOn);
+    }
+
+    [Fact]
+    public void Changing_class_records_when_it_moved_and_from_when()
+    {
+        var customer = ARegisteredCustomer();
+        var later = Now.AddDays(3);
+        var effectiveOn = new DateOnly(2026, 10, 1);
+
+        customer.ChangeClass(CustomerClass.Commercial, TransitionReasonCode.PremiseNowTrading, effectiveOn, later);
+
+        Assert.Equal(CustomerClass.Commercial, customer.Class);
+        Assert.Equal(later, customer.ClassChangedAt);
+        Assert.Equal(effectiveOn, customer.ClassEffectiveOn);
+    }
+
+    [Fact]
+    public void Changing_class_to_the_one_already_held_is_refused()
+    {
+        // Failure path, and a 409 rather than a 400: whether this is a move at all depends on where
+        // the customer is now, which edge validation cannot see. The call CustomerTransitions makes
+        // about a status already held.
+        var customer = ARegisteredCustomer();
+
+        Assert.Throws<RegistryWorkflowException>(() =>
+            customer.ChangeClass(CustomerClass.Residential, TransitionReasonCode.MisclassifiedAtIntake, Today, Now));
+
+        Assert.Null(customer.ClassChangedAt);
+    }
+
+    [Fact]
+    public void A_class_change_under_a_reason_code_that_does_not_fit_it_is_refused()
+    {
+        // The mirror of the status rule above. UnpaidBalance suspends somebody; it is not a statement
+        // about what their premise is used for, and a class change recorded under it would put a
+        // sentence in the register that nobody could act on.
+        var customer = ARegisteredCustomer();
+
+        Assert.Throws<RegistryValidationException>(() =>
+            customer.ChangeClass(CustomerClass.Commercial, TransitionReasonCode.UnpaidBalance, Today, Now));
+
+        Assert.Equal(CustomerClass.Residential, customer.Class);
     }
 
     [Theory]
@@ -125,7 +198,7 @@ public class CustomerTests
     {
         var customer = ARegisteredCustomer(from);
 
-        customer.ChangeStatus(to, reason: null, Now);
+        customer.ChangeStatus(to, TransitionReasonCode.CustomerRequest, Today, reason: null, Now);
 
         Assert.Equal(to, customer.Status);
     }
@@ -142,7 +215,8 @@ public class CustomerTests
         // it ended — the same rule the ledger follows, where a correction is a new entry.
         var customer = ARegisteredCustomer(from);
 
-        Assert.Throws<RegistryWorkflowException>(() => customer.ChangeStatus(to, reason: null, Now));
+        Assert.Throws<RegistryWorkflowException>(() =>
+            customer.ChangeStatus(to, TransitionReasonCode.CustomerRequest, Today, reason: null, Now));
         Assert.Equal(from, customer.Status);
     }
 

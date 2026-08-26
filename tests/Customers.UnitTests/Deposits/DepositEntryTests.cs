@@ -230,12 +230,95 @@ public class DepositEntryTests
                 Now));
 
     [Fact]
+    public void A_carry_writes_a_row_and_moves_nothing()
+    {
+        // WP-2.15. The deposit is held against the CUSTOMER and both accounts on a transfer are that
+        // customer's, so nothing left the utility and nothing arrived. The row exists so a deposit
+        // that survived a house move reads as having survived it rather than as a balance that
+        // silently stayed put.
+        var customer = ARegisteredCustomer();
+
+        Collect(customer, 250.00m);
+
+        var carry = DepositEntry.Carry(
+            customer,
+            250.00m,
+            DepositRules.Currency,
+            "Carried from A-000001 to A-000002 on transfer.",
+            Cashier,
+            Now);
+
+        Assert.Equal(DepositEntryKind.Transferred, carry.Kind);
+        Assert.Equal(250.00m, carry.Amount);
+        Assert.Equal(0m, carry.SignedAmount);
+        Assert.Equal(250.00m, carry.BalanceAfter);
+        Assert.Equal(250.00m, customer.DepositHeld);
+    }
+
+    [Fact]
+    public void A_carry_names_no_account()
+    {
+        // ServiceAccountId means "the account whose bill this settled"; giving it a second meaning
+        // would make the column unreadable without knowing the kind first. Which two accounts a
+        // deposit moved between is customers.account_transitions' business.
+        var customer = ARegisteredCustomer();
+
+        Collect(customer, 250.00m);
+
+        var carry = DepositEntry.Carry(customer, 250.00m, DepositRules.Currency, "Carried.", Cashier, Now);
+
+        Assert.Null(carry.ServiceAccountId);
+        Assert.Null(carry.BillId);
+        Assert.Null(carry.BillNumber);
+    }
+
+    [Fact]
+    public void A_carry_of_nothing_is_refused_by_the_same_guard_every_other_movement_meets() =>
+        // Failure path, and the reason the transition service checks the balance before it asks: an
+        // entry saying nothing was carried is a row nobody can reconcile — the argument this enum
+        // makes for having no Held member.
+        Assert.Throws<RegistryValidationException>(() =>
+            DepositEntry.Carry(ARegisteredCustomer(), 0m, DepositRules.Currency, "Carried.", Cashier, Now));
+
+    [Fact]
+    public void A_carry_leaves_the_balance_where_a_refund_and_a_re_collection_would_have_left_it()
+    {
+        // The arithmetic is the same; the record is not. This is what the owner's call turns on —
+        // the pair would put "money out" and "money in" on the customer's statement on the same day,
+        // and every "a refund cannot exceed the held balance" guard would have to learn about a
+        // refund that was not one.
+        var carried = ARegisteredCustomer();
+        var churned = ARegisteredCustomer();
+
+        Collect(carried, 250.00m);
+        Collect(churned, 250.00m);
+
+        DepositEntry.Carry(carried, 250.00m, DepositRules.Currency, "Carried.", Cashier, Now);
+
+        Refund(churned, 250.00m, "Move-out.");
+        Collect(churned, 250.00m);
+
+        Assert.Equal(churned.DepositHeld, carried.DepositHeld);
+    }
+
+    [Fact]
     public void Every_declared_kind_has_a_direction() =>
         // A kind added without one would silently take the sign of whichever branch was written
-        // first, and the balance would be wrong in a way no test asked about.
+        // first, and the balance would be wrong in a way no test asked about. Zero is admitted since
+        // WP-2.15 — see the kind below that carries it — but nothing else is.
         Assert.All(
             Enum.GetValues<DepositEntryKind>(),
-            kind => Assert.Contains(DepositEntryKinds.DirectionOf(kind), new[] { -1, 1 }));
+            kind => Assert.Contains(DepositEntryKinds.DirectionOf(kind), new[] { -1, 0, 1 }));
+
+    [Fact]
+    public void Only_a_carry_moves_nothing() =>
+        // The zero is not a hole in the map, it is one kind's answer: a transfer moves a deposit
+        // between two of ONE customer's accounts, and the customer is who the deposit is held
+        // against. Every other kind takes money in or lets it out. This is the assertion that fails
+        // the day a second kind is given a direction somebody could not decide.
+        Assert.Equal(
+            [DepositEntryKind.Transferred],
+            Enum.GetValues<DepositEntryKind>().Where(DepositEntryKinds.MovesNothing));
 
     [Fact]
     public void A_kind_GridCore_does_not_declare_has_no_direction() =>

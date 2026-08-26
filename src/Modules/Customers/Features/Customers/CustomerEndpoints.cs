@@ -18,8 +18,9 @@ public interface ICustomerDetails
     /// <summary>Who they are.</summary>
     string Name { get; }
 
-    /// <summary>Residential or commercial.</summary>
-    CustomerClass Class { get; }
+    // No Class since WP-2.15: a registration states one and a correction may not change it. The
+    // shared rules are the fields both bodies genuinely have in common, and the class rule now sits
+    // on CreateCustomerRequestValidator alone.
 
     /// <summary>Who to ask for.</summary>
     string? ContactName { get; }
@@ -52,22 +53,24 @@ public sealed record CreateCustomerRequest(
 
 /// <summary>Body of a request to correct a customer's details.</summary>
 /// <param name="Name">Who they are.</param>
-/// <param name="Class">Residential or commercial.</param>
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
-/// <remarks><b>No deposit field (WP-2.12)</b>, for the reason <see cref="CreateCustomerRequest"/> gives.</remarks>
+/// <remarks>
+/// <para><b>No deposit field (WP-2.12)</b>, for the reason <see cref="CreateCustomerRequest"/> gives.</para>
+/// <para>
+/// <b>No class field either, since WP-2.15</b> — the same removal for the same reason one step on.
+/// A class decides the tariff, so it moves through
+/// <c>POST /api/customers/{id}/transitions/class</c>, which demands a reason code from the fixed
+/// list and the day the new class applies from. A correction form that could type over it would
+/// change what somebody is billed and leave no record of why.
+/// </para>
+/// </remarks>
 public sealed record UpdateCustomerRequest(
     string Name,
-    CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
     string? Phone = null) : ICustomerDetails;
-
-/// <summary>Body of a request to move a customer to another status.</summary>
-/// <param name="Status">Where they should end up.</param>
-/// <param name="Reason">Why, for the audit trail and the record.</param>
-public sealed record ChangeCustomerStatusRequest(CustomerStatus Status, string? Reason = null);
 
 /// <summary>A customer as the API returns it.</summary>
 /// <param name="Id">Identifier.</param>
@@ -83,6 +86,14 @@ public sealed record ChangeCustomerStatusRequest(CustomerStatus Status, string? 
 /// <param name="RegisteredAt">When they were registered.</param>
 /// <param name="StatusChangedAt">When the status last moved.</param>
 /// <param name="StatusReason">Why it last moved.</param>
+/// <param name="StatusEffectiveOn">The day the current status applies from; absent since registration.</param>
+/// <param name="ClassChangedAt">When the class last moved; absent if it never has.</param>
+/// <param name="ClassEffectiveOn">
+/// The day the current class applies from (WP-2.15); absent for a customer still on the class they
+/// were registered under. <b>Not the same as <paramref name="ClassChangedAt"/></b> — that is when a
+/// rep typed it, this is when the utility says it happened, and it is what the billing pass prices
+/// from.
+/// </param>
 public sealed record CustomerResponse(
     Guid Id,
     string AccountNumber,
@@ -96,7 +107,10 @@ public sealed record CustomerResponse(
     decimal DepositHeld,
     DateTimeOffset RegisteredAt,
     DateTimeOffset? StatusChangedAt,
-    string? StatusReason)
+    string? StatusReason,
+    DateOnly? StatusEffectiveOn,
+    DateTimeOffset? ClassChangedAt,
+    DateOnly? ClassEffectiveOn)
 {
     /// <summary>Projects a <see cref="Customer"/> for the wire.</summary>
     public static CustomerResponse From(Customer customer)
@@ -116,7 +130,10 @@ public sealed record CustomerResponse(
             customer.DepositHeld,
             customer.RegisteredAt,
             customer.StatusChangedAt,
-            customer.StatusReason);
+            customer.StatusReason,
+            customer.StatusEffectiveOn,
+            customer.ClassChangedAt,
+            customer.ClassEffectiveOn);
     }
 }
 
@@ -177,7 +194,7 @@ public static class CustomerEndpoints
                 {
                     var customer = await customers.UpdateAsync(
                         id,
-                        new UpdateCustomerInput(body.Name, body.Class, body.ContactName, body.Email, body.Phone),
+                        new UpdateCustomerInput(body.Name, body.ContactName, body.Email, body.Phone),
                         cancellationToken);
 
                     return Results.Ok(CustomerResponse.From(customer));
@@ -186,15 +203,11 @@ public static class CustomerEndpoints
             .WithValidation<UpdateCustomerRequest>()
             .WithName("UpdateCustomer");
 
-        // A status change is a transition, not a field edit, so it is its own POST sub-resource per
-        // CONVENTIONS.md — and the aggregate refuses an illegal one with a 409 rather than a 400.
-        group
-            .MapPost("/{id:guid}/status", ([FromRoute] Guid id, ChangeCustomerStatusRequest body, [FromServices] ICustomerService customers, CancellationToken cancellationToken) =>
-                RegistryProblems.RunAsync(async () =>
-                    Results.Ok(CustomerResponse.From(await customers.ChangeStatusAsync(id, body.Status, body.Reason, cancellationToken)))))
-            .RequirePermission(Permissions.Customers.Write)
-            .WithValidation<ChangeCustomerStatusRequest>()
-            .WithName("ChangeCustomerStatus");
+        // NO status route here since WP-2.15. It moved to POST /api/customers/{id}/transitions/status,
+        // which demands a reason code from the fixed list, an effective date and the narrower
+        // customers.transition permission. Leaving this one in place beside it would have been the
+        // bypass that makes "every transition carries a reason code" untrue — the same call WP-2.12
+        // made when it took the deposit out of the correction form rather than leaving both ways open.
 
         return endpoints;
     }

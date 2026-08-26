@@ -58,6 +58,31 @@ public static class Permissions
         /// </para>
         /// </remarks>
         public const string Documents = "customers.documents";
+
+        /// <summary>
+        /// Move a customer between classes or statuses, and move service in, out or between
+        /// premises (WP-2.15).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Narrower than <see cref="Write"/>, because these are the changes that alter what a
+        /// customer is billed.</b> Re-classifying a household as commercial picks a different
+        /// tariff from the effective date forward; a move-out ends a service period and triggers a
+        /// final bill. Correcting a spelling on the same record does neither, and the clerk who may
+        /// do the second is not automatically the clerk who may do the first. That is the same line
+        /// <see cref="Deposit"/> and <see cref="Authorise"/> are drawn on, and the opposite side of
+        /// it from WP-2.13's notes, which earned no permission because logging a call is clerical.
+        /// </para>
+        /// <para>
+        /// <b>The gate is in <c>CustomerTransitionService</c>, not on the route.</b> Every route in
+        /// the transitions group is a transition, so the route could carry it — but the service is
+        /// where CONVENTIONS.md asks a rule to live, and the transition service composes
+        /// <c>IServiceAccountService</c> and <c>ICustomerDepositService</c> in process, exactly as
+        /// WP-2.8's intake reaches <c>CollectAsync</c> without passing a deposit route. One check
+        /// covers every caller.
+        /// </para>
+        /// </remarks>
+        public const string Transition = "customers.transition";
     }
 
     /// <summary>Meters, readings and consumption.</summary>

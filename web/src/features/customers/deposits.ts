@@ -21,6 +21,7 @@ const kindLabels: Record<DepositEntryKind, string> = {
   Collected: 'Collected',
   Applied: 'Applied to bill',
   Refunded: 'Refunded',
+  Transferred: 'Carried on transfer',
 };
 
 /**
@@ -34,6 +35,10 @@ const kindTones: Record<DepositEntryKind, StatusTone> = {
   Collected: 'success',
   Applied: 'info',
   Refunded: 'neutral',
+
+  // Neutral, because nothing moved. A carry on a transfer keeps a deposit exactly where it was —
+  // colouring it as money in or money out would be the screen making the claim the ledger refuses to.
+  Transferred: 'neutral',
 };
 
 /** What a movement's kind reads as. */

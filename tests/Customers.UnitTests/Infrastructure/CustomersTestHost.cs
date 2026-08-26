@@ -11,6 +11,7 @@ using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
@@ -83,6 +84,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
         services.AddScoped<ICustomerNoteService, CustomerNoteService>();
         services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
+        services.AddScoped<ICustomerTransitionService, CustomerTransitionService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -265,6 +267,40 @@ public sealed class CustomersTestHost : IDisposable
             Bills,
             Payments,
             services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the transition register, in its own scope.</summary>
+    public Task<TResult> WithTransitionsAsync<TResult>(Func<ICustomerTransitionService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerTransitionService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the transition register as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape the deposit ledger, the note log and the documents take, and needed for the
+    /// same reason: WP-2.15's transitions are gated on <c>customers.transition</c> inside the service,
+    /// and proving the refusal means a caller who does not hold it acting on a customer somebody who
+    /// does has already set up.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<ICustomerTransitionService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new CustomerTransitionService(
+            services.GetRequiredService<CustomersDbContext>(),
+            services.GetRequiredService<IServiceAccountService>(),
+            services.GetRequiredService<IDepositRuleService>(),
+            Bills,
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            Events,
             caller,
             services.GetRequiredService<TimeProvider>())));
     }

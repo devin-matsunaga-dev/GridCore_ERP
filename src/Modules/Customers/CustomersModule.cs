@@ -11,6 +11,7 @@ using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Platform;
 using GridCore.Platform.Data;
@@ -70,6 +71,13 @@ public sealed class CustomersModule : IModule
         // Billing owns the figures a bill was issued with.
         services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
 
+        // Account transitions (WP-2.15): class and status changes with a reason code and an effective
+        // date, and move-in / move-out / transfer. It composes IServiceAccountService rather than
+        // reimplementing WP-1.2's state machine, and consumes IBillDirectory for one question — how
+        // far back a class change may be dated. The gate, customers.transition, is inside the service
+        // and not on the routes, because the intake-style in-process callers would otherwise skip it.
+        services.AddScoped<ICustomerTransitionService, CustomerTransitionService>();
+
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
         // rules, and only one of them has a permission gate inside it.
@@ -96,7 +104,11 @@ public sealed class CustomersModule : IModule
         // greppable — the same reason Program.cs lists the modules.
         services.AddGridCoreValidator<CreateCustomerRequest, CreateCustomerRequestValidator>();
         services.AddGridCoreValidator<UpdateCustomerRequest, UpdateCustomerRequestValidator>();
+        services.AddGridCoreValidator<ChangeCustomerClassRequest, ChangeCustomerClassRequestValidator>();
         services.AddGridCoreValidator<ChangeCustomerStatusRequest, ChangeCustomerStatusRequestValidator>();
+        services.AddGridCoreValidator<MoveInRequest, MoveInRequestValidator>();
+        services.AddGridCoreValidator<MoveOutRequest, MoveOutRequestValidator>();
+        services.AddGridCoreValidator<TransferServiceRequest, TransferServiceRequestValidator>();
         services.AddGridCoreValidator<ServiceLocationRequest, ServiceLocationRequestValidator>();
         services.AddGridCoreValidator<OpenServiceAccountRequest, OpenServiceAccountRequestValidator>();
         services.AddGridCoreValidator<ServiceAccountTransitionRequest, ServiceAccountTransitionRequestValidator>();
@@ -117,6 +129,7 @@ public sealed class CustomersModule : IModule
         // environment allows it, so this line is unconditional and the guard stays in one place.
         services.AddDemoSeeder<CustomersDemoSeeder>();
         services.AddDemoSeeder<ServiceAccountsDemoSeeder>();
+        services.AddDemoSeeder<AccountTransitionsDemoSeeder>();
         services.AddDemoSeeder<CustomerNotesDemoSeeder>();
     }
 
@@ -135,5 +148,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapDepositEndpoints();
         endpoints.MapNoteEndpoints();
         endpoints.MapDocumentEndpoints();
+        endpoints.MapTransitionEndpoints();
     }
 }

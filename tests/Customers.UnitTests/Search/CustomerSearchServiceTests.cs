@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -513,8 +514,10 @@ public class CustomerSearchServiceTests
         var active = await ACustomerAsync(host, "Cruz Household");
         var prospect = await ACustomerAsync(host, "Cruz Family Store", customerClass: CustomerClass.Commercial);
 
-        await host.WithCustomersAsync(customers =>
-            customers.ChangeStatusAsync(active.Id, CustomerStatus.Active, "Service started"));
+        await host.WithTransitionsAsync(transitions =>
+            transitions.ChangeStatusAsync(
+                active.Id,
+                new ChangeCustomerStatusInput(CustomerStatus.Active, TransitionReasonCode.CustomerRequest)));
 
         var result = await FilteredAsync(host, "Cruz", status: CustomerStatus.Active);
 

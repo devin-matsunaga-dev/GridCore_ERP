@@ -215,4 +215,27 @@ public interface IBillDirectory
         DateOnly issuedOnOrBefore,
         int limit,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The day <paramref name="customerId"/>'s most recently issued bill went out, or
+    /// <see langword="null"/> if none ever has (WP-2.15).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One row, and a different question from <see cref="ActivityForCustomerAsync"/>.</b> That
+    /// call hands over a whole history because a statement's opening balance is what every movement
+    /// before it adds up to; this one answers "how far back may a class change be dated", which is a
+    /// single date. Asking it through the history would fetch a decade of bills and their corrections
+    /// to read one column off the last of them.
+    /// </para>
+    /// <para>
+    /// <b>Issued bills only, for the reason the activity record gives.</b> A draft has never been
+    /// priced at a customer, so re-classifying behind one changes nothing anybody has seen — while a
+    /// bill that went out was raised on the class the customer held that day, and a class change
+    /// dated before it would mean the utility had charged the wrong tariff and not said so.
+    /// Cancelled bills count: a withdrawn bill still went out.
+    /// </para>
+    /// </remarks>
+    /// <param name="customerId">Whose bills.</param>
+    Task<DateOnly?> LastIssuedOnForCustomerAsync(Guid customerId, CancellationToken cancellationToken = default);
 }

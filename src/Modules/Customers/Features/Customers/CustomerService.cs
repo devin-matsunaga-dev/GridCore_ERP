@@ -27,17 +27,21 @@ public sealed record RegisterCustomerInput(
 
 /// <summary>What a caller supplies to correct a customer's details.</summary>
 /// <param name="Name">Who they are.</param>
-/// <param name="Class">Residential or commercial.</param>
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
 /// <remarks>
+/// <para>
 /// <b>The deposit is not correctable (WP-2.12).</b> It is a balance made of immutable entries, so it
 /// moves by collecting, applying or refunding — never by an edit to a customer record.
+/// </para>
+/// <para>
+/// <b>Nor is the class (WP-2.15).</b> It decides the tariff, so it moves through
+/// <c>ICustomerTransitionService.ChangeClassAsync</c> with a reason code and an effective date.
+/// </para>
 /// </remarks>
 public sealed record UpdateCustomerInput(
     string Name,
-    CustomerClass Class,
     string? ContactName = null,
     string? Email = null,
     string? Phone = null);
@@ -62,8 +66,9 @@ public interface ICustomerService
     /// <summary>Corrects a customer's details.</summary>
     Task<Customer> UpdateAsync(Guid id, UpdateCustomerInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Moves a customer to another status.</summary>
-    Task<Customer> ChangeStatusAsync(Guid id, CustomerStatus status, string? reason, CancellationToken cancellationToken = default);
+    // No ChangeStatusAsync since WP-2.15. Moving a customer's status needs a reason code from a fixed
+    // list, an effective date and a row in the transition register, so it lives on
+    // ICustomerTransitionService — one implementation rather than two that could drift.
 
     /// <summary>One customer, or <see langword="null"/> if there is no such id.</summary>
     Task<Customer?> FindAsync(Guid id, CancellationToken cancellationToken = default);
@@ -153,17 +158,9 @@ public sealed class CustomerService(
         return MutateAsync(
             id,
             AuditActions.CustomerUpdated,
-            customer => customer.UpdateDetails(input.Name, input.Class, input.ContactName, input.Email, input.Phone),
+            customer => customer.UpdateDetails(input.Name, input.ContactName, input.Email, input.Phone),
             cancellationToken);
     }
-
-    /// <inheritdoc />
-    public Task<Customer> ChangeStatusAsync(Guid id, CustomerStatus status, string? reason, CancellationToken cancellationToken = default) =>
-        MutateAsync(
-            id,
-            AuditActions.CustomerStatusChanged,
-            customer => customer.ChangeStatus(status, reason, clock.GetUtcNow()),
-            cancellationToken);
 
     /// <inheritdoc />
     public Task<Customer?> FindAsync(Guid id, CancellationToken cancellationToken = default) =>

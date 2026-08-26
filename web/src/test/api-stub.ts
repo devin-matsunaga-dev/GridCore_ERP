@@ -26,6 +26,15 @@ export type FetchStub = {
   calls: URL[];
   /** The most recent request whose path matches, for asserting on filters. */
   lastCall: (path: string) => URL | undefined;
+  /**
+   * The decoded JSON body of the most recent request to `path`, or `undefined` if it had none.
+   *
+   * Added for WP-2.15, where the URL alone is not the assertion: a transition sends the reason code
+   * and the effective date in its body, and a form that dropped either would still hit exactly the
+   * right route. Decoded here rather than in each test, so a body that is not JSON fails as one
+   * clear undefined rather than as a parse error in a page test.
+   */
+  lastBody: (path: string) => unknown;
   restore: () => void;
 };
 
@@ -37,12 +46,14 @@ const notFound: StubbedResponse = {
 
 export function stubFetch(respond: (url: URL) => StubbedResponse | undefined): FetchStub {
   const calls: URL[] = [];
+  const bodies: (unknown | undefined)[] = [];
 
-  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL) => {
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const href =
       typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
     const url = new URL(href, 'http://localhost');
     calls.push(url);
+    bodies.push(decode(init?.body));
 
     const answer = respond(url) ?? notFound;
 
@@ -66,8 +77,28 @@ export function stubFetch(respond: (url: URL) => StubbedResponse | undefined): F
   return {
     calls,
     lastCall: (path) => calls.findLast((url) => url.pathname === path),
+    lastBody: (path) => {
+      // Walked backwards over the index rather than `findLast`, because the answer is the body that
+      // travelled WITH the matching call and the two arrays are parallel.
+      for (let index = calls.length - 1; index >= 0; index -= 1) {
+        if (calls[index].pathname === path) return bodies[index];
+      }
+
+      return undefined;
+    },
     restore: () => spy.mockRestore(),
   };
+}
+
+/** The request body as the test wants to read it, or `undefined` for anything that is not JSON. */
+function decode(body: BodyInit | null | undefined): unknown {
+  if (typeof body !== 'string') return undefined;
+
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The shape a single stubbed route takes: an exact pathname and what to answer with. */

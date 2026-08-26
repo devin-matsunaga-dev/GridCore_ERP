@@ -1,6 +1,7 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Search;
@@ -151,7 +152,11 @@ public class CustomersModuleTests
 
         Assert.True(Registers<IValidator<CreateCustomerRequest>>(services));
         Assert.True(Registers<IValidator<UpdateCustomerRequest>>(services));
+        Assert.True(Registers<IValidator<ChangeCustomerClassRequest>>(services));
         Assert.True(Registers<IValidator<ChangeCustomerStatusRequest>>(services));
+        Assert.True(Registers<IValidator<MoveInRequest>>(services));
+        Assert.True(Registers<IValidator<MoveOutRequest>>(services));
+        Assert.True(Registers<IValidator<TransferServiceRequest>>(services));
         Assert.True(Registers<IValidator<ServiceLocationRequest>>(services));
         Assert.True(Registers<IValidator<OpenServiceAccountRequest>>(services));
         Assert.True(Registers<IValidator<ServiceAccountTransitionRequest>>(services));
@@ -163,6 +168,7 @@ public class CustomersModuleTests
     [Theory]
     [InlineData(typeof(CustomersDemoSeeder))]
     [InlineData(typeof(ServiceAccountsDemoSeeder))]
+    [InlineData(typeof(AccountTransitionsDemoSeeder))]
     [InlineData(typeof(CustomerNotesDemoSeeder))]
     public void The_demo_seeders_are_registered_unconditionally(Type seeder)
     {

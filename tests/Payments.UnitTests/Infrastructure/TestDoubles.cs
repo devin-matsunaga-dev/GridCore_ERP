@@ -209,6 +209,15 @@ public sealed class FakeBillDirectory : IBillDirectory
         Task.FromResult<IReadOnlyList<BillActivity>>([]);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Payments never asks this either — it is WP-2.15's question, asked by the Customers transition
+    /// register about how far back a class change may be dated. Null for the reason the history above
+    /// is empty: a faithful answer for a module that seeds no issued-bill dates.
+    /// </remarks>
+    public Task<DateOnly?> LastIssuedOnForCustomerAsync(Guid customerId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<DateOnly?>(null);
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<BillSummary>> OutstandingForAccountAsync(
         Guid serviceAccountId,
         int limit,

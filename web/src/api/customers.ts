@@ -36,6 +36,17 @@ export type Customer = {
   registeredAt: string;
   statusChangedAt: string | null;
   statusReason: string | null;
+  /** The day the current status applies from (WP-2.15); null means "since registration". */
+  statusEffectiveOn: string | null;
+  classChangedAt: string | null;
+  /**
+   * The day the current class applies from (WP-2.15); null means "still on the registered class".
+   *
+   * **Not `classChangedAt`.** That is when a rep typed it; this is when the utility says it happened,
+   * and it is what the billing pass prices from. A back-dated re-classification is the case that
+   * makes the two disagree, which is why both are on the record.
+   */
+  classEffectiveOn: string | null;
 };
 
 /** Mirrors `AddressPayload`. */
@@ -291,7 +302,7 @@ export type UpdateCustomerProfileInput = {
 };
 
 /** Mirrors `DepositEntryKind`. The order is the lifecycle's; the kind carries the direction. */
-export const depositEntryKinds = ['Collected', 'Applied', 'Refunded'] as const;
+export const depositEntryKinds = ['Collected', 'Applied', 'Refunded', 'Transferred'] as const;
 export type DepositEntryKind = (typeof depositEntryKinds)[number];
 
 /** Mirrors `DepositEntryResponse` — one movement of a customer's security deposit. */
@@ -447,6 +458,7 @@ export const statementEntryKinds = [
   'DepositApplied',
   'DepositCollected',
   'DepositRefunded',
+  'DepositTransferred',
 ] as const;
 export type StatementEntryKind = (typeof statementEntryKinds)[number];
 
@@ -509,6 +521,101 @@ export type AccountStatement = {
 
 /** The range a statement is asked for. Both days are included; the host defaults to the last quarter. */
 export type StatementRange = { from: string; to: string };
+
+/**
+ * Mirrors `AccountTransitionKind` (WP-2.15) — the two changes that alter what a customer is billed.
+ *
+ * The first two move the customer record; the last three move service between premises, and
+ * `Transferred` is the pair of them done as one act.
+ */
+export const accountTransitionKinds = [
+  'ClassChanged',
+  'StatusChanged',
+  'MovedIn',
+  'MovedOut',
+  'Transferred',
+] as const;
+export type AccountTransitionKind = (typeof accountTransitionKinds)[number];
+
+/**
+ * Mirrors `TransitionReasonCode` — the fixed list a transition must be recorded under.
+ *
+ * One list rather than one per kind, with `transitionReasonsFor` in `transitions.ts` saying which
+ * codes fit which. `Other` is the escape hatch and is the one code that must carry free text; the
+ * host refuses it silent, and the form asks for it before the host has to.
+ */
+export const transitionReasonCodes = [
+  'Other',
+  'CustomerRequest',
+  'PremiseNowTrading',
+  'PremiseNowResidential',
+  'MisclassifiedAtIntake',
+  'UnpaidBalance',
+  'BalanceSettled',
+  'IdentityDisputed',
+  'Deceased',
+  'NewOccupancy',
+  'EndOfTenancy',
+  'PropertyVacated',
+  'PropertyDemolished',
+  'Relocation',
+] as const;
+export type TransitionReasonCode = (typeof transitionReasonCodes)[number];
+
+/**
+ * Mirrors `AccountTransitionResponse` — one recorded transition.
+ *
+ * **`effectiveOn` is not `recordedAt`, and the difference is the point.** The second is when a rep
+ * typed it; the first is when the utility says it happened, and it is what the billing pass will
+ * price from. A screen that showed only one of them would hide a back-dated re-classification.
+ *
+ * `fromValue` / `toValue` read according to `kind`: a class name, a status name, or the number of
+ * the account released or opened. A move-in has no before and a move-out has no after.
+ */
+export type AccountTransition = {
+  id: string;
+  customerId: string;
+  kind: AccountTransitionKind;
+  reasonCode: TransitionReasonCode;
+  notes: string | null;
+  effectiveOn: string;
+  fromValue: string | null;
+  toValue: string | null;
+  fromServiceAccountId: string | null;
+  toServiceAccountId: string | null;
+  /** How much held deposit rode along. Zero on everything but a transfer — it moved nowhere. */
+  depositCarried: number;
+  currency: string | null;
+  depositEntryId: string | null;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/** What the transition register is narrowed by. */
+export type AccountTransitionFilters = {
+  kind?: AccountTransitionKind;
+  /** Matches an account on EITHER side — released or taken up. */
+  serviceAccountId?: string;
+  limit?: number;
+};
+
+/** The fields every transition write carries. */
+export type TransitionInput = {
+  reasonCode: TransitionReasonCode;
+  /** Omitted means "today on the host". A rep dating it themselves is the back- and forward-dated case. */
+  effectiveOn?: string;
+  notes?: string;
+};
+
+export type ChangeCustomerClassInput = TransitionInput & { class: CustomerClass };
+export type ChangeCustomerStatusInput = TransitionInput & { status: CustomerStatus };
+export type MoveInInput = TransitionInput & { serviceLocationId: string };
+export type MoveOutInput = TransitionInput & { serviceAccountId: string };
+export type TransferServiceInput = TransitionInput & {
+  fromServiceAccountId: string;
+  toServiceLocationId: string;
+};
 
 /** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
 export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
@@ -733,6 +840,46 @@ export const customersApi = {
   paymentHistoryCsv: (customerId: string, signal?: AbortSignal) =>
     api.getText(`/api/customers/${customerId}/documents/payment-history`, { signal }),
 
+  /**
+   * One customer's transition register (WP-2.15), newest first.
+   *
+   * Read on `customers.read`, unlike the five writes below: a clerk who may not move a customer
+   * still has to be able to say what has happened to them — the call WP-2.12 made about the deposit
+   * ledger for the same reason.
+   */
+  transitions: (customerId: string, filters: AccountTransitionFilters = {}, signal?: AbortSignal) =>
+    api.get<AccountTransition[]>(`/api/customers/${customerId}/transitions`, {
+      query: params({
+        kind: filters.kind,
+        serviceAccountId: filters.serviceAccountId,
+        limit: filters.limit === undefined ? undefined : String(filters.limit),
+      }),
+      signal,
+    }),
+
+  /**
+   * The five transitions (WP-2.15), each a POST sub-resource named for the act.
+   *
+   * All five need `customers.transition` on the host — narrower than the `customers.write` that
+   * opened the page. There is no other way in: the old `POST /api/customers/{id}/status` and
+   * `POST /api/service-accounts/{id}/close` were removed rather than left beside these, because a
+   * second way in is a way without a reason code.
+   */
+  changeCustomerClass: (customerId: string, input: ChangeCustomerClassInput) =>
+    api.post<AccountTransition>(`/api/customers/${customerId}/transitions/class`, { json: input }),
+
+  changeCustomerStatus: (customerId: string, input: ChangeCustomerStatusInput) =>
+    api.post<AccountTransition>(`/api/customers/${customerId}/transitions/status`, { json: input }),
+
+  moveIn: (customerId: string, input: MoveInInput) =>
+    api.post<AccountTransition>(`/api/customers/${customerId}/transitions/move-in`, { json: input }),
+
+  moveOut: (customerId: string, input: MoveOutInput) =>
+    api.post<AccountTransition>(`/api/customers/${customerId}/transitions/move-out`, { json: input }),
+
+  transferService: (customerId: string, input: TransferServiceInput) =>
+    api.post<AccountTransition>(`/api/customers/${customerId}/transitions/transfer`, { json: input }),
+
   /** The deposit schedule. Reference data on the host, so it is safe to cache for a session. */
   depositRules: (signal?: AbortSignal) => api.get<DepositRule[]>('/api/deposit-rules', { signal }),
 
@@ -770,6 +917,17 @@ export const customerKeys = {
     ['customers', 'notes', customerId, filters] as const,
   statement: (customerId: string, range: StatementRange) =>
     ['customers', 'statement', customerId, range] as const,
+
+  /**
+   * Every transition query for one customer, whatever it was narrowed by — what a write invalidates.
+   *
+   * A prefix of `transitions` below, so invalidating this reaches the tab's unfiltered fetch and any
+   * narrowed one at once. A transition changes more than its own register, which is why the tab
+   * invalidates the customer, the accounts and the deposit alongside it.
+   */
+  transitionsFor: (customerId: string) => ['customers', 'transitions', customerId] as const,
+  transitions: (customerId: string, filters: AccountTransitionFilters = {}) =>
+    ['customers', 'transitions', customerId, filters] as const,
 };
 
 /**
@@ -922,6 +1080,21 @@ export function useCustomerDeposits(customerId: string | undefined) {
   return useQuery({
     queryKey: customerKeys.deposits(customerId ?? ''),
     queryFn: ({ signal }) => customersApi.deposits(customerId!, signal),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * One customer's transition register (WP-2.15).
+ *
+ * Lives at the 360 page beside every other query, which is WP-2.10's rule: switching to a tab issues
+ * no request. It is a plain read — the documents tab is the exception to that rule and it is the
+ * exception because the host AUDITS a statement, which a transition list is not.
+ */
+export function useCustomerTransitions(customerId: string | undefined) {
+  return useQuery({
+    queryKey: customerKeys.transitions(customerId ?? ''),
+    queryFn: ({ signal }) => customersApi.transitions(customerId!, {}, signal),
     enabled: Boolean(customerId),
   });
 }

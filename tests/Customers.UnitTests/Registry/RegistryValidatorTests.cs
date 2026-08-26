@@ -2,6 +2,7 @@ using FluentValidation;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
+using GridCore.Modules.Customers.Features.Transitions;
 
 namespace GridCore.Modules.Customers.UnitTests.Registry;
 
@@ -60,13 +61,17 @@ public class RegistryValidatorTests
 
     [Fact]
     public void A_status_that_is_not_declared_is_rejected() =>
-        Assert.Equal(["Status"], FailedFieldsOf(StatusRules, new ChangeCustomerStatusRequest((CustomerStatus)42)));
+        Assert.Equal(
+            ["Status"],
+            FailedFieldsOf(StatusRules, new ChangeCustomerStatusRequest((CustomerStatus)42, TransitionReasonCode.UnpaidBalance)));
 
     [Fact]
     public void A_status_change_that_is_merely_illegal_passes_validation() =>
         // Deliberately: whether Prospect may become Suspended depends on where the customer is now,
         // which the validator cannot see. That is a 409 from the aggregate, not a 400 from here.
-        Assert.True(StatusRules.Validate(new ChangeCustomerStatusRequest(CustomerStatus.Suspended)).IsValid);
+        Assert.True(StatusRules
+            .Validate(new ChangeCustomerStatusRequest(CustomerStatus.Suspended, TransitionReasonCode.UnpaidBalance))
+            .IsValid);
 
     [Fact]
     public void A_complete_premise_passes() =>

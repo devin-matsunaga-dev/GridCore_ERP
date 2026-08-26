@@ -44,6 +44,18 @@ public class AccountStatementTests
     private static StatementMovement DepositUsed(DateOnly day, decimal amount, string number = "BIL-000001") =>
         new(day, At(day, 12), StatementEntryKind.DepositApplied, $"Deposit applied to bill {number}", number, -amount, -amount, "USD");
 
+    /// <summary>A deposit carried across a transfer (WP-2.15) — zero in both columns, by construction.</summary>
+    private static StatementMovement DepositCarried(DateOnly day, decimal amount) =>
+        new(
+            day,
+            At(day, 13),
+            StatementEntryKind.DepositTransferred,
+            $"Deposit of {amount:0.00} carried from A-000001 to A-000002 on transfer",
+            null,
+            0m,
+            0m,
+            "USD");
+
     [Fact]
     public void Opening_plus_activity_equals_closing()
     {
@@ -120,6 +132,49 @@ public class AccountStatementTests
         // And the balance column carries straight through it rather than resetting.
         Assert.Equal(120.00m, deposit.BalanceAfter);
     }
+
+    [Fact]
+    public void A_DEPOSIT_CARRY_moves_NEITHER_column_and_the_statement_still_proves_out()
+    {
+        // WP-2.15's zero-effect movement, and the shape AccountStatement.Compose's proof was written
+        // for: a line given zero effect on a column still has to carry BOTH running totals forward,
+        // or the balance printed against the last line stops agreeing with the closing balance. This
+        // is the test that fails the day somebody "optimises" a zero-effect line out of the loop.
+        var statement = AccountStatement.Compose(
+            Header,
+            [
+                DepositTaken(new DateOnly(2026, 7, 1), 250.00m),
+                Bill(new DateOnly(2026, 7, 5), 120.00m),
+                DepositCarried(new DateOnly(2026, 7, 10), 250.00m),
+            ],
+            From,
+            To);
+
+        Assert.Equal(120.00m, statement.ClosingBalance);
+        Assert.Equal(250.00m, statement.ClosingDepositHeld);
+
+        var carry = statement.Entries.Single(entry => entry.Kind is StatementEntryKind.DepositTransferred);
+
+        Assert.Equal(0m, carry.Amount);
+        Assert.Equal(0m, carry.DepositAmount);
+
+        // Both columns carry straight through it: the customer owes what they owed and the utility
+        // holds what it held. NO NET MONEY CREATED, read off the document a customer is handed.
+        Assert.Equal(120.00m, carry.BalanceAfter);
+        Assert.Equal(250.00m, carry.DepositHeldAfter);
+    }
+
+    [Fact]
+    public void A_carry_is_not_counted_as_a_deposit_applied_to_anything() =>
+        // The summary line a customer reads. A carry settled no bill, so it must not appear in the
+        // figure that says how much of their deposit went to one.
+        Assert.Equal(
+            0m,
+            AccountStatement.Compose(
+                Header,
+                [DepositTaken(new DateOnly(2026, 7, 1), 250.00m), DepositCarried(new DateOnly(2026, 7, 10), 250.00m)],
+                From,
+                To).DepositApplied);
 
     [Fact]
     public void A_DEPOSIT_APPLICATION_moves_BOTH_columns()

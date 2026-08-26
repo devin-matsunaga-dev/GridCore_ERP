@@ -8,7 +8,9 @@ import {
   useCustomerDeposits,
   useCustomerNotes,
   useCustomerProfile,
+  useCustomerTransitions,
   useServiceAccountHistories,
+  useServiceLocations,
   useServiceAccounts,
   useServiceLocationsByIds,
 } from '@/api/customers';
@@ -37,6 +39,7 @@ import { CustomerBillsCard } from './components/customer-bills-card';
 import { CustomerPaymentsCard } from './components/customer-payments-card';
 import { CustomerSummaryRow } from './components/customer-summary-row';
 import { CustomerTimelineCard } from './components/customer-timeline-card';
+import { CustomerTransitionsCard } from './components/customer-transitions-card';
 import { CustomerWorkOrdersCard } from './components/customer-work-orders-card';
 
 /**
@@ -98,6 +101,14 @@ export function CustomerDetailPage() {
   // one: the notes tab, the pinned strip on the summary, and the timeline's fifth source. That is
   // the strongest case yet for WP-2.10's rule that the queries live at the page.
   const notes = useCustomerNotes(customerId);
+
+  // The transition register (WP-2.15), here at the page with every other query — it is a plain read,
+  // and WP-2.14's documents tab is the one exception to that rule because the host AUDITS what it
+  // fetches. The premise list is the transitions tab's only extra: moving somebody in or transferring
+  // them needs somewhere to move them TO, and that is a window of the registry rather than one of
+  // this customer's rows.
+  const transitions = useCustomerTransitions(customerId);
+  const premises = useServiceLocations({});
 
   const balance = useMemo(() => customerBalance(bills.data ?? []), [bills.data]);
 
@@ -349,6 +360,20 @@ export function CustomerDetailPage() {
           isBillsLoading={bills.isPending}
           billsError={bills.isError ? bills.error : undefined}
           onRetryBills={() => void bills.refetch()}
+        />
+      )}
+
+      {active === 'transitions' && (
+        <CustomerTransitionsCard
+          customer={record}
+          // The customer's own accounts, already fetched above — choosing one to close or transfer
+          // issues no request, which is the call the deposit, notes and documents tabs all made.
+          accounts={accounts.data ?? []}
+          premises={premises.data ?? []}
+          transitions={transitions.data ?? []}
+          isLoading={transitions.isPending}
+          error={transitions.isError ? transitions.error : undefined}
+          onRetry={() => void transitions.refetch()}
         />
       )}
 
