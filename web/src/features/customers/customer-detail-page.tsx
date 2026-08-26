@@ -29,6 +29,7 @@ import { formatDate, formatLabel, formatMoney } from '@/lib/format';
 import { buildCustomerTimeline, customerBalance } from './customer-360';
 import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
+import { CustomerChargesCard } from './components/customer-charges-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
 import { CustomerDepositCard } from './components/customer-deposit-card';
 import { CustomerDocumentsCard } from './components/customer-documents-card';
@@ -341,6 +342,17 @@ export function CustomerDetailPage() {
           error={deposits.isError ? deposits.error : undefined}
           onRetry={() => void deposits.refetch()}
         />
+      )}
+
+      {/*
+        The charges tab (WP-2.16's screen, shipped with WP-2.18) — the second tab whose queries do
+        not live here, and for a different reason from the documents tab below. Nothing outside it
+        reads a fee, and a 360° page that fetched the whole published catalogue on every open would
+        be paying for a tab most telephone calls never reach. The accounts a fee is raised against
+        come from the window this page already fetched, so choosing one issues no request.
+      */}
+      {active === 'charges' && customerId && (
+        <CustomerChargesCard customerId={customerId} accounts={accounts.data ?? []} />
       )}
 
       {/*

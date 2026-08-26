@@ -39,6 +39,30 @@ public sealed class ServiceLocationNotFoundException(Guid id)
     public Guid ServiceLocationId { get; } = id;
 }
 
+/// <summary>No service application with that id. Surfaces as 404.</summary>
+public sealed class ServiceApplicationNotFoundException(Guid id)
+    : RegistryException($"Service application '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid ServiceApplicationId { get; } = id;
+}
+
+/// <summary>
+/// No such document on that application — or a row whose object has gone from the store. Surfaces
+/// as 404.
+/// </summary>
+/// <remarks>
+/// One exception for both, deliberately. From the caller's side they are the same answer — "that
+/// document cannot be produced" — and the difference between them is a fault for an operator to
+/// find in the trail, not a distinction a rep at a counter can act on differently.
+/// </remarks>
+public sealed class ApplicationDocumentNotFoundException(Guid id)
+    : RegistryException($"Application document '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid ApplicationDocumentId { get; } = id;
+}
+
 /// <summary>No service account with that id. Surfaces as 404.</summary>
 public sealed class ServiceAccountNotFoundException(Guid id)
     : RegistryException($"Service account '{id}' was not found.")

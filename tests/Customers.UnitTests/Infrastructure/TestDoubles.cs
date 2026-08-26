@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Providers;
 using GridCore.Contracts.Services;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
@@ -600,5 +601,76 @@ public sealed class FakeUsageDirectory : IUsageDirectory
 
         return Task.FromResult(
             _usage.GetValueOrDefault((serviceLocationId, serviceType)) ?? PremiseUsage.None(serviceLocationId));
+    }
+}
+
+/// <summary>
+/// The object store, as a dictionary. CONVENTIONS.md rule C, applied to storage: a checklist is
+/// tested without a container, and MinIO's own round trip is one gate-tier test.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It behaves the way the real store does in the two ways a caller can tell: a key that was never
+/// written comes back as <see langword="null"/> rather than throwing, and putting the same key twice
+/// replaces what was there. Those are the only behaviours WP-2.18's service depends on, so a double
+/// that got them right cannot let a bug through by being generous.
+/// </para>
+/// <para>
+/// <see cref="FailNextPut"/> exists because the one thing a fake store must be able to prove is what
+/// happens when the real one is unavailable: no row is written, and the caller sees the store's own
+/// exception rather than a half-recorded document.
+/// </para>
+/// </remarks>
+public sealed class FakeDocumentStore : IDocumentStore
+{
+    private readonly Dictionary<string, StoredDocumentContent> _objects = new(StringComparer.Ordinal);
+
+    /// <summary>Every key written, in order — how a test proves the bytes went in before the row did.</summary>
+    public List<string> Written { get; } = [];
+
+    /// <summary>Every key read back, in order.</summary>
+    public List<string> Read { get; } = [];
+
+    /// <summary>Makes the next <see cref="PutAsync"/> fail as an unreachable store would.</summary>
+    public bool FailNextPut { get; set; }
+
+    /// <summary>What is filed under <paramref name="key"/>, or <see langword="null"/>.</summary>
+    public StoredDocumentContent? At(string key) => _objects.GetValueOrDefault(key);
+
+    /// <summary>How many objects the store holds.</summary>
+    public int Count => _objects.Count;
+
+    /// <summary>Removes the object at <paramref name="key"/>, standing in for a bucket somebody emptied.</summary>
+    public void Lose(string key) => _objects.Remove(key);
+
+    /// <inheritdoc />
+    public Task<StoredDocument> PutAsync(DocumentUpload upload, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(upload);
+
+        if (FailNextPut)
+        {
+            FailNextPut = false;
+
+            throw new DocumentStoreException($"The object store refused to file '{upload.Key}'.");
+        }
+
+        _objects[upload.Key] = new StoredDocumentContent(
+            upload.Key,
+            upload.ContentType,
+            upload.Content.Length,
+            upload.Content.ToArray());
+
+        Written.Add(upload.Key);
+
+        return Task.FromResult(new StoredDocument(upload.Key, upload.ContentType, upload.Content.Length));
+    }
+
+    /// <inheritdoc />
+    public Task<StoredDocumentContent?> GetAsync(string key, CancellationToken cancellationToken = default)
+    {
+        Read.Add(key);
+
+        return Task.FromResult(_objects.GetValueOrDefault(key));
     }
 }

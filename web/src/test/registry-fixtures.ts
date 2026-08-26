@@ -1,7 +1,10 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
+import type { AccountCharge, FeeScheduleEntry } from '@/api/billing';
 import type {
   AccountStatement,
   AccountTransition,
+  ApplicationDocument,
+  ApplicationReference,
   ContactMethod,
   Customer,
   CustomerContact,
@@ -12,6 +15,7 @@ import type {
   DepositLedger,
   DepositRequirement,
   ServiceAccount,
+  ServiceApplication,
   ServiceLocation,
   StatementEntry,
 } from '@/api/customers';
@@ -386,6 +390,136 @@ export function serviceAccount(overrides: Partial<ServiceAccount> = {}): Service
         recordedAt: '2026-02-14T00:30:00+00:00',
       },
     ],
+    ...overrides,
+  };
+}
+
+export function applicationDocument(overrides: Partial<ApplicationDocument> = {}): ApplicationDocument {
+  return {
+    id: '0192f000-0000-7000-8000-000000000501',
+    kind: 'PhotoId',
+    fileName: 'photo-id.pdf',
+    contentType: 'application/pdf',
+    sizeInBytes: 20_480,
+    checksum: 'a'.repeat(64),
+    uploadedAt: '2026-08-27T09:40:00+00:00',
+    actorId: 'demo:agent',
+    actorName: 'Ana Cruz (demo)',
+    ...overrides,
+  };
+}
+
+/**
+ * An application as the host returns it — submitted, nothing attached, so the checklist reads as
+ * two outstanding lines. Every test that wants evidence says so by passing `documents` and
+ * `checklist` together, which is what the host does.
+ */
+export function serviceApplication(overrides: Partial<ServiceApplication> = {}): ServiceApplication {
+  return {
+    id: '0192f000-0000-7000-8000-000000000601',
+    applicationNumber: 'AP-000001',
+    customerId: customer().id,
+    serviceLocationId: serviceLocation().id,
+    serviceType: 'Electricity',
+    type: 'ResidentialConnection',
+    status: 'Submitted',
+    allowedTransitions: ['UnderReview', 'Withdrawn'],
+    isOpen: true,
+    requestedOn: '2026-09-03',
+    notes: 'Filed at the counter.',
+    checklist: [
+      { kind: 'PhotoId', isSatisfied: false, documentId: null, uploadedAt: null },
+      { kind: 'ProofOfOccupancy', isSatisfied: false, documentId: null, uploadedAt: null },
+    ],
+    missingDocuments: ['PhotoId', 'ProofOfOccupancy'],
+    isDocumentationComplete: false,
+    documents: [],
+    submittedAt: '2026-08-27T09:30:00+00:00',
+    submittedById: 'demo:agent',
+    submittedByName: 'Ana Cruz (demo)',
+    reviewStartedAt: null,
+    reviewerId: null,
+    reviewerName: null,
+    decidedAt: null,
+    decidedById: null,
+    decidedByName: null,
+    decisionReasonCode: null,
+    decisionNotes: null,
+    serviceAccountId: null,
+    replacesApplicationId: null,
+    ...overrides,
+  };
+}
+
+/** The host's own checklist, decision lists and upload policy, as `/api/service-application-reference` returns them. */
+export function applicationReference(overrides: Partial<ApplicationReference> = {}): ApplicationReference {
+  return {
+    types: [
+      { type: 'ResidentialConnection', requiredDocuments: ['PhotoId', 'ProofOfOccupancy'] },
+      { type: 'CommercialConnection', requiredDocuments: ['PhotoId', 'ProofOfOccupancy', 'BusinessLicence'] },
+    ],
+    documentKinds: ['PhotoId', 'ProofOfOccupancy', 'BusinessLicence', 'Other'],
+    allowedContentTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+    maxSizeInBytes: 10 * 1024 * 1024,
+    reasonCodes: {
+      Approved: ['DocumentsVerified', 'ApprovedByException', 'Other'],
+      Rejected: [
+        'DocumentsIncomplete',
+        'IdentityNotVerified',
+        'OccupancyNotProven',
+        'PremiseNotServiceable',
+        'OutstandingBalance',
+        'DuplicateApplication',
+        'Other',
+      ],
+      Withdrawn: ['ApplicantWithdrew', 'ApplicantUnreachable', 'SupersededByAnotherApplication', 'Other'],
+    },
+    reasonCodesRequiringNotes: ['Other', 'ApprovedByException'],
+    ...overrides,
+  };
+}
+
+/** One published fee, priced for the day the catalogue was asked about (WP-2.16). */
+export function feeScheduleEntry(overrides: Partial<FeeScheduleEntry> = {}): FeeScheduleEntry {
+  return {
+    code: 'ServiceConnection',
+    name: 'Service connection',
+    description: 'Establishing supply at a premise. Demo figure.',
+    serviceType: 'Electricity',
+    amount: 135,
+    currency: 'USD',
+    effectiveFrom: '2026-01-01',
+    feeScheduleId: '0192f000-0000-7000-8000-000000000701',
+    ...overrides,
+  };
+}
+
+/** One fee raised against a service account (WP-2.16). */
+export function accountCharge(overrides: Partial<AccountCharge> = {}): AccountCharge {
+  return {
+    id: '0192f000-0000-7000-8000-000000000801',
+    serviceAccountId: serviceAccount().id,
+    accountNumber: 'A-000001',
+    customerId: customer().id,
+    customerName: customer().name,
+    code: 'ServiceConnection',
+    description: 'Service connection',
+    amount: 135,
+    currency: 'USD',
+    feeScheduleId: feeScheduleEntry().feeScheduleId,
+    scheduleEffectiveFrom: '2026-01-01',
+    raisedOn: '2026-08-27',
+    reason: 'New connection approved.',
+    status: 'Pending',
+    allowedTransitions: ['Billed', 'Cancelled'],
+    isPending: true,
+    billId: null,
+    billNumber: null,
+    raisedAt: '2026-08-27T10:00:00+00:00',
+    statusChangedAt: '2026-08-27T10:00:00+00:00',
+    statusReason: null,
+    actorId: 'demo:agent',
+    actorName: 'Ana Cruz (demo)',
     ...overrides,
   };
 }

@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn.Graph;
 using Respawn;
+using Testcontainers.Minio;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
 using Testcontainers.Redis;
@@ -34,6 +35,12 @@ public sealed class GateFixture : IAsyncLifetime
     private const string RabbitMqImage = "rabbitmq:4-alpine";
     private const string RedisImage = "redis:8-alpine";
 
+    /// <summary>
+    /// Pinned to the tag <c>InfrastructureComposition</c> runs, so the gate proves the object store
+    /// the AppHost actually composes rather than whichever one Docker Hub is serving today.
+    /// </summary>
+    private const string MinioImage = "minio/minio:RELEASE.2025-09-07T16-13-09Z";
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder(PostgresImage)
         .WithDatabase("gridcore")
         .Build();
@@ -41,6 +48,14 @@ public sealed class GateFixture : IAsyncLifetime
     private readonly RabbitMqContainer _rabbit = new RabbitMqBuilder(RabbitMqImage).Build();
 
     private readonly RedisContainer _redis = new RedisBuilder(RedisImage).Build();
+
+    /// <summary>
+    /// The object store WP-2.18's application documents are filed in. A fourth container in the
+    /// gate tier and still only four: CONVENTIONS.md rule D is about one container per *technology*
+    /// for the whole run, not about keeping the count down — and a seam whose only implementation
+    /// is never exercised against the real thing is a seam that discovers its bugs in production.
+    /// </summary>
+    private readonly MinioContainer _minio = new MinioBuilder(MinioImage).Build();
 
     private GridCoreApplication? _application;
     private Respawner? _respawner;
@@ -58,7 +73,7 @@ public sealed class GateFixture : IAsyncLifetime
     /// <inheritdoc />
     public async Task InitializeAsync()
     {
-        await Task.WhenAll(_postgres.StartAsync(), _rabbit.StartAsync(), _redis.StartAsync());
+        await Task.WhenAll(_postgres.StartAsync(), _rabbit.StartAsync(), _redis.StartAsync(), _minio.StartAsync());
 
         // Migrations run once, here, on a context of their own — before the host starts, so the
         // outbox delivery service never polls a table that does not exist yet.
@@ -84,6 +99,7 @@ public sealed class GateFixture : IAsyncLifetime
         }
 
         await Task.WhenAll(
+            _minio.DisposeAsync().AsTask(),
             _redis.DisposeAsync().AsTask(),
             _rabbit.DisposeAsync().AsTask(),
             _postgres.DisposeAsync().AsTask());
@@ -177,6 +193,13 @@ public sealed class GateFixture : IAsyncLifetime
             ["ConnectionStrings__gridcore"] = _postgres.GetConnectionString(),
             ["ConnectionStrings__rabbitmq"] = _rabbit.GetConnectionString(),
             ["ConnectionStrings__redis"] = _redis.GetConnectionString(),
+
+            // MinIO is composed as a plain container rather than through an Aspire integration, so
+            // the host reads it as three settings rather than as a connection string — the shape
+            // WebComposition passes in production. WP-2.18 is its first user.
+            ["MinIO__Endpoint"] = _minio.GetConnectionString(),
+            ["MinIO__AccessKey"] = _minio.GetAccessKey(),
+            ["MinIO__SecretKey"] = _minio.GetSecretKey(),
 
             // The host refuses to start without these (WP-0.3). No test presents a real token — the
             // gate tier asserts that an anonymous caller is refused, and a refusal needs no

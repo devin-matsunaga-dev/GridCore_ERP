@@ -41,6 +41,12 @@ public static class RolePermissionMap
                 // moves one line here rather than editing every call site.
                 Permissions.Customers.Transition,
 
+                // The desk that takes the application is the desk that reviews it (WP-2.18) — which
+                // is how CUC actually works, and why this sits beside customers.write for this role
+                // and for no other. A utility that decides a commercial connection needs a
+                // supervisor moves this one line rather than editing every call site.
+                Permissions.Customers.Approve,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
 
@@ -132,6 +138,11 @@ public static class RolePermissionMap
                 // commercial tariff, a transfer between premises. The role that may credit a bill is
                 // the role that may change what the next one is raised on.
                 Permissions.Customers.Transition,
+
+                // And the applications the front desk escalates. Held WITHOUT customers.write, as
+                // every other grant in this role is: a manager decides, and the clerical work of
+                // taking the form and scanning the lease stays with the desk.
+                Permissions.Customers.Approve,
 
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,

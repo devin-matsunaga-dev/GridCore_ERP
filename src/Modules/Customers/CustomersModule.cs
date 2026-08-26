@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
+using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -85,6 +86,15 @@ public sealed class CustomersModule : IModule
         // and not on the routes, because the intake-style in-process callers would otherwise skip it.
         services.AddScoped<ICustomerTransitionService, CustomerTransitionService>();
 
+        // Service applications (WP-2.18): the reviewed path to an account. It composes
+        // IServiceAccountService rather than reimplementing WP-1.2's opening rules — approval calls
+        // OpenAsync — and IDepositReassessmentService to quote the deposit the approved supply now
+        // asks for. It is the first user of IDocumentStore, the object-store seam in Contracts that
+        // the AppHost's MinIO container has been waiting for since WP-0.2. The decision gate,
+        // customers.approve, is inside the service and not only on the routes, for the reason
+        // customers.transition is: WP-3.6's connection order will reach it in process.
+        services.AddScoped<IServiceApplicationService, ServiceApplicationService>();
+
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
         // rules, and only one of them has a permission gate inside it.
@@ -128,6 +138,9 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<CollectDepositRequest, CollectDepositRequestValidator>();
         services.AddGridCoreValidator<ApplyDepositRequest, ApplyDepositRequestValidator>();
         services.AddGridCoreValidator<RefundDepositRequest, RefundDepositRequestValidator>();
+        services.AddGridCoreValidator<SubmitApplicationRequest, SubmitApplicationRequestValidator>();
+        services.AddGridCoreValidator<DecideApplicationRequest, DecideApplicationRequestValidator>();
+        services.AddGridCoreValidator<ResubmitApplicationRequest, ResubmitApplicationRequestValidator>();
         services.AddGridCoreValidator<LogNoteRequest, LogNoteRequestValidator>();
         services.AddGridCoreValidator<CorrectNoteRequest, CorrectNoteRequestValidator>();
         services.AddGridCoreValidator<PinNoteRequest, PinNoteRequestValidator>();
@@ -138,6 +151,7 @@ public sealed class CustomersModule : IModule
         services.AddDemoSeeder<ServiceAccountsDemoSeeder>();
         services.AddDemoSeeder<AccountTransitionsDemoSeeder>();
         services.AddDemoSeeder<CustomerNotesDemoSeeder>();
+        services.AddDemoSeeder<ServiceApplicationsDemoSeeder>();
     }
 
     /// <inheritdoc />
@@ -156,5 +170,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapNoteEndpoints();
         endpoints.MapDocumentEndpoints();
         endpoints.MapTransitionEndpoints();
+        endpoints.MapApplicationEndpoints();
     }
 }

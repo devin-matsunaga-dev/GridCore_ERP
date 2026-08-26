@@ -4,6 +4,7 @@ import { AssetsPage } from '@/features/assets/assets-page';
 import { BillDocumentPage } from '@/features/customers/bill-document-page';
 import { CustomerDetailPage } from '@/features/customers/customer-detail-page';
 import { CustomersPage } from '@/features/customers/customers-page';
+import { ApplicationQueuePage } from '@/features/customers/applications/application-queue-page';
 import { CustomerRegistrationPage } from '@/features/customers/registration/customer-registration-page';
 import { ServiceLocationsPage } from '@/features/customers/service-locations-page';
 import { InventoryPage } from '@/features/inventory/inventory-page';
@@ -53,6 +54,9 @@ export type ModuleRoute = { path: string; element: ReactElement };
  */
 const childRoutes: ModuleRoute[] = [
   { path: '/customers/locations', element: <ServiceLocationsPage /> },
+  // The review desk (WP-2.18). A static segment, so it never reaches `:customerId` whatever the
+  // order — the same rule `/customers/new` relies on.
+  { path: '/customers/applications', element: <ApplicationQueuePage /> },
   // Ahead of the detail route in the file for a reader's sake only: React Router ranks a static
   // segment above a dynamic one, so `/customers/new` never reaches `:customerId` whatever the order.
   { path: '/customers/new', element: <CustomerRegistrationPage /> },

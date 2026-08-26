@@ -1,6 +1,8 @@
+using GridCore.Contracts.Providers;
 using GridCore.Platform.Approvals;
 using GridCore.Platform.Audit;
 using GridCore.Platform.Data;
+using GridCore.Platform.Documents;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Notifications;
 using GridCore.Platform.Scheduling;
@@ -13,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace GridCore.Platform;
@@ -88,6 +91,16 @@ public static class PlatformRegistration
         services.TryAddScoped<IdempotentEventHandler>();
         services.TryAddSingleton<INotificationSender, LoggingNotificationSender>();
         services.AddHostedService<ScheduledJobRunner>();
+
+        // The object store (WP-2.18). A singleton because the client owns an HttpClient, and
+        // registered against the Contracts seam rather than the concrete type: a module uploads a
+        // scanned lease without learning that MinIO exists, which is invariant 6 applied to storage.
+        // The factory runs on first resolve rather than at boot — a host that never touches a
+        // document never needs an object store — and the constructor validates the options, so a
+        // missing endpoint is a named sentence at that point rather than a null-reference later.
+        services.Configure<MinioDocumentStoreOptions>(configuration.GetSection(MinioDocumentStoreOptions.SectionName));
+        services.TryAddSingleton<IDocumentStore>(provider =>
+            new MinioDocumentStore(provider.GetRequiredService<IOptions<MinioDocumentStoreOptions>>().Value));
 
         if (options.ApplyMigrationsAtStartup ?? environment.IsDevelopment())
         {

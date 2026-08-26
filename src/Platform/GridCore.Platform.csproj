@@ -18,6 +18,8 @@
     <PackageReference Include="MassTransit" />
     <PackageReference Include="MassTransit.RabbitMQ" />
     <PackageReference Include="MassTransit.EntityFrameworkCore" />
+    <!-- Object store: MinIO behind Contracts' IDocumentStore. Apache-2.0 — see Directory.Packages.props. -->
+    <PackageReference Include="Minio" />
     <!-- Design-time only: `dotnet ef migrations add` against this library. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>

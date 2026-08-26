@@ -60,6 +60,34 @@ public static class Permissions
         public const string Documents = "customers.documents";
 
         /// <summary>
+        /// Decide a service application — approve it or refuse it (WP-2.18).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Narrower than <see cref="Write"/>, because approval is the act that opens an
+        /// account.</b> Taking an application and scanning the applicant's lease is clerical work
+        /// and travels on <see cref="Write"/>; deciding that the utility will supply this premise —
+        /// which issues an account number, assesses a deposit and commits the utility to a
+        /// connection — is not. That is the same line <see cref="Deposit"/>, <see cref="Authorise"/>
+        /// and <see cref="Transition"/> are drawn on.
+        /// </para>
+        /// <para>
+        /// <b>Held by the front desk, and that is not a contradiction.</b> The reviewer of a service
+        /// application at CUC <i>is</i> customer service; the separation this grant expresses is the
+        /// one a utility re-cuts on the day it decides commercial connections need a supervisor,
+        /// which is then one line in <see cref="RolePermissionMap"/> rather than an edit to every
+        /// call site. A withdrawal is deliberately NOT gated on it — see
+        /// <c>ServiceApplicationService.WithdrawAsync</c>.
+        /// </para>
+        /// <para>
+        /// <b>The gate is in <c>ServiceApplicationService</c> as well as on the routes</b>, for the
+        /// reason <see cref="Transition"/>'s is: the service is reachable in process, and WP-3.6's
+        /// connection order will consume an approved application without passing a URL.
+        /// </para>
+        /// </remarks>
+        public const string Approve = "customers.approve";
+
+        /// <summary>
         /// Move a customer between classes or statuses, and move service in, out or between
         /// premises (WP-2.15).
         /// </summary>

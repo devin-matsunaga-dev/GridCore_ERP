@@ -1,5 +1,7 @@
 using GridCore.Contracts.Directories;
+using GridCore.Contracts.Providers;
 using GridCore.Modules.Customers.Data;
+using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -70,6 +72,12 @@ public sealed class CustomersTestHost : IDisposable
         // before it prices a usage-based rule, so the fast tier stands a double in front of it too.
         services.AddSingleton<IUsageDirectory>(Usage);
 
+        // The Platform registers the real MinIO-backed IDocumentStore; a fast-tier test may not
+        // resolve it, because a container is exactly what CONVENTIONS.md rule C forbids here.
+        // WP-2.18's application documents are the seam's first user, so the fast tier stands a
+        // dictionary in front of it and the round trip against real MinIO is one gate-tier test.
+        services.AddSingleton<IDocumentStore>(Documents);
+
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
@@ -91,6 +99,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerNoteService, CustomerNoteService>();
         services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
         services.AddScoped<ICustomerTransitionService, CustomerTransitionService>();
+        services.AddScoped<IServiceApplicationService, ServiceApplicationService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -113,6 +122,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>The usage register a usage-based deposit is assessed against (WP-2.17).</summary>
     public FakeUsageDirectory Usage { get; } = new();
+
+    /// <summary>The object store an application's documents are filed in (WP-2.18).</summary>
+    public FakeDocumentStore Documents { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -310,6 +322,41 @@ public sealed class CustomersTestHost : IDisposable
             services.GetRequiredService<IUnitOfWork>(),
             services.GetRequiredService<IAuditLog>(),
             Events,
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the application register, in its own scope (WP-2.18).</summary>
+    public Task<TResult> WithApplicationsAsync<TResult>(Func<IServiceApplicationService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IServiceApplicationService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the application register as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape the deposit ledger, the note log, the documents and the transitions take, and
+    /// needed for the same reason twice over: deciding an application is gated on
+    /// <c>customers.approve</c> and reading an uploaded document on <c>customers.documents</c>, both
+    /// inside the service — so proving either refusal means a caller who does not hold it acting on
+    /// an application somebody who does has already set up.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<IServiceApplicationService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new ServiceApplicationService(
+            services.GetRequiredService<CustomersDbContext>(),
+            services.GetRequiredService<IServiceAccountService>(),
+            services.GetRequiredService<IDepositReassessmentService>(),
+            Documents,
+            services.GetRequiredService<IRegistryNumberGenerator>(),
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
             caller,
             services.GetRequiredService<TimeProvider>())));
     }

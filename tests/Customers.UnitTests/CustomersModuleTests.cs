@@ -1,5 +1,6 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
+using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -144,6 +145,22 @@ public class CustomersModuleTests
     }
 
     [Fact]
+    public void The_application_register_is_registered_and_reads_the_object_store_through_Contracts()
+    {
+        // WP-2.18, and the same boundary rule the search box and the deposit ledger follow: the
+        // application register files a scanned lease through IDocumentStore, which lives in Contracts
+        // and is implemented by the Platform. A Customers registration of it would mean this module
+        // knowing which object store the deployment happens to run.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(ServiceApplicationService),
+            Assert.Single(services, service => service.ServiceType == typeof(IServiceApplicationService)).ImplementationType);
+
+        Assert.False(Registers<Contracts.Providers.IDocumentStore>(services));
+    }
+
+    [Fact]
     public void Every_request_body_the_endpoints_accept_has_a_validator_registered()
     {
         // The filter throws when a validator is missing, which would turn a mistake here into a 500
@@ -160,6 +177,9 @@ public class CustomersModuleTests
         Assert.True(Registers<IValidator<ServiceLocationRequest>>(services));
         Assert.True(Registers<IValidator<OpenServiceAccountRequest>>(services));
         Assert.True(Registers<IValidator<ServiceAccountTransitionRequest>>(services));
+        Assert.True(Registers<IValidator<SubmitApplicationRequest>>(services));
+        Assert.True(Registers<IValidator<DecideApplicationRequest>>(services));
+        Assert.True(Registers<IValidator<ResubmitApplicationRequest>>(services));
         Assert.True(Registers<IValidator<LogNoteRequest>>(services));
         Assert.True(Registers<IValidator<CorrectNoteRequest>>(services));
         Assert.True(Registers<IValidator<PinNoteRequest>>(services));
@@ -170,6 +190,7 @@ public class CustomersModuleTests
     [InlineData(typeof(ServiceAccountsDemoSeeder))]
     [InlineData(typeof(AccountTransitionsDemoSeeder))]
     [InlineData(typeof(CustomerNotesDemoSeeder))]
+    [InlineData(typeof(ServiceApplicationsDemoSeeder))]
     public void The_demo_seeders_are_registered_unconditionally(Type seeder)
     {
         // Registering one does not run it: DemoSeedRunner is only registered where DemoSeedGuard

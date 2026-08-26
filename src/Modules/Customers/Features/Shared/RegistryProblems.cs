@@ -39,6 +39,14 @@ public static class RegistryProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service account not found");
         }
+        catch (ServiceApplicationNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Service application not found");
+        }
+        catch (ApplicationDocumentNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Application document not found");
+        }
         catch (RegistryPermissionException exception)
         {
             return Problem(exception, StatusCodes.Status403Forbidden, "Not permitted");
@@ -86,6 +94,10 @@ public static class RegistryProblems
     /// <summary>A 404 for a location id that matched nothing.</summary>
     public static IResult ServiceLocationNotFound(Guid id) =>
         Problem(new ServiceLocationNotFoundException(id), StatusCodes.Status404NotFound, "Service location not found");
+
+    /// <summary>A 404 for an application id that matched nothing on a read path, where nothing was thrown.</summary>
+    public static IResult ServiceApplicationNotFound(Guid id) =>
+        Problem(new ServiceApplicationNotFoundException(id), StatusCodes.Status404NotFound, "Service application not found");
 
     /// <summary>A 404 for an account id that matched nothing.</summary>
     public static IResult ServiceAccountNotFound(Guid id) =>

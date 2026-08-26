@@ -17,4 +17,14 @@ public static class CustomerNumbers
 
     /// <summary>Prefix of a service account number, e.g. <c>A-000001</c>.</summary>
     public const string ServiceAccountPrefix = "A-";
+
+    /// <summary>
+    /// Prefix of a service application number, e.g. <c>AP-000001</c> (WP-2.18).
+    /// </summary>
+    /// <remarks>
+    /// Two letters where the other three take one, so an applicant reading a number down the
+    /// telephone cannot confuse the application they filed with the account it may turn into —
+    /// which are different things with different numbers for the whole of the review.
+    /// </remarks>
+    public const string ServiceApplicationPrefix = "AP-";
 }

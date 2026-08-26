@@ -1,3 +1,4 @@
+using GridCore.Modules.Customers.Features.Applications;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -54,6 +55,21 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// transition that turned out to be wrong is a new transition back, never an edited row.
     /// </summary>
     public DbSet<AccountTransition> AccountTransitions => Set<AccountTransition>();
+
+    /// <summary>
+    /// Every request for service the utility has been asked to review — WP-2.18. Approval is what
+    /// opens the account, so this is the register standing in front of
+    /// <see cref="ServiceAccounts"/> rather than a log beside it.
+    /// </summary>
+    public DbSet<ServiceApplication> ServiceApplications => Set<ServiceApplication>();
+
+    /// <summary>
+    /// The evidence attached to those applications — WP-2.18. The <i>records</i>: type, uploader,
+    /// size and checksum, with the files themselves in the object store behind
+    /// <c>IDocumentStore</c>. Exposed as a set of its own so one application's documents can be
+    /// read without loading the application, and append-only like every other register here.
+    /// </summary>
+    public DbSet<ApplicationDocument> ApplicationDocuments => Set<ApplicationDocument>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

@@ -157,6 +157,49 @@ public static class AuditActions
     /// </summary>
     public const string CustomerPaymentHistoryExported = "customer_payment_history.export";
 
+    /// <summary>A request for service was filed and joined the review queue (WP-2.18).</summary>
+    public const string ServiceApplicationSubmitted = "service_application.submit";
+
+    /// <summary>A reviewer picked an application up (WP-2.18) — the hand-off a decision must come after.</summary>
+    public const string ServiceApplicationReviewStarted = "service_application.review";
+
+    /// <summary>
+    /// A document was attached to an application (WP-2.18). Recorded against the application rather
+    /// than the document, and the snapshot carries the checklist: what an auditor asks is "what did
+    /// this application have when it was decided", and the answer moves with every upload.
+    /// </summary>
+    public const string ServiceApplicationDocumentAttached = "service_application.document";
+
+    /// <summary>
+    /// An attached document was read back out of the object store (WP-2.18).
+    /// </summary>
+    /// <remarks>
+    /// <b>A read that is audited, for the reason a bill reprint is (WP-2.14).</b> Invariant 1 is
+    /// about writes, and a log of every screen somebody opened would be surveillance — but a scanned
+    /// identity page is the most sensitive thing this module holds, and "who produced this, and
+    /// when" is precisely the question asked of it afterwards. The entry carries the document's
+    /// checksum, so the trail names <i>which</i> bytes left the building.
+    /// </remarks>
+    public const string ServiceApplicationDocumentRead = "service_application.document_read";
+
+    /// <summary>
+    /// An application was approved (WP-2.18). Sensitive: it opens a service account and assesses a
+    /// deposit, so it is permission-gated on <c>customers.approve</c> and audited (invariant 5). The
+    /// account's own opening is audited separately as <see cref="ServiceAccountOpened"/>; this is the
+    /// entry carrying the reason code, the notes and the checklist as it stood.
+    /// </summary>
+    public const string ServiceApplicationApproved = "service_application.approve";
+
+    /// <summary>
+    /// An application was refused (WP-2.18). Its own action rather than a second
+    /// <c>service_application.approve</c>: "what have we turned down, and on what grounds" is a
+    /// question asked by filtering, and it is the one an applicant disputes.
+    /// </summary>
+    public const string ServiceApplicationRejected = "service_application.reject";
+
+    /// <summary>An application was taken back before it was decided (WP-2.18) — the applicant's own act.</summary>
+    public const string ServiceApplicationWithdrawn = "service_application.withdraw";
+
     /// <summary>A service location was registered.</summary>
     public const string ServiceLocationCreated = "service_location.create";
 
@@ -362,6 +405,19 @@ public static class AuditEntityTypes
     /// WORK_PACKAGES.md asks for and reads the same way whichever kind moved.
     /// </remarks>
     public const string AccountTransition = "customers.account_transition";
+
+    /// <summary>
+    /// A row of <c>customers.service_applications</c> (WP-2.18) — a request for service and the
+    /// review it went through.
+    /// </summary>
+    /// <remarks>
+    /// Attached documents are audited against the <b>application</b> rather than as entities of
+    /// their own, the call <c>ServiceAccount</c> makes about its history lines and <c>Bill</c> about
+    /// its adjustments: a document is only meaningful as evidence for a decision, and the
+    /// before/after an auditor reads is the application's checklist, not the row's. The one entry
+    /// that carries a document snapshot is the read, where the document itself is what left.
+    /// </remarks>
+    public const string ServiceApplication = "customers.service_application";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

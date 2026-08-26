@@ -203,10 +203,61 @@ async function requestText(path: string, { query, headers, signal, timeoutMs = r
   return await response.text();
 }
 
+/**
+ * A POST whose body is a file — WP-2.18's application documents, and so far the only one.
+ *
+ * Shares every other rule of {@link request}: the bearer token, the timeout, and a non-2xx turning
+ * into an {@link ApiError} carrying whatever ProblemDetails the host sent. What it does NOT do is
+ * set `Content-Type`: a multipart body needs a boundary parameter that only the browser knows, and
+ * setting the header by hand is the way to produce a request the server cannot parse.
+ *
+ * A longer timeout than the default, because this one is carrying megabytes over whatever
+ * connection a counter has rather than a few hundred bytes of JSON.
+ */
+async function requestForm<TResponse>(
+  path: string,
+  body: FormData,
+  { headers, signal, timeoutMs = uploadTimeoutMs, ...init }: Omit<RequestOptions, 'json'> = {},
+): Promise<TResponse> {
+  const token = accessTokenProvider();
+  const url = `${env.apiBaseUrl}${path}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      method: 'POST',
+      signal: abortSignalFor(signal, timeoutMs),
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body,
+    });
+  } catch (error) {
+    if (isTimeout(error)) {
+      throw new ApiError(0, null, `POST ${path} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readProblem(response), `POST ${path} failed (${response.status})`);
+  }
+
+  return (await readBody<TResponse>(response))!;
+}
+
+/** How long an upload may take before it is treated as failed. A scan is not a JSON body. */
+export const uploadTimeoutMs = 60_000;
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, options),
   getText: (path: string, options?: RequestOptions) => requestText(path, options),
   post: <T>(path: string, options?: RequestOptions) => request<T>('POST', path, options),
+  postForm: <T>(path: string, body: FormData, options?: Omit<RequestOptions, 'json'>) =>
+    requestForm<T>(path, body, options),
   put: <T>(path: string, options?: RequestOptions) => request<T>('PUT', path, options),
   patch: <T>(path: string, options?: RequestOptions) => request<T>('PATCH', path, options),
   delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, options),

@@ -9,6 +9,8 @@
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.RabbitMq" />
     <PackageReference Include="Testcontainers.Redis" />
+    <!-- WP-2.18: the one gate-tier test that round-trips a document through real MinIO. -->
+    <PackageReference Include="Testcontainers.Minio" />
     <PackageReference Include="Respawn" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>

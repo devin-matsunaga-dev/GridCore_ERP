@@ -35,6 +35,15 @@ export type FetchStub = {
    * clear undefined rather than as a parse error in a page test.
    */
   lastBody: (path: string) => unknown;
+  /**
+   * The body of the most recent request to `path` that carried one.
+   *
+   * Needed wherever a write is followed by a refetch of the SAME path — WP-2.16's charges tab
+   * raises a fee and then re-reads the register, so `lastBody` answers with the GET's absent body
+   * and hides the POST the test is about. This skips the bodiless calls rather than asking a test
+   * to count them.
+   */
+  lastSentBody: (path: string) => unknown;
   restore: () => void;
 };
 
@@ -82,6 +91,13 @@ export function stubFetch(respond: (url: URL) => StubbedResponse | undefined): F
       // travelled WITH the matching call and the two arrays are parallel.
       for (let index = calls.length - 1; index >= 0; index -= 1) {
         if (calls[index].pathname === path) return bodies[index];
+      }
+
+      return undefined;
+    },
+    lastSentBody: (path) => {
+      for (let index = calls.length - 1; index >= 0; index -= 1) {
+        if (calls[index].pathname === path && bodies[index] !== undefined) return bodies[index];
       }
 
       return undefined;

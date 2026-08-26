@@ -272,3 +272,157 @@ export function useBillDocument(billId: string | undefined) {
     refetchOnWindowFocus: false,
   });
 }
+
+/**
+ * ---------------------------------------------------------------------------------------------
+ * Fee schedule and account charges (WP-2.16)
+ *
+ * The non-consumption half of what a utility charges for. WP-2.16 shipped the whole of this
+ * server-side and no screen at all, on the stated grounds that the desk which raises a fee belongs
+ * with the workflow that raises one. WP-2.18 is the first of those workflows to land, so it pays
+ * the debt.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/** Mirrors `FeeCode` — the published catalogue, in the order the host declares it. */
+export const feeCodes = [
+  'ServiceConnection',
+  'Reconnection',
+  'ReturnedPayment',
+  'MeterTest',
+  'Inspection',
+  'UnauthorizedConnection',
+] as const;
+export type FeeCode = (typeof feeCodes)[number];
+
+/** Mirrors `AccountChargeStatus`. `Billed` is terminal — correcting one is an adjustment to its bill. */
+export const accountChargeStatuses = ['Pending', 'Billed', 'Cancelled'] as const;
+export type AccountChargeStatus = (typeof accountChargeStatuses)[number];
+
+/** Mirrors `FeeScheduleResponse` — one published fee, priced for the day asked about. */
+export type FeeScheduleEntry = {
+  code: FeeCode;
+  name: string;
+  description: string;
+  serviceType: string;
+  amount: number;
+  currency: string;
+  effectiveFrom: string;
+  feeScheduleId: string;
+};
+
+/** Mirrors `AccountChargeResponse`. */
+export type AccountCharge = {
+  id: string;
+  serviceAccountId: string;
+  accountNumber: string;
+  customerId: string;
+  customerName: string;
+  code: FeeCode;
+  description: string;
+  amount: number;
+  currency: string;
+  feeScheduleId: string;
+  scheduleEffectiveFrom: string;
+  raisedOn: string;
+  reason: string;
+  status: AccountChargeStatus;
+  allowedTransitions: AccountChargeStatus[];
+  isPending: boolean;
+  billId: string | null;
+  billNumber: string | null;
+  raisedAt: string;
+  statusChangedAt: string;
+  statusReason: string | null;
+  actorId: string;
+  actorName: string | null;
+};
+
+/** Mirrors `CounterBillResponse` — a charge put on a bill of its own and issued in one act. */
+export type CounterBill = {
+  charge: AccountCharge;
+  bill: Bill;
+};
+
+/** How the charge register is narrowed. */
+export type AccountChargeFilters = {
+  serviceAccountId?: string;
+  customerId?: string;
+  status?: AccountChargeStatus | '';
+  pendingOnly?: boolean;
+};
+
+/** Mirrors `RaiseChargeRequest`. A reason is required — this is the sensitive act invariant 5 is about. */
+export type RaiseChargeInput = {
+  serviceAccountId: string;
+  code: FeeCode;
+  reason: string;
+  raisedOn?: string | null;
+};
+
+export const feesApi = {
+  /**
+   * The catalogue as it stands on a day. Read-only on the host and deliberately so: changing $135 to
+   * $150 is an effective-dated row in a migration, never an endpoint pointed at production.
+   *
+   * `on` is what makes a reprint honest — asking for a past day returns the figure that was
+   * published then, not today's.
+   */
+  schedule: (on?: string, signal?: AbortSignal) =>
+    api.get<FeeScheduleEntry[]>('/api/fee-schedule', { query: on ? { on } : undefined, signal }),
+
+  charges: (filters: AccountChargeFilters = {}, signal?: AbortSignal) =>
+    api.get<AccountCharge[]>('/api/account-charges', {
+      query: {
+        ...Object.fromEntries(
+          Object.entries({
+            serviceAccountId: filters.serviceAccountId,
+            customerId: filters.customerId,
+            status: filters.status,
+          }).filter(([, value]) => value !== undefined && value !== ''),
+        ),
+        ...(filters.pendingOnly ? { pendingOnly: true } : {}),
+      },
+      signal,
+    }),
+
+  /** Raises a published fee against an account. Needs `billing.charge`, which the front desk holds. */
+  raise: (input: RaiseChargeInput) => api.post<AccountCharge>('/api/account-charges', { json: input }),
+
+  /** Withdraws a charge that has not reached a bill. A reason is required — it removes money owed. */
+  cancel: (id: string, reason: string) =>
+    api.post<AccountCharge>(`/api/account-charges/${id}/cancel`, { json: { reason } }),
+
+  /** Puts a pending charge on a bill of its own and issues it, so the customer can pay it now. */
+  billNow: (id: string, reason?: string | null) =>
+    api.post<CounterBill>(`/api/account-charges/${id}/bill`, { json: { reason } }),
+};
+
+export const feeKeys = {
+  schedule: (on?: string) => ['fee-schedule', on ?? 'today'] as const,
+  charges: (filters: AccountChargeFilters) => ['account-charges', 'list', filters] as const,
+};
+
+/**
+ * The published fee schedule for today.
+ *
+ * Reference data — it moves by migration — so it is held for the session. Not `Infinity` like the
+ * deposit schedule, though: this one is priced *for a day*, and a browser left open across midnight
+ * would otherwise quote yesterday's figure at a counter.
+ */
+export function useFeeSchedule(on?: string) {
+  return useQuery({
+    queryKey: feeKeys.schedule(on),
+    queryFn: ({ signal }) => feesApi.schedule(on, signal),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/** The charges raised against a customer or one of their accounts. */
+export function useAccountCharges(filters: AccountChargeFilters, enabled = true) {
+  return useQuery({
+    queryKey: feeKeys.charges(filters),
+    queryFn: ({ signal }) => feesApi.charges(filters, signal),
+    enabled,
+  });
+}

@@ -23,6 +23,207 @@ namespace GridCore.Modules.Customers.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Applications.ApplicationDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor_name");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("content_type");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("ServiceApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_application_id");
+
+                    b.Property<long>("SizeInBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_in_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_application_documents");
+
+                    b.HasIndex("ServiceApplicationId")
+                        .HasDatabaseName("ix_application_documents_application_id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_application_documents_storage_key");
+
+                    b.ToTable("application_documents", "customers");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Applications.ServiceApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ApplicationNumber")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("application_number");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedById")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("decided_by_id");
+
+                    b.Property<string>("DecidedByName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("decided_by_name");
+
+                    b.Property<string>("DecisionNotes")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("decision_notes");
+
+                    b.Property<string>("DecisionReasonCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("decision_reason_code");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid?>("ReplacesApplicationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("replaces_application_id");
+
+                    b.Property<DateOnly>("RequestedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("requested_on");
+
+                    b.Property<DateTimeOffset?>("ReviewStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("review_started_at");
+
+                    b.Property<string>("ReviewerId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("reviewer_id");
+
+                    b.Property<string>("ReviewerName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("reviewer_name");
+
+                    b.Property<Guid?>("ServiceAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_account_id");
+
+                    b.Property<Guid>("ServiceLocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_location_id");
+
+                    b.Property<string>("ServiceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("service_type");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<string>("SubmittedById")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("submitted_by_id");
+
+                    b.Property<string>("SubmittedByName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("submitted_by_name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("application_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_service_applications");
+
+                    b.HasIndex("ApplicationNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_service_applications_number");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_service_applications_customer_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_service_applications_status");
+
+                    b.HasIndex("ServiceLocationId", "ServiceType")
+                        .IsUnique()
+                        .HasDatabaseName("ux_service_applications_open_premise")
+                        .HasFilter("\"status\" IN ('Submitted', 'UnderReview')");
+
+                    b.ToTable("service_applications", "customers");
+                });
+
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Contacts.ContactMethod", b =>
                 {
                     b.Property<Guid>("Id")
@@ -798,6 +999,33 @@ namespace GridCore.Modules.Customers.Data.Migrations
                     b.ToTable("account_transitions", "customers");
                 });
 
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Applications.ApplicationDocument", b =>
+                {
+                    b.HasOne("GridCore.Modules.Customers.Features.Applications.ServiceApplication", null)
+                        .WithMany("Documents")
+                        .HasForeignKey("ServiceApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_application_documents_application");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Applications.ServiceApplication", b =>
+                {
+                    b.HasOne("GridCore.Modules.Customers.Features.Customers.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_applications_customer");
+
+                    b.HasOne("GridCore.Modules.Customers.Features.ServiceLocations.ServiceLocation", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceLocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_applications_location");
+                });
+
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Contacts.ContactMethod", b =>
                 {
                     b.HasOne("GridCore.Modules.Customers.Features.Contacts.CustomerContact", null)
@@ -977,6 +1205,11 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_account_transitions_customer");
+                });
+
+            modelBuilder.Entity("GridCore.Modules.Customers.Features.Applications.ServiceApplication", b =>
+                {
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("GridCore.Modules.Customers.Features.Contacts.CustomerContact", b =>

@@ -12,4 +12,8 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
 export const customersTabs: TabNavItem[] = [
   { label: 'Customers', to: '/customers', end: true },
   { label: 'Service locations', to: '/customers/locations' },
+  // The review desk (WP-2.18). Beside the registries rather than a fifteenth nav destination, for
+  // the reason service locations are: an application is a request to become one of these customers
+  // at one of these premises, so it belongs on the same desk and not in the sidebar.
+  { label: 'Applications', to: '/customers/applications' },
 ];

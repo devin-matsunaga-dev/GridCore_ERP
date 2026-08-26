@@ -95,6 +95,22 @@ public class RolePermissionMapTests
     }
 
     [Fact]
+    public void Deciding_a_service_application_is_a_narrower_grant_than_writing_to_the_registry()
+    {
+        // WP-2.18's own permission. It travels with customers.write for the front desk — the
+        // reviewer of a CUC service application IS customer service — and separately for a Manager,
+        // who decides the applications the desk escalates without doing the clerical work behind
+        // them. Billing and Finance hold neither: an approval opens an account.
+        var deciders = GridCoreRoles.All.Where(role => RolePermissionMap.HasPermission([role], Permissions.Customers.Approve));
+
+        Assert.Equal(
+            [GridCoreRoles.Administrator, GridCoreRoles.CustomerService, GridCoreRoles.Manager],
+            deciders);
+
+        Assert.False(RolePermissionMap.HasPermission([GridCoreRoles.Manager], Permissions.Customers.Write));
+    }
+
+    [Fact]
     public void Several_roles_union_their_permissions()
     {
         var granted = RolePermissionMap.PermissionsForRoles([GridCoreRoles.Technician, GridCoreRoles.Warehouse]);

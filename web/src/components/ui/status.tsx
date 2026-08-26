@@ -73,6 +73,16 @@ const toneByStatus: Record<string, StatusTone> = {
   receipt: 'success',
   issue: 'info',
   adjustment: 'warning',
+  // Service applications (WP-2.18). Submitted is waiting on the desk and Under review is somebody
+  // working on it, which is the same distinction Scheduled and In Progress already draw for a job;
+  // Withdrawn is the applicant closing it themselves, so it is neutral rather than the danger a
+  // Rejected carries.
+  submitted: 'warning',
+  underreview: 'info',
+  withdrawn: 'neutral',
+  // Account charges (WP-2.16). A Pending fee is money the utility is going to ask for and Billed is
+  // money it now has on a bill; Cancelled shares the neutral every withdrawn thing has.
+  billed: 'success',
   // Priority
   high: 'danger',
   medium: 'warning',

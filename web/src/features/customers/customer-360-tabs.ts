@@ -23,6 +23,11 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
  * reads while the customer is still on the telephone, so it belongs before the registers rather than
  * after them.
  *
+ * `charges` (WP-2.16's screen, shipped with WP-2.18) sits with the money, after `deposit` and
+ * before `documents`: a fee is the non-consumption half of what the customer is asked for, so it
+ * reads beside the bills and the deposit rather than beside the person — and a statement composed
+ * from all of them belongs after it.
+ *
  * `transitions` (WP-2.15) sits AFTER everything it might depend on and before the feed that reports
  * on all of it: a rep reads the deposit before they transfer it and runs a statement before they
  * close an account, and both of those tabs are to its left. It is the last thing done on a call
@@ -38,6 +43,7 @@ export const customer360TabIds = [
   'bills',
   'payments',
   'deposit',
+  'charges',
   'documents',
   'transitions',
   'timeline',
@@ -55,6 +61,7 @@ const tabLabels: Record<Customer360TabId, string> = {
   bills: 'Bills',
   payments: 'Payments',
   deposit: 'Deposit',
+  charges: 'Charges',
   documents: 'Documents',
   transitions: 'Transitions',
   timeline: 'Timeline',

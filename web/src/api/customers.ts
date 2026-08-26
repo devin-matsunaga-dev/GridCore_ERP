@@ -1,4 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
+import { env } from '@/lib/env';
 import { api } from './client';
 import { registryWindow } from './registry';
 
@@ -1271,5 +1272,261 @@ export function useCustomerProfile(customerId: string | undefined) {
     queryKey: customerKeys.profile(customerId ?? ''),
     queryFn: ({ signal }) => customersApi.profile(customerId!, signal),
     enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * ---------------------------------------------------------------------------------------------
+ * Service applications (WP-2.18)
+ *
+ * The reviewed path to a service account: an application is filed, a reviewer picks it up, the
+ * required documents arrive, and approval is what opens the account. It lives in this client rather
+ * than one of its own because it is the Customers module's — CONVENTIONS.md asks for one typed
+ * client per module, and an `applications.ts` beside this file would be a second client for the
+ * same schema.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/** Mirrors `ServiceApplicationStatus`. The order is the lifecycle's, not the alphabet's. */
+export const serviceApplicationStatuses = ['Submitted', 'UnderReview', 'Approved', 'Rejected', 'Withdrawn'] as const;
+export type ServiceApplicationStatus = (typeof serviceApplicationStatuses)[number];
+
+/** Mirrors `ServiceApplicationType` — which checklist an application is held to. */
+export const serviceApplicationTypes = ['ResidentialConnection', 'CommercialConnection'] as const;
+export type ServiceApplicationType = (typeof serviceApplicationTypes)[number];
+
+/** Mirrors `ApplicationDocumentKind`. */
+export const applicationDocumentKinds = ['PhotoId', 'ProofOfOccupancy', 'BusinessLicence', 'Other'] as const;
+export type ApplicationDocumentKind = (typeof applicationDocumentKinds)[number];
+
+/** Mirrors `ApplicationReasonCode`. */
+export const applicationReasonCodes = [
+  'Other',
+  'DocumentsVerified',
+  'ApprovedByException',
+  'DocumentsIncomplete',
+  'IdentityNotVerified',
+  'OccupancyNotProven',
+  'PremiseNotServiceable',
+  'OutstandingBalance',
+  'DuplicateApplication',
+  'ApplicantWithdrew',
+  'ApplicantUnreachable',
+  'SupersededByAnotherApplication',
+] as const;
+export type ApplicationReasonCode = (typeof applicationReasonCodes)[number];
+
+/** Mirrors `ApplicationChecklistResponse` — one line of what an application must carry. */
+export type ApplicationChecklistLine = {
+  kind: ApplicationDocumentKind;
+  isSatisfied: boolean;
+  documentId: string | null;
+  uploadedAt: string | null;
+};
+
+/** Mirrors `ApplicationDocumentResponse`. Never the bytes — those have a route of their own. */
+export type ApplicationDocument = {
+  id: string;
+  kind: ApplicationDocumentKind;
+  fileName: string;
+  contentType: string;
+  sizeInBytes: number;
+  checksum: string;
+  uploadedAt: string;
+  actorId: string;
+  actorName: string | null;
+};
+
+/** Mirrors `ServiceApplicationResponse`. */
+export type ServiceApplication = {
+  id: string;
+  applicationNumber: string;
+  customerId: string;
+  serviceLocationId: string;
+  serviceType: ServiceType;
+  type: ServiceApplicationType;
+  status: ServiceApplicationStatus;
+  allowedTransitions: ServiceApplicationStatus[];
+  isOpen: boolean;
+  requestedOn: string;
+  notes: string | null;
+  checklist: ApplicationChecklistLine[];
+  missingDocuments: ApplicationDocumentKind[];
+  isDocumentationComplete: boolean;
+  documents: ApplicationDocument[];
+  submittedAt: string;
+  submittedById: string;
+  submittedByName: string | null;
+  reviewStartedAt: string | null;
+  reviewerId: string | null;
+  reviewerName: string | null;
+  decidedAt: string | null;
+  decidedById: string | null;
+  decidedByName: string | null;
+  decisionReasonCode: ApplicationReasonCode | null;
+  decisionNotes: string | null;
+  serviceAccountId: string | null;
+  replacesApplicationId: string | null;
+};
+
+/** Mirrors `ApplicationApprovalResponse` — what an approval produced. */
+export type ApplicationApproval = {
+  application: ServiceApplication;
+  account: ServiceAccount;
+  deposit: DepositRequirement;
+};
+
+/** Mirrors `ApplicationTypeResponse`. */
+export type ApplicationTypeReference = {
+  type: ServiceApplicationType;
+  requiredDocuments: ApplicationDocumentKind[];
+};
+
+/**
+ * Mirrors `ApplicationReferenceResponse` — the host's own checklist, decision lists and upload
+ * policy, projected so a browser never keeps a second copy of them to fall out of step with.
+ */
+export type ApplicationReference = {
+  types: ApplicationTypeReference[];
+  documentKinds: ApplicationDocumentKind[];
+  allowedContentTypes: string[];
+  maxSizeInBytes: number;
+  reasonCodes: Record<string, ApplicationReasonCode[]>;
+  reasonCodesRequiringNotes: ApplicationReasonCode[];
+};
+
+/** How the application register is narrowed. */
+export type ServiceApplicationFilters = {
+  search?: string;
+  customerId?: string;
+  serviceLocationId?: string;
+  status?: ServiceApplicationStatus | '';
+  serviceType?: ServiceType | '';
+  openOnly?: boolean;
+};
+
+/** Mirrors `SubmitApplicationRequest`. `serviceType` is required, with no default — see the host. */
+export type SubmitApplicationInput = {
+  customerId: string;
+  serviceLocationId: string;
+  serviceType: ServiceType;
+  requestedOn?: string | null;
+  notes?: string | null;
+};
+
+/** Mirrors `DecideApplicationRequest` — one body for approve, reject and withdraw. */
+export type DecideApplicationInput = {
+  reasonCode: ApplicationReasonCode;
+  notes?: string | null;
+};
+
+export const applicationsApi = {
+  list: (filters: ServiceApplicationFilters = {}, signal?: AbortSignal) =>
+    api.get<ServiceApplication[]>('/api/service-applications', {
+      query: {
+        ...params({
+          search: filters.search,
+          customerId: filters.customerId,
+          serviceLocationId: filters.serviceLocationId,
+          status: filters.status,
+          serviceType: filters.serviceType,
+        }),
+        ...(filters.openOnly ? { openOnly: true } : {}),
+        limit: registryWindow,
+      },
+      signal,
+    }),
+
+  get: (id: string, signal?: AbortSignal) =>
+    api.get<ServiceApplication>(`/api/service-applications/${id}`, { signal }),
+
+  /** The checklist, the decision lists and the upload policy. Reference data — safe to hold for a session. */
+  reference: (signal?: AbortSignal) => api.get<ApplicationReference>('/api/service-application-reference', { signal }),
+
+  submit: (input: SubmitApplicationInput) =>
+    api.post<ServiceApplication>('/api/service-applications', { json: input }),
+
+  /** Picks it up. The move a decision has to come after, so the queue can say who is dealing with what. */
+  startReview: (id: string) =>
+    api.post<ServiceApplication>(`/api/service-applications/${id}/review`, { json: {} }),
+
+  /**
+   * Attaches a scan. Multipart, not JSON: base64 in a body would inflate every scan by a third and
+   * hide its size from the server until it had already been buffered.
+   */
+  attachDocument: (id: string, kind: ApplicationDocumentKind, file: File) => {
+    const body = new FormData();
+    body.append('kind', kind);
+    body.append('file', file);
+
+    return api.postForm<ApplicationDocument>(`/api/service-applications/${id}/documents`, body);
+  },
+
+  /**
+   * Where a document's bytes are served from.
+   *
+   * A URL rather than a fetch, because the browser is what renders a PDF or an image and handing it
+   * an object URL would mean downloading the scan into memory to show it. Needs
+   * `customers.documents` on the host, which is narrower than the `customers.read` that opened the
+   * page — so this link 403s for a clerk who may see the checklist but not the identity page behind
+   * it, which is the intended behaviour and not a bug in the link.
+   */
+  documentUrl: (id: string, documentId: string) =>
+    `${env.apiBaseUrl}/api/service-applications/${id}/documents/${documentId}/content`,
+
+  /** Approval — the act that opens the account. Needs `customers.approve`. */
+  approve: (id: string, input: DecideApplicationInput) =>
+    api.post<ApplicationApproval>(`/api/service-applications/${id}/approve`, { json: input }),
+
+  /** Refusal. Needs `customers.approve` too, and is terminal — the way forward is a resubmission. */
+  reject: (id: string, input: DecideApplicationInput) =>
+    api.post<ServiceApplication>(`/api/service-applications/${id}/reject`, { json: input }),
+
+  /** The applicant's own act, relayed by the desk. Needs only `customers.write`. */
+  withdraw: (id: string, input: DecideApplicationInput) =>
+    api.post<ServiceApplication>(`/api/service-applications/${id}/withdraw`, { json: input }),
+
+  /** A fresh application replacing a decided one. Carries what was applied for and none of the evidence. */
+  resubmit: (id: string, input: { requestedOn?: string | null; notes?: string | null } = {}) =>
+    api.post<ServiceApplication>(`/api/service-applications/${id}/resubmissions`, { json: input }),
+};
+
+export const applicationKeys = {
+  all: ['service-applications'] as const,
+  reference: () => ['service-applications', 'reference'] as const,
+  list: (filters: ServiceApplicationFilters) => ['service-applications', 'list', filters] as const,
+  detail: (id: string) => ['service-applications', 'detail', id] as const,
+};
+
+/**
+ * The application register. Takes `enabled` so a panel whose subject has not resolved yet — the
+ * 360° page before it knows which customer it is showing — asks for nothing rather than everything.
+ */
+export function useServiceApplications(filters: ServiceApplicationFilters, enabled = true) {
+  return useQuery({
+    queryKey: applicationKeys.list(filters),
+    queryFn: ({ signal }) => applicationsApi.list(filters, signal),
+    enabled,
+  });
+}
+
+/** One application with its documents. */
+export function useServiceApplication(id: string | undefined) {
+  return useQuery({
+    queryKey: applicationKeys.detail(id ?? ''),
+    queryFn: ({ signal }) => applicationsApi.get(id!, signal),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * The checklist and decision lists the host declares. Reference data — it changes with a deployment,
+ * never with a screen — so it is held for the session rather than re-fetched per application.
+ */
+export function useApplicationReference() {
+  return useQuery({
+    queryKey: applicationKeys.reference(),
+    queryFn: ({ signal }) => applicationsApi.reference(signal),
+    staleTime: Infinity,
   });
 }
