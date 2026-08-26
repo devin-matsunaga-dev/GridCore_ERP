@@ -7,9 +7,9 @@ namespace GridCore.Modules.Billing.Features.Documents;
 
 /// <summary>One line of the bill, exactly as it was printed.</summary>
 /// <param name="Sequence">Position on the bill, from 1.</param>
-/// <param name="Kind">The standing charge, or a consumption block from one tier of the tariff.</param>
+/// <param name="Kind">The standing charge, a consumption block from one tier of the tariff, or a fee.</param>
 /// <param name="Description">What the line says.</param>
-/// <param name="TierSequence">Which tier of the tariff produced it.</param>
+/// <param name="TierSequence">Which tier of the tariff produced it. Absent on a fee.</param>
 /// <param name="Units">Units charged.</param>
 /// <param name="RatePerUnit">Price of one unit inside that tier.</param>
 /// <param name="Amount">What the line came to.</param>
@@ -43,7 +43,8 @@ public sealed record BillDocumentCorrection(
 
 /// <summary>
 /// An issued bill as the document the customer was sent — reproduced from what was stored, never
-/// recalculated (WP-2.14).
+/// recalculated (WP-2.14). A charge bill reprints the same way, with no tariff and no meter on it:
+/// the fee lines carry the figures the schedule published on the day they were raised.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -79,14 +80,15 @@ public sealed record BillDocumentCorrection(
 /// <param name="CustomerId">Who owes it.</param>
 /// <param name="CustomerName">Their name <b>at the time it was raised</b>, not today's.</param>
 /// <param name="ServiceLocationId">The premise supplied.</param>
-/// <param name="RatePlanCode">The tariff it was priced on.</param>
-/// <param name="RatePlanName">Its name, as printed.</param>
-/// <param name="RatePlanEffectiveFrom">The version of it — why these rates and not others.</param>
+/// <param name="Kind">What the bill was raised for — a period of supply, or fees alone.</param>
+/// <param name="RatePlanCode">The tariff it was priced on. Absent on a charge bill.</param>
+/// <param name="RatePlanName">Its name, as printed. Absent on a charge bill.</param>
+/// <param name="RatePlanEffectiveFrom">The version of it — why these rates and not others. Absent on a charge bill.</param>
 /// <param name="Currency">ISO 4217 code every amount is expressed in.</param>
-/// <param name="UnitOfMeasure">What the units are measured in.</param>
+/// <param name="UnitOfMeasure">What the units are measured in. Absent on a charge bill.</param>
 /// <param name="PeriodStart">First day of the billed period.</param>
 /// <param name="PeriodEnd">Last day of it — the day the meter was read.</param>
-/// <param name="MeterNumber">The meter that produced the reading.</param>
+/// <param name="MeterNumber">The meter that produced the reading. Absent on a charge bill.</param>
 /// <param name="PreviousReading">The dials at the start of the period.</param>
 /// <param name="CurrentReading">The dials at the end of it.</param>
 /// <param name="Consumption">Units billed.</param>
@@ -111,14 +113,15 @@ public sealed record BillDocument(
     Guid CustomerId,
     string CustomerName,
     Guid ServiceLocationId,
-    string RatePlanCode,
-    string RatePlanName,
-    DateOnly RatePlanEffectiveFrom,
+    string Kind,
+    string? RatePlanCode,
+    string? RatePlanName,
+    DateOnly? RatePlanEffectiveFrom,
     string Currency,
-    string UnitOfMeasure,
+    string? UnitOfMeasure,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
-    string MeterNumber,
+    string? MeterNumber,
     decimal? PreviousReading,
     decimal? CurrentReading,
     decimal Consumption,
@@ -200,6 +203,7 @@ public sealed record BillDocument(
             // that quietly updated it would be a different document.
             bill.CustomerName,
             bill.ServiceLocationId,
+            bill.Kind.ToString(),
             bill.RatePlanCode,
             bill.RatePlanName,
             bill.RatePlanEffectiveFrom,

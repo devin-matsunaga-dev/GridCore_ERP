@@ -39,6 +39,85 @@ public sealed class FinancePostingsTests
     }
 
     [Fact]
+    public void A_bill_carrying_a_fee_credits_fee_revenue_for_that_part_and_utility_revenue_for_the_rest()
+    {
+        // WP-2.16. A reconnection charge is not electricity: crediting it to utility revenue would
+        // inflate what the utility appears to have earned from selling power. One receivable, two
+        // revenue accounts, and the two credits add up to the debit by construction.
+        var issued = BillIssued.For(
+            Now,
+            billId: Guid.CreateVersion7(Now),
+            billNumber: "B-000124",
+            serviceAccountId: Guid.CreateVersion7(Now),
+            customerId: Guid.CreateVersion7(Now),
+            periodStart: new DateOnly(2026, 7, 1),
+            periodEnd: new DateOnly(2026, 7, 31),
+            dueDate: new DateOnly(2026, 8, 20),
+            amount: 184.55m,
+            currency: "USD",
+            feeAmount: 60.00m);
+
+        var posting = FinancePostings.From(issued);
+
+        Assert.Equal(184.55m, DebitOf(posting, FinanceAccounts.AccountsReceivable));
+        Assert.Equal(124.55m, CreditOf(posting, FinanceAccounts.Revenue));
+        Assert.Equal(60.00m, CreditOf(posting, FinanceAccounts.ServiceFeeRevenue));
+        Assert.Equal(3, posting.Lines.Count);
+        AssertBalances(posting, 184.55m);
+    }
+
+    [Fact]
+    public void A_counter_bill_of_fees_alone_never_touches_utility_revenue()
+    {
+        // A charge bill is fees all the way down (WP-2.16), so there is no supply half to credit —
+        // and a zero line is not posted, because a line carries exactly one side or it is refused.
+        var issued = BillIssued.For(
+            Now,
+            billId: Guid.CreateVersion7(Now),
+            billNumber: "B-000125",
+            serviceAccountId: Guid.CreateVersion7(Now),
+            customerId: Guid.CreateVersion7(Now),
+            periodStart: new DateOnly(2026, 8, 24),
+            periodEnd: new DateOnly(2026, 8, 24),
+            dueDate: new DateOnly(2026, 9, 14),
+            amount: 60.00m,
+            currency: "USD",
+            feeAmount: 60.00m);
+
+        var posting = FinancePostings.From(issued);
+
+        Assert.Equal(60.00m, DebitOf(posting, FinanceAccounts.AccountsReceivable));
+        Assert.Equal(60.00m, CreditOf(posting, FinanceAccounts.ServiceFeeRevenue));
+        Assert.Equal(0m, CreditOf(posting, FinanceAccounts.Revenue));
+        Assert.Equal(2, posting.Lines.Count);
+        AssertBalances(posting, 60.00m);
+    }
+
+    [Fact]
+    public void An_ordinary_bill_with_no_fee_posts_exactly_the_two_lines_it_always_did()
+    {
+        // The field defaults to zero, which is what every bill issued before WP-2.16 carries — so an
+        // event still in flight across the upgrade posts the entry it was always going to post.
+        var issued = BillIssued.For(
+            Now,
+            billId: Guid.CreateVersion7(Now),
+            billNumber: "B-000126",
+            serviceAccountId: Guid.CreateVersion7(Now),
+            customerId: Guid.CreateVersion7(Now),
+            periodStart: new DateOnly(2026, 7, 1),
+            periodEnd: new DateOnly(2026, 7, 31),
+            dueDate: new DateOnly(2026, 8, 20),
+            amount: 184.55m,
+            currency: "USD");
+
+        var posting = FinancePostings.From(issued);
+
+        Assert.Equal(0m, issued.FeeAmount);
+        Assert.Equal(2, posting.Lines.Count);
+        Assert.Equal(0m, CreditOf(posting, FinanceAccounts.ServiceFeeRevenue));
+    }
+
+    [Fact]
     public void An_approved_payment_debits_cash_and_clears_the_receivable()
     {
         var approved = PaymentApproved.For(

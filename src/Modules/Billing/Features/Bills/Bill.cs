@@ -1,4 +1,6 @@
 using GridCore.Contracts.Directories;
+using GridCore.Modules.Billing.Features.Fees;
+using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Rating;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Platform.Monetary;
@@ -28,8 +30,38 @@ public sealed record BilledReading(
     decimal? PreviousReading,
     decimal? CurrentReading);
 
+/// <summary>What a bill was raised for.</summary>
+/// <remarks>
+/// <para>
+/// Stored by name, like every other enum on this table. It is a fact about the document rather than
+/// a state it moves through — a bill is one kind or the other from the moment it is calculated —
+/// which is why it sits beside <see cref="BillStatus"/> rather than in it.
+/// </para>
+/// <para>
+/// <b>It is what makes the nullable half of this table readable.</b> A charge bill has no meter, no
+/// reading and no tariff, so those columns are null on one — and a column that is null for two
+/// different reasons ("this bill has no meter" versus "this bill lost its meter") is a column nobody
+/// can query. This says which.
+/// </para>
+/// </remarks>
+public enum BillKind
+{
+    /// <summary>
+    /// A period of supply priced against a tariff: a meter was read, and the units between the dials
+    /// were charged. Every bill a billing run produces.
+    /// </summary>
+    Consumption = 1,
+
+    /// <summary>
+    /// Fees alone, with no period of supply behind them (WP-2.16) — what the counter raises when a
+    /// customer is paying a reconnection fee now rather than waiting for their next bill.
+    /// </summary>
+    Charge = 2,
+}
+
 /// <summary>
-/// A bill: one billing period for one service account, priced by one version of one tariff.
+/// A bill: one billing period for one service account, priced by one version of one tariff — or,
+/// where it carries fees alone, a charge bill raised at the counter with no tariff behind it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -89,15 +121,12 @@ public sealed class Bill
 
     private Bill()
     {
-        // EF materialisation.
+        // EF materialisation. The tariff and meter fields are absent rather than empty: a charge
+        // bill genuinely has none, so they are nullable and are not initialised here.
         BillNumber = string.Empty;
         AccountNumber = string.Empty;
         CustomerName = string.Empty;
-        RatePlanCode = string.Empty;
-        RatePlanName = string.Empty;
         Currency = string.Empty;
-        UnitOfMeasure = string.Empty;
-        MeterNumber = string.Empty;
         ActorId = string.Empty;
     }
 
@@ -122,23 +151,29 @@ public sealed class Bill
     /// <summary>The premise supplied. A meter is fitted to a premise, so this is where the units came from.</summary>
     public Guid ServiceLocationId { get; private init; }
 
-    /// <summary>The tariff version priced against.</summary>
-    public Guid RatePlanId { get; private init; }
+    /// <summary>What this bill was raised for — a period of supply, or fees alone.</summary>
+    public BillKind Kind { get; private init; }
 
-    /// <summary>Its code, as printed.</summary>
-    public string RatePlanCode { get; private init; }
+    /// <summary>
+    /// The tariff version priced against, or <see langword="null"/> on a charge bill, which prices
+    /// nothing against a tariff.
+    /// </summary>
+    public Guid? RatePlanId { get; private init; }
 
-    /// <summary>Its name, as printed.</summary>
-    public string RatePlanName { get; private init; }
+    /// <summary>Its code, as printed. Absent on a charge bill.</summary>
+    public string? RatePlanCode { get; private init; }
 
-    /// <summary>The day that tariff version took effect — why these rates and not others.</summary>
-    public DateOnly RatePlanEffectiveFrom { get; private init; }
+    /// <summary>Its name, as printed. Absent on a charge bill.</summary>
+    public string? RatePlanName { get; private init; }
+
+    /// <summary>The day that tariff version took effect — why these rates and not others. Absent on a charge bill.</summary>
+    public DateOnly? RatePlanEffectiveFrom { get; private init; }
 
     /// <summary>ISO 4217 code every amount on this bill is expressed in.</summary>
     public string Currency { get; private init; }
 
-    /// <summary>What the units are measured in, e.g. <c>kWh</c>.</summary>
-    public string UnitOfMeasure { get; private init; }
+    /// <summary>What the units are measured in, e.g. <c>kWh</c>. Absent on a charge bill, which has no units.</summary>
+    public string? UnitOfMeasure { get; private init; }
 
     /// <summary>First day of the billed period.</summary>
     public DateOnly PeriodStart { get; private init; }
@@ -149,14 +184,17 @@ public sealed class Bill
     /// <summary>The reading cycle this bill came from, or <see langword="null"/> for an ad-hoc bill.</summary>
     public string? CycleCode { get; private init; }
 
-    /// <summary>The reading in Metering's register that closed the period.</summary>
-    public Guid MeterReadingId { get; private init; }
+    /// <summary>
+    /// The reading in Metering's register that closed the period, or <see langword="null"/> on a
+    /// charge bill — no meter was read, because no period of supply is being billed.
+    /// </summary>
+    public Guid? MeterReadingId { get; private init; }
 
-    /// <summary>The meter that produced it.</summary>
-    public Guid MeterId { get; private init; }
+    /// <summary>The meter that produced it. Absent on a charge bill.</summary>
+    public Guid? MeterId { get; private init; }
 
-    /// <summary>Its number, as printed.</summary>
-    public string MeterNumber { get; private init; }
+    /// <summary>Its number, as printed. Absent on a charge bill.</summary>
+    public string? MeterNumber { get; private init; }
 
     /// <summary>The dials at the start of the period.</summary>
     public decimal? PreviousReading { get; private init; }
@@ -169,6 +207,19 @@ public sealed class Bill
 
     /// <summary>What the bill comes to — the sum of its lines, as printed.</summary>
     public decimal TotalAmount { get; private init; }
+
+    /// <summary>
+    /// How much of <see cref="TotalAmount"/> is fees rather than supply (WP-2.16).
+    /// </summary>
+    /// <remarks>
+    /// <b>Stored rather than summed from the lines, and it is Finance that needs it.</b> A fee earns
+    /// fee revenue and consumption earns utility revenue, so <c>BillIssued</c> carries the split and
+    /// the posting credits two accounts. A list does not load a bill's lines, and a figure that read
+    /// as zero whenever they were absent would post the whole of a counter bill to the wrong account
+    /// — silently. It never moves once the bill is calculated, exactly as the printed total does not:
+    /// a fee credited afterwards is an adjustment, and adjustments are their own history.
+    /// </remarks>
+    public decimal FeeAmount { get; private init; }
 
     /// <summary>How much of it has been paid.</summary>
     public decimal AmountPaid { get; private set; }
@@ -252,9 +303,14 @@ public sealed class Bill
     /// <param name="actor">Who raised it.</param>
     /// <param name="now">The clock, for the row's own identity and timestamp.</param>
     /// <param name="cycleCode">The reading cycle it came from, for a cycle bill.</param>
+    /// <param name="fees">
+    /// Fees waiting against the account, landing on this bill after the tariff's own lines (WP-2.16).
+    /// Each is a published figure the caller has already priced — <see cref="AccountCharge.AsBillLine"/>
+    /// is what produces one.
+    /// </param>
     /// <exception cref="BillingValidationException">
-    /// The number is missing, the period runs backwards, or the calculation does not add up to its
-    /// own lines.
+    /// The number is missing, the period runs backwards, the calculation does not add up to its own
+    /// lines, or a fee line is not a positive whole number of cents of the right kind.
     /// </exception>
     public static Bill Calculate(
         string billNumber,
@@ -265,7 +321,8 @@ public sealed class Bill
         DateOnly periodEnd,
         RegistryActor actor,
         DateTimeOffset now,
-        string? cycleCode = null)
+        string? cycleCode = null,
+        IReadOnlyList<RateCharge>? fees = null)
     {
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(reading);
@@ -288,12 +345,16 @@ public sealed class Bill
         // here is that a bill equals the sum of what is printed on it. Refused rather than corrected:
         // a total silently replaced by the sum of the lines would hide whatever produced the
         // disagreement, and the next bill would carry it too.
-        var printed = Money.Total(calculation.Charges.Select(charge => charge.Amount));
+        //
+        // The tariff's half is checked against the calculation on its own, BEFORE the fees are added
+        // in: a rate engine whose lines disagree with its own total is a different fault from a fee
+        // that arrived malformed, and adding them together first would let one hide the other.
+        var priced = Money.Total(calculation.Charges.Select(charge => charge.Amount));
 
-        if (printed != calculation.Total)
+        if (priced != calculation.Total)
         {
             throw new BillingValidationException(
-                $"Bill {billNumber} totals {calculation.Total} but its lines add up to {printed}. "
+                $"Bill {billNumber} totals {calculation.Total} but its lines add up to {priced}. "
                 + "A bill must equal the sum of what is printed on it.");
         }
 
@@ -302,6 +363,9 @@ public sealed class Bill
             throw new BillingValidationException(
                 $"Bill {billNumber} totals {calculation.Total}, which is finer than a cent.");
         }
+
+        var feeLines = RequireFeeLines(billNumber, fees);
+        var feeTotal = Money.Total(feeLines.Select(fee => fee.Amount));
 
         var bill = new Bill
         {
@@ -312,6 +376,7 @@ public sealed class Bill
             CustomerId = account.CustomerId,
             CustomerName = RegistryText.Clean(account.CustomerName, NameLength) ?? account.AccountNumber,
             ServiceLocationId = account.ServiceLocationId,
+            Kind = BillKind.Consumption,
             RatePlanId = calculation.RatePlanId,
             RatePlanCode = calculation.RatePlanCode,
             RatePlanName = calculation.RatePlanName,
@@ -327,7 +392,8 @@ public sealed class Bill
             PreviousReading = reading.PreviousReading,
             CurrentReading = reading.CurrentReading,
             Consumption = calculation.Consumption,
-            TotalAmount = calculation.Total,
+            TotalAmount = Money.Total([calculation.Total, feeTotal]),
+            FeeAmount = feeTotal,
             AmountPaid = Money.Zero,
             AdjustmentTotal = Money.Zero,
             Status = BillStatus.Draft,
@@ -338,12 +404,170 @@ public sealed class Bill
             ActorName = RegistryText.Clean(actor.Name, RegistryActor.MaxLength),
         };
 
-        foreach (var charge in calculation.Charges)
-        {
-            bill._lines.Add(BillLine.From(bill.Id, charge, now));
-        }
+        bill.Print(calculation.Charges, feeLines, now);
 
         return bill;
+    }
+
+    /// <summary>
+    /// Raises a bill for fees alone — no meter, no period of supply, no tariff (WP-2.16).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What the counter raises when the customer is paying now.</b> A reconnection fee taken over
+    /// the telephone cannot wait for the next cycle bill, and there is nothing to price it against:
+    /// the fees are published figures, already stamped onto the charges being landed.
+    /// </para>
+    /// <para>
+    /// <b>The period is the day it was raised, on both sides.</b> A charge bill covers no span of
+    /// supply, and a zero-length period stated honestly beats a made-up month — <c>Finance</c> posts
+    /// against these dates and a statement orders by them.
+    /// </para>
+    /// </remarks>
+    /// <param name="billNumber">The number to print on it, already reserved by the caller.</param>
+    /// <param name="account">Who is billed, from the Customers module's directory.</param>
+    /// <param name="fees">The fee lines. At least one — a bill for nothing is not a bill.</param>
+    /// <param name="currency">ISO 4217 code the fees are expressed in.</param>
+    /// <param name="raisedOn">The day it is raised, which is its period on both sides.</param>
+    /// <param name="actor">Who raised it.</param>
+    /// <param name="now">The clock, for the row's own identity and timestamp.</param>
+    /// <exception cref="BillingValidationException">
+    /// The number or the currency is missing, there are no fees, or a fee line is not a positive
+    /// whole number of cents of the right kind.
+    /// </exception>
+    public static Bill ForCharges(
+        string billNumber,
+        ServiceAccountSummary account,
+        IReadOnlyList<RateCharge> fees,
+        string currency,
+        DateOnly raisedOn,
+        RegistryActor actor,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(fees);
+        ArgumentNullException.ThrowIfNull(actor);
+
+        // Every guard before the first line is built — WP-1.4's ordering rule.
+        if (string.IsNullOrWhiteSpace(billNumber))
+        {
+            throw new BillingValidationException("A bill must be given a number before it can be raised.");
+        }
+
+        if (RegistryText.Clean(currency, RatePlan.CurrencyLength) is not { } cleanCurrency)
+        {
+            throw new BillingValidationException($"Bill {billNumber} must name the currency its fees are in.");
+        }
+
+        var feeLines = RequireFeeLines(billNumber, fees);
+
+        if (feeLines.Count is 0)
+        {
+            throw new BillingValidationException(
+                $"Bill {billNumber} carries no charges. A bill raised for nothing is a document nobody can pay.");
+        }
+
+        var bill = new Bill
+        {
+            Id = Guid.CreateVersion7(now),
+            BillNumber = billNumber.Trim(),
+            ServiceAccountId = account.Id,
+            AccountNumber = account.AccountNumber,
+            CustomerId = account.CustomerId,
+            CustomerName = RegistryText.Clean(account.CustomerName, NameLength) ?? account.AccountNumber,
+            ServiceLocationId = account.ServiceLocationId,
+            Kind = BillKind.Charge,
+
+            // No tariff, no meter and no units: absent rather than blank, so nothing downstream has
+            // to know that an empty string means "there was no meter". See BillKind.
+            Currency = cleanCurrency,
+            PeriodStart = raisedOn,
+            PeriodEnd = raisedOn,
+            Consumption = 0m,
+            TotalAmount = Money.Total(feeLines.Select(fee => fee.Amount)),
+            FeeAmount = Money.Total(feeLines.Select(fee => fee.Amount)),
+            AmountPaid = Money.Zero,
+            AdjustmentTotal = Money.Zero,
+            Status = BillStatus.Draft,
+            CreatedAt = now,
+            StatusChangedAt = now,
+            ActorId = RegistryText.Clean(actor.Id, RegistryActor.MaxLength)
+                ?? throw new BillingValidationException("A bill must name who raised it."),
+            ActorName = RegistryText.Clean(actor.Name, RegistryActor.MaxLength),
+        };
+
+        bill.Print([], feeLines, now);
+
+        return bill;
+    }
+
+    /// <summary>
+    /// Checks the fee lines are what a fee line has to be, and hands back the set to print.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fee carries no tier, no units and no rate — that is what tells it from a consumption
+    /// line</b>, and it is checked here rather than trusted because a fee that arrived with units on
+    /// it would print as arithmetic the schedule never did. Refused rather than stripped: a caller
+    /// that built one wrongly has a defect worth seeing.
+    /// </remarks>
+    private static IReadOnlyList<RateCharge> RequireFeeLines(string billNumber, IReadOnlyList<RateCharge>? fees)
+    {
+        if (fees is null or { Count: 0 })
+        {
+            return [];
+        }
+
+        foreach (var fee in fees)
+        {
+            if (fee.Kind is not ChargeKind.Fee)
+            {
+                throw new BillingValidationException(
+                    $"Bill {billNumber} was handed a {fee.Kind} line among its fees. Only a fee lands on a bill this way; "
+                    + "consumption comes from the rate engine.");
+            }
+
+            if (fee.TierSequence is not null || fee.Units is not null || fee.RatePerUnit is not null)
+            {
+                throw new BillingValidationException(
+                    $"Fee '{fee.Description}' on bill {billNumber} carries a tier, units or a rate. A fee is a published "
+                    + "figure, not a quantity at a price — that is what distinguishes it from a consumption line.");
+            }
+
+            if (fee.Amount <= Money.Zero)
+            {
+                throw new BillingValidationException(
+                    $"Fee '{fee.Description}' on bill {billNumber} comes to {fee.Amount}, which is not something to charge for.");
+            }
+
+            if (!Money.IsRounded(fee.Amount))
+            {
+                throw new BillingValidationException(
+                    $"Fee '{fee.Description}' on bill {billNumber} comes to {fee.Amount}, which is finer than a cent.");
+            }
+        }
+
+        return fees;
+    }
+
+    /// <summary>
+    /// Writes the bill's lines: the tariff's, then the fees, numbered in one series from 1.
+    /// </summary>
+    /// <remarks>
+    /// The fees are re-sequenced rather than trusted to arrive numbered — where a fee sits is the
+    /// document's business, and a charge that carried its own position would be one more thing able
+    /// to disagree with the bill it landed on.
+    /// </remarks>
+    private void Print(IReadOnlyList<RateCharge> priced, IReadOnlyList<RateCharge> fees, DateTimeOffset now)
+    {
+        foreach (var charge in priced)
+        {
+            _lines.Add(BillLine.From(Id, charge, now));
+        }
+
+        foreach (var fee in fees)
+        {
+            _lines.Add(BillLine.From(Id, fee with { Sequence = _lines.Count + 1 }, now));
+        }
     }
 
     /// <summary>

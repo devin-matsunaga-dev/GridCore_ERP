@@ -9,7 +9,7 @@ namespace GridCore.Modules.Billing.Features.Documents;
 
 /// <summary>One line of a reprinted bill, as the API returns it.</summary>
 /// <param name="Sequence">Position on the bill, from 1.</param>
-/// <param name="Kind">The standing charge, or a consumption block from one tier.</param>
+/// <param name="Kind">The standing charge, a consumption block from one tier, or a fee.</param>
 /// <param name="Description">What the line says.</param>
 /// <param name="TierSequence">Which tier produced it.</param>
 /// <param name="Units">Units charged.</param>
@@ -81,14 +81,15 @@ public sealed record BillDocumentCorrectionResponse(
 /// <param name="CustomerId">Who owes it.</param>
 /// <param name="CustomerName">Their name at the time it was raised.</param>
 /// <param name="ServiceLocationId">The premise supplied.</param>
-/// <param name="RatePlanCode">The tariff it was priced on.</param>
+/// <param name="Kind">What the bill was raised for — a period of supply, or fees alone.</param>
+/// <param name="RatePlanCode">The tariff it was priced on. Absent on a charge bill.</param>
 /// <param name="RatePlanName">Its name.</param>
 /// <param name="RatePlanEffectiveFrom">The version of it.</param>
 /// <param name="Currency">ISO 4217 code every amount is expressed in.</param>
 /// <param name="UnitOfMeasure">What the units are measured in.</param>
 /// <param name="PeriodStart">First day of the billed period.</param>
 /// <param name="PeriodEnd">Last day of it.</param>
-/// <param name="MeterNumber">The meter read.</param>
+/// <param name="MeterNumber">The meter read. Absent on a charge bill.</param>
 /// <param name="PreviousReading">The dials at the start of the period.</param>
 /// <param name="CurrentReading">The dials at the end of it.</param>
 /// <param name="Consumption">Units billed.</param>
@@ -113,14 +114,15 @@ public sealed record BillDocumentResponse(
     Guid CustomerId,
     string CustomerName,
     Guid ServiceLocationId,
-    string RatePlanCode,
-    string RatePlanName,
-    DateOnly RatePlanEffectiveFrom,
+    string Kind,
+    string? RatePlanCode,
+    string? RatePlanName,
+    DateOnly? RatePlanEffectiveFrom,
     string Currency,
-    string UnitOfMeasure,
+    string? UnitOfMeasure,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
-    string MeterNumber,
+    string? MeterNumber,
     decimal? PreviousReading,
     decimal? CurrentReading,
     decimal Consumption,
@@ -151,6 +153,7 @@ public sealed record BillDocumentResponse(
             document.CustomerId,
             document.CustomerName,
             document.ServiceLocationId,
+            document.Kind,
             document.RatePlanCode,
             document.RatePlanName,
             document.RatePlanEffectiveFrom,

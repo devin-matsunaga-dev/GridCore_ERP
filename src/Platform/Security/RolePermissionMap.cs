@@ -43,6 +43,13 @@ public static class RolePermissionMap
 
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
+
+                // The reconnection fee, the returned-cheque fee, the connection charge: all of them
+                // are raised by whoever is talking to the customer (WP-2.16). Held WITHOUT
+                // billing.generate, which runs a cycle over every metered premise — the front desk
+                // charges one account at a time and never bills the island.
+                Permissions.Billing.Charge,
+
                 Permissions.Payments.Read,
                 Permissions.Payments.Record,
                 Permissions.Assets.Read,
@@ -62,6 +69,7 @@ public static class RolePermissionMap
                 Permissions.Billing.Read,
                 Permissions.Billing.Generate,
                 Permissions.Billing.Adjust,
+                Permissions.Billing.Charge,
                 Permissions.Payments.Read,
                 Permissions.Finance.Read),
 
@@ -128,6 +136,12 @@ public static class RolePermissionMap
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Billing.Adjust,
+
+                // The role that may credit a bill is the role that may charge a fee onto one. Held
+                // beside billing.adjust and still without billing.generate, which is the same line
+                // WP-2.4 drew: correcting what one customer owes is not running the billing cycle.
+                Permissions.Billing.Charge,
+
                 Permissions.Payments.Read,
                 Permissions.Finance.Read,
                 Permissions.Assets.Read,

@@ -218,6 +218,29 @@ public static class AuditActions
     public const string BillOverdueReviewed = "bill.overdue_review";
 
     /// <summary>
+    /// A fee from the published schedule was raised against a service account (WP-2.16). Sensitive:
+    /// it is money the customer will be asked for, so it is permission-gated and audited.
+    /// </summary>
+    /// <remarks>
+    /// The snapshot carries the schedule row that priced it and the amount charged, which together
+    /// are what lets somebody answer "why is this $135" years after the schedule has moved on.
+    /// </remarks>
+    public const string AccountChargeRaised = "account_charge.raise";
+
+    /// <summary>
+    /// A raised charge was withdrawn before it reached a bill (WP-2.16). Sensitive for the reason a
+    /// bill cancellation is: it removes money the utility was going to be owed.
+    /// </summary>
+    public const string AccountChargeCancelled = "account_charge.cancel";
+
+    /// <summary>
+    /// A charge was put on a bill of its own so the customer could pay it at the counter (WP-2.16).
+    /// Recorded against the charge — the bill it produced is named in the snapshot and carries its
+    /// own <see cref="BillIssued"/> entry.
+    /// </summary>
+    public const string AccountChargeBilled = "account_charge.bill";
+
+    /// <summary>
     /// An approved payment was applied to a bill, reducing what is owed. Recorded against
     /// <c>system</c>: this happens in a consumer rather than at somebody's keyboard, and the clerk
     /// who took the money is named on the payment's own entry.
@@ -381,6 +404,16 @@ public static class AuditEntityTypes
     /// before/after an auditor reads is the bill's, not the entry's.
     /// </summary>
     public const string Bill = "billing.bill";
+
+    /// <summary>
+    /// A row of <c>billing.account_charges</c> (WP-2.16) — one fee raised against a service account.
+    /// </summary>
+    /// <remarks>
+    /// Its own entity rather than a line of the bill's, unlike an adjustment: a charge exists before
+    /// any bill carries it and may never reach one, so auditing it against a bill would mean naming
+    /// a document that does not exist yet. Once it is billed, the bill's own entries take over.
+    /// </remarks>
+    public const string AccountCharge = "billing.account_charge";
 
     /// <summary>
     /// A billing run, identified by the reading cycle it priced. Not a table: a run raises many

@@ -69,6 +69,49 @@ describe('the bill reprint', () => {
     expect(await screen.findByText('Sablan Family Residence (as billed)')).toBeInTheDocument();
   });
 
+  it('leaves the meter and the tariff off a charge bill rather than printing them empty', async () => {
+    // WP-2.16. A charge bill carries fees alone: there was never a meter, never a tariff and never
+    // a period of supply, so a document reading "Meter —" would invite the question of which meter.
+    renderPage(() => ({
+      body: billDocument({
+        kind: 'Charge',
+        ratePlanCode: null,
+        ratePlanName: null,
+        ratePlanEffectiveFrom: null,
+        unitOfMeasure: null,
+        meterNumber: null,
+        previousReading: null,
+        currentReading: null,
+        consumption: 0,
+        lines: [
+          {
+            sequence: 1,
+            kind: 'Fee',
+            description: 'Reconnection fee',
+            tierSequence: null,
+            units: null,
+            ratePerUnit: null,
+            amount: 60,
+          },
+        ],
+        printedTotal: 60,
+        corrections: [],
+        correctionTotal: 0,
+        amountDue: 60,
+        amountPaid: 0,
+        balance: 60,
+      }),
+    }));
+
+    expect(await screen.findByText('Reconnection fee')).toBeInTheDocument();
+    expect(screen.queryByText('Meter')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tariff')).not.toBeInTheDocument();
+    expect(screen.queryByText('Consumption')).not.toBeInTheDocument();
+
+    // The day it was raised stands in for the period, which is what the bill actually covers.
+    expect(screen.getByText('Raised')).toBeInTheDocument();
+  });
+
   it('says who produced the copy and when, because it left the building', async () => {
     renderPage();
 

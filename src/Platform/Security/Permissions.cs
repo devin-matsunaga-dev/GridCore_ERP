@@ -106,6 +106,18 @@ public static class Permissions
 
         /// <summary>Adjust an issued bill. Sensitive: permission-gated and audited.</summary>
         public const string Adjust = "billing.adjust";
+
+        /// <summary>
+        /// Raise a fee from the published schedule against a service account, and bill one at the
+        /// counter (WP-2.16). Sensitive: permission-gated and audited.
+        /// </summary>
+        /// <remarks>
+        /// Its own grant rather than <see cref="Generate"/>, which runs a cycle over every metered
+        /// premise the utility has. A reconnection fee is raised one customer at a time by whoever
+        /// is talking to them, which is why the front desk holds this and does not hold
+        /// <see cref="Generate"/> — and why a billing officer holds both.
+        /// </remarks>
+        public const string Charge = "billing.charge";
     }
 
     /// <summary>Customer payments.</summary>

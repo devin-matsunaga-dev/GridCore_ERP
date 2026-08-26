@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
 using GridCore.Modules.Billing.Data;
+using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Rating;
 using GridCore.Modules.Billing.Features.Shared;
@@ -290,6 +291,12 @@ public sealed class BillService(
                 var tariffs = await TariffsAsync(openAccounts.Values, ct).ConfigureAwait(false);
                 var plans = await database.RatePlans.AsNoTracking().Include(plan => plan.Tiers).ToListAsync(ct).ConfigureAwait(false);
 
+                // Fees waiting against the accounts this cycle will bill (WP-2.16), in one query for
+                // the whole run — the batched shape the accounts and the tariffs above already use.
+                // Tracked, not AsNoTracking: landing one on a bill moves it to Billed in this same
+                // transaction.
+                var waitingFees = await PendingChargesAsync(openAccounts.Values, ct).ConfigureAwait(false);
+
                 // Which accounts have already been billed for this cycle. Checked up front, in one
                 // query: ux_bills_account_cycle guarantees it, this is what turns the guarantee into
                 // a reason a billing officer can read.
@@ -340,6 +347,12 @@ public sealed class BillService(
                         continue;
                     }
 
+                    // THE FEES LAND HERE, on the next bill the account is sent — which is what
+                    // "it lands on the next bill" means, and why a charge raised at the desk on
+                    // Tuesday needs nobody to remember it on the 28th. A reading that is skipped
+                    // above raises no bill, so its account's fees stay pending for the next cycle.
+                    var fees = waitingFees.TryGetValue(account.Id, out var pending) ? pending : [];
+
                     var bill = Bill.Calculate(
                         reserved[nextNumber++],
                         account,
@@ -349,7 +362,15 @@ public sealed class BillService(
                         periodEnd,
                         actor,
                         now,
-                        cycleCode);
+                        cycleCode,
+                        [.. fees.Select(fee => fee.AsBillLine())]);
+
+                    // After the bill exists, so a charge is never marked billed against a document
+                    // that Calculate then refused to produce.
+                    foreach (var fee in fees)
+                    {
+                        fee.MarkBilled(bill.Id, bill.BillNumber, now);
+                    }
 
                     database.Bills.Add(bill);
                     raised.Add(bill);
@@ -418,7 +439,8 @@ public sealed class BillService(
                             bill.PeriodEnd,
                             bill.DueDate!.Value,
                             bill.TotalAmount,
-                            bill.Currency),
+                            bill.Currency,
+                            bill.FeeAmount),
                         ct)
                     .ConfigureAwait(false);
 
@@ -746,6 +768,31 @@ public sealed class BillService(
         ?? throw new BillNotFoundException(billId);
 
     /// <summary>
+    /// The fees waiting against each account, oldest first. One query for the whole run rather than
+    /// one per account, and tracked so landing one moves it in the same transaction.
+    /// </summary>
+    /// <remarks>
+    /// Ordered by key: ids are Guid v7, so charges reach a bill in the order they were raised — which
+    /// is the order a customer reading the document would expect them in.
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<Guid, List<AccountCharge>>> PendingChargesAsync(
+        IEnumerable<ServiceAccountSummary> forAccounts,
+        CancellationToken cancellationToken)
+    {
+        var ids = forAccounts.Select(account => account.Id).Distinct().ToArray();
+
+        var pending = await database.AccountCharges
+            .Where(charge => ids.Contains(charge.ServiceAccountId) && charge.Status == AccountChargeStatus.Pending)
+            .OrderBy(charge => charge.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return pending
+            .GroupBy(charge => charge.ServiceAccountId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+    }
+
+    /// <summary>
     /// The tariff code each account bills on, defaulting where nobody has assigned one. One query
     /// for the whole run rather than one per account.
     /// </summary>
@@ -780,6 +827,7 @@ public sealed class BillService(
 /// <param name="RatePlanEffectiveFrom">The version of it — why these rates and not others.</param>
 /// <param name="Consumption">Units billed.</param>
 /// <param name="TotalAmount">What the bill comes to as printed. Never moves once it is calculated.</param>
+/// <param name="FeeAmount">How much of that is fees from the published schedule rather than supply.</param>
 /// <param name="AdjustmentTotal">The signed sum of the corrections made to it since.</param>
 /// <param name="AmountDue">What is owed today — the printed total plus those corrections.</param>
 /// <param name="AmountPaid">How much has been paid.</param>
@@ -792,10 +840,11 @@ public sealed record BillSnapshot(
     BillStatus Status,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
-    string RatePlanCode,
-    DateOnly RatePlanEffectiveFrom,
+    string? RatePlanCode,
+    DateOnly? RatePlanEffectiveFrom,
     decimal Consumption,
     decimal TotalAmount,
+    decimal FeeAmount,
     decimal AdjustmentTotal,
     decimal AmountDue,
     decimal AmountPaid,
@@ -818,6 +867,7 @@ public sealed record BillSnapshot(
             bill.RatePlanEffectiveFrom,
             bill.Consumption,
             bill.TotalAmount,
+            bill.FeeAmount,
             bill.AdjustmentTotal,
             bill.AmountDue,
             bill.AmountPaid,

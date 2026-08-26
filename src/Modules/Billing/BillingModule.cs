@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Documents;
+using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
@@ -37,6 +38,12 @@ public sealed class BillingModule : IModule
         services.AddScoped<IRatePlanService, RatePlanService>();
         services.AddScoped<IBillService, BillService>();
 
+        // The published fee schedule and the charges raised off it (WP-2.16). The catalogue is
+        // read-only — a fee is corrected by migration — and the register is where the counter raises
+        // one; both live in Billing because a fee is a published charge that becomes a receivable.
+        services.AddScoped<IFeeScheduleService, FeeScheduleService>();
+        services.AddScoped<IAccountChargeService, AccountChargeService>();
+
         // The bill reprint (WP-2.14). Its own service rather than another method on IBillService:
         // that interface is where a bill is raised, issued, corrected and paid, and a read that
         // produces a document for a customer has different rules — it refuses a draft, it is gated on
@@ -70,6 +77,9 @@ public sealed class BillingModule : IModule
         services.AddGridCoreValidator<AdjustBillRequest, AdjustBillRequestValidator>();
         services.AddGridCoreValidator<OverdueReviewRequest, OverdueReviewRequestValidator>();
         services.AddGridCoreValidator<AssignRatePlanRequest, AssignRatePlanRequestValidator>();
+        services.AddGridCoreValidator<RaiseChargeRequest, RaiseChargeRequestValidator>();
+        services.AddGridCoreValidator<CancelChargeRequest, CancelChargeRequestValidator>();
+        services.AddGridCoreValidator<BillChargeRequest, BillChargeRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -82,6 +92,7 @@ public sealed class BillingModule : IModule
         ArgumentNullException.ThrowIfNull(endpoints);
 
         endpoints.MapRatePlanEndpoints();
+        endpoints.MapFeeEndpoints();
         endpoints.MapBillEndpoints();
         endpoints.MapBillDocumentEndpoints();
     }

@@ -43,20 +43,28 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
             .HasMaxLength(Bill.NameLength)
             .IsRequired();
 
+        // Stored by name: a bill read back years from now must not depend on today's enum ordering.
+        builder.Property(bill => bill.Kind)
+            .HasColumnName("kind")
+            .HasConversion<string>()
+            .HasMaxLength(Bill.EnumNameLength)
+            .IsRequired();
+
         // The tariff version priced against, stamped for the same reason. No foreign key to
         // rate_plans either — not because of a module boundary, but because a bill must survive a
         // tariff being superseded, and a real key invites a cascade nobody wants near a document.
+        //
+        // NULLABLE since WP-2.16: a charge bill carries fees alone and is priced against no tariff.
+        // `kind` is what says which, so nothing has to infer "there was no tariff" from a null.
         builder.Property(bill => bill.RatePlanId).HasColumnName("rate_plan_id");
 
         builder.Property(bill => bill.RatePlanCode)
             .HasColumnName("rate_plan_code")
-            .HasMaxLength(RatePlans.RatePlan.CodeLength)
-            .IsRequired();
+            .HasMaxLength(RatePlans.RatePlan.CodeLength);
 
         builder.Property(bill => bill.RatePlanName)
             .HasColumnName("rate_plan_name")
-            .HasMaxLength(Bill.NameLength)
-            .IsRequired();
+            .HasMaxLength(Bill.NameLength);
 
         builder.Property(bill => bill.RatePlanEffectiveFrom).HasColumnName("rate_plan_effective_from");
 
@@ -65,10 +73,10 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
             .HasMaxLength(RatePlans.RatePlan.CurrencyLength)
             .IsRequired();
 
+        // Nullable since WP-2.16: a charge bill has no units, so it has nothing they are measured in.
         builder.Property(bill => bill.UnitOfMeasure)
             .HasColumnName("unit_of_measure")
-            .HasMaxLength(RatePlans.RatePlan.UnitLength)
-            .IsRequired();
+            .HasMaxLength(RatePlans.RatePlan.UnitLength);
 
         builder.Property(bill => bill.PeriodStart).HasColumnName("period_start");
         builder.Property(bill => bill.PeriodEnd).HasColumnName("period_end");
@@ -81,8 +89,7 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
 
         builder.Property(bill => bill.MeterNumber)
             .HasColumnName("meter_number")
-            .HasMaxLength(RegistryNumbers.MaxLength)
-            .IsRequired();
+            .HasMaxLength(RegistryNumbers.MaxLength);
 
         builder.Property(bill => bill.PreviousReading)
             .HasColumnName("previous_reading")
@@ -99,6 +106,12 @@ public sealed class BillConfiguration : IEntityTypeConfiguration<Bill>
         // Money is decimal with an explicit scale, never the provider's default.
         builder.Property(bill => bill.TotalAmount)
             .HasColumnName("total_amount")
+            .HasPrecision(Bill.MoneyPrecision, Bill.MoneyScale);
+
+        // How much of the total is fees rather than supply (WP-2.16). Stored because BillIssued
+        // carries the split and a list does not load the lines it could otherwise be summed from.
+        builder.Property(bill => bill.FeeAmount)
+            .HasColumnName("fee_amount")
             .HasPrecision(Bill.MoneyPrecision, Bill.MoneyScale);
 
         builder.Property(bill => bill.AmountPaid)

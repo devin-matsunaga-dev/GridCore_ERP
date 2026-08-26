@@ -36,10 +36,45 @@ public static class FinancePostings
     /// <summary>Source name recorded for a posting driven by <see cref="CustomerDepositRefunded"/>.</summary>
     public const string DepositRefundedSource = "customers.deposit_refunded";
 
-    /// <summary>A bill raises a receivable and earns revenue.</summary>
+    /// <summary>
+    /// A bill raises a receivable and earns revenue — utility revenue for the supply, fee revenue
+    /// for the published fees on it (WP-2.16).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One receivable, two revenue accounts.</b> A fee is not electricity: crediting a
+    /// reconnection charge to <see cref="FinanceAccounts.Revenue"/> would inflate what the utility
+    /// appears to have earned from selling power, and the chart has carried
+    /// <see cref="FinanceAccounts.ServiceFeeRevenue"/> since WP-0.8 waiting for exactly this. The
+    /// debit is the total either way, because what the customer owes is one figure on one document.
+    /// </para>
+    /// <para>
+    /// <b>Neither credit is posted when it is zero.</b> An ordinary cycle bill carries no fee and a
+    /// counter bill is fees alone, so most entries have two lines and only a mixed bill has three —
+    /// and a zero line would be refused anyway, by the guard in
+    /// <see cref="JournalPostingIntent.For"/> that insists a line carries exactly one side.
+    /// </para>
+    /// </remarks>
     public static JournalPostingIntent From(BillIssued @event)
     {
         ArgumentNullException.ThrowIfNull(@event);
+
+        // Not read off the event as a second figure: what is left after the fees IS the supply, and
+        // deriving it here is what makes the two credits add up to the debit by construction rather
+        // than by an upstream promise.
+        var supply = @event.Amount - @event.FeeAmount;
+
+        List<JournalLineIntent> lines = [JournalLineIntent.Debits(FinanceAccounts.AccountsReceivable, @event.Amount)];
+
+        if (supply != 0m)
+        {
+            lines.Add(JournalLineIntent.Credits(FinanceAccounts.Revenue, supply));
+        }
+
+        if (@event.FeeAmount != 0m)
+        {
+            lines.Add(JournalLineIntent.Credits(FinanceAccounts.ServiceFeeRevenue, @event.FeeAmount));
+        }
 
         return JournalPostingIntent.For(
             @event.EventId,
@@ -48,10 +83,7 @@ public static class FinancePostings
             @event.BillNumber,
             $"Bill {@event.BillNumber} issued for service account {@event.ServiceAccountId}.",
             @event.Currency,
-            [
-                JournalLineIntent.Debits(FinanceAccounts.AccountsReceivable, @event.Amount),
-                JournalLineIntent.Credits(FinanceAccounts.Revenue, @event.Amount),
-            ],
+            lines,
             @event.ServiceAccountId,
             @event.CustomerId);
     }

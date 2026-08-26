@@ -1,12 +1,14 @@
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using Microsoft.EntityFrameworkCore;
 
 namespace GridCore.Modules.Billing.Data;
 
 /// <summary>
-/// The Billing module's schema: the published tariffs, who is billed on which of them, the bills
-/// the rate engine produces, and the corrections made to those.
+/// The Billing module's schema: the published tariffs and fees, who is billed on which tariff, the
+/// bills the rate engine produces, the fees raised against an account, and the corrections made to
+/// those bills.
 /// </summary>
 public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options) : DbContext(options)
 {
@@ -27,6 +29,19 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options)
     /// default tariff, so nothing has to be assigned before the utility can bill at all.
     /// </summary>
     public DbSet<AccountRatePlan> AccountRatePlans => Set<AccountRatePlan>();
+
+    /// <summary>
+    /// Every version of every published non-rate fee (WP-2.16) — the connection charge, the
+    /// reconnection fee, the returned-payment fee. Reference data seeded by migration, effective
+    /// dated exactly as a tariff is, and read-only to the application.
+    /// </summary>
+    public DbSet<FeeScheduleEntry> FeeSchedule => Set<FeeScheduleEntry>();
+
+    /// <summary>
+    /// Every fee raised against a service account. Each one stamps the schedule row that priced it,
+    /// so a charge still reports the figure it was raised at after the schedule has moved on.
+    /// </summary>
+    public DbSet<AccountCharge> AccountCharges => Set<AccountCharge>();
 
     /// <summary>
     /// Every bill raised. Append-only in spirit: a bill's lines are written once and a correction is

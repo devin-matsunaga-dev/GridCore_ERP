@@ -41,6 +41,12 @@ export type BillAdjustment = {
   recordedAt: string;
 };
 
+/**
+ * What a bill was raised for. A `Charge` bill carries fees alone — no meter, no tariff, no period of
+ * supply — which is why every one of those fields is nullable above.
+ */
+export type BillKind = 'Consumption' | 'Charge';
+
 /** Mirrors `BillResponse`. */
 export type Bill = {
   id: string;
@@ -50,23 +56,27 @@ export type Bill = {
   customerId: string;
   customerName: string;
   serviceLocationId: string;
-  ratePlanId: string;
-  ratePlanCode: string;
-  ratePlanName: string;
-  ratePlanEffectiveFrom: string;
+  /** A period of supply, or fees alone — a charge bill has no meter and no tariff. */
+  kind: BillKind;
+  ratePlanId: string | null;
+  ratePlanCode: string | null;
+  ratePlanName: string | null;
+  ratePlanEffectiveFrom: string | null;
   currency: string;
-  unitOfMeasure: string;
+  unitOfMeasure: string | null;
   periodStart: string;
   periodEnd: string;
   cycleCode: string | null;
-  meterReadingId: string;
-  meterId: string;
-  meterNumber: string;
+  meterReadingId: string | null;
+  meterId: string | null;
+  meterNumber: string | null;
   previousReading: number | null;
   currentReading: number | null;
   consumption: number;
   /** What the rate engine printed. Never moves again once the bill is calculated. */
   totalAmount: number;
+  /** How much of that is fees from the published schedule rather than supply (WP-2.16). */
+  feeAmount: number;
   /** The signed sum of the corrections made since — WP-2.4's immutable entries. */
   adjustmentTotal: number;
   /** What is owed today: the printed total plus those corrections. */
@@ -164,14 +174,16 @@ export type BillDocument = {
   /** The name the bill was RAISED in, which is not necessarily the customer's name today. */
   customerName: string;
   serviceLocationId: string;
-  ratePlanCode: string;
-  ratePlanName: string;
-  ratePlanEffectiveFrom: string;
+  /** A period of supply, or fees alone — a charge bill has no meter and no tariff. */
+  kind: BillKind;
+  ratePlanCode: string | null;
+  ratePlanName: string | null;
+  ratePlanEffectiveFrom: string | null;
   currency: string;
-  unitOfMeasure: string;
+  unitOfMeasure: string | null;
   periodStart: string;
   periodEnd: string;
-  meterNumber: string;
+  meterNumber: string | null;
   previousReading: number | null;
   currentReading: number | null;
   consumption: number;

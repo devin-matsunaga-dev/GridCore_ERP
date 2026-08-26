@@ -359,6 +359,43 @@ describe('CustomerDetailPage', () => {
     expect(bills.getByRole('button', { name: /Outstanding/ })).toBeInTheDocument();
   });
 
+  it('says "Fees" for a charge bill, which has no units and no tariff to name', async () => {
+    // WP-2.16. A bill raised at the counter carries fees alone, so the line under the period cannot
+    // read "0 kWh · RES-STD" — there was no meter and no tariff behind it.
+    renderPage((url) =>
+      url.pathname === '/api/bills'
+        ? {
+            body: [
+              {
+                ...issued,
+                kind: 'Charge',
+                ratePlanId: null,
+                ratePlanCode: null,
+                ratePlanName: null,
+                ratePlanEffectiveFrom: null,
+                unitOfMeasure: null,
+                meterReadingId: null,
+                meterId: null,
+                meterNumber: null,
+                previousReading: null,
+                currentReading: null,
+                consumption: 0,
+                cycleCode: null,
+                feeAmount: issued.totalAmount,
+              },
+            ],
+          }
+        : fullWorld(url),
+    );
+
+    await openTab('Bills');
+
+    const bills = within(await screen.findByRole('table', { name: 'Bills' }));
+
+    expect(bills.getByText('Fees')).toBeInTheDocument();
+    expect(bills.queryByText(/kWh/)).not.toBeInTheDocument();
+  });
+
   it('lists the payments as a sortable table on its own tab', async () => {
     renderPage();
     await openTab('Payments');

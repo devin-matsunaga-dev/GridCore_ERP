@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Documents;
+using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
@@ -70,6 +71,12 @@ public sealed class BillingTestHost : IDisposable
         services.AddScoped<IRatePlanService, RatePlanService>();
         services.AddScoped<IBillService, BillService>();
 
+        // The fee schedule and the charges raised off it (WP-2.16). The schedule's rows reach this
+        // host the same way the tariffs do — CreateTables emits the configuration's HasData inserts,
+        // so the shipped catalogue is there without a migration.
+        services.AddScoped<IFeeScheduleService, FeeScheduleService>();
+        services.AddScoped<IAccountChargeService, AccountChargeService>();
+
         // The reprint (WP-2.14). Registered like every other slice, so a test resolves it the way
         // the host does; the ones that prove a refusal build it by hand with another caller.
         services.AddScoped<IBillDocumentService, BillDocumentService>();
@@ -131,6 +138,47 @@ public sealed class BillingTestHost : IDisposable
         return InScopeAsync(services => work(new BillDocumentService(
             services.GetRequiredService<BillingDbContext>(),
             services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the charge register, in its own scope.</summary>
+    public Task<TResult> WithChargesAsync<TResult>(Func<IAccountChargeService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IAccountChargeService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the published fee schedule, in its own scope.</summary>
+    public Task<TResult> WithFeesAsync<TResult>(Func<IFeeScheduleService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IFeeScheduleService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the charge register as <paramref name="caller"/>, over
+    /// this host's database.
+    /// </summary>
+    /// <remarks>
+    /// Composed by hand rather than through the container, exactly as <see cref="AsAsync"/> is and
+    /// for the same reason: the caller is the single dependency being swapped, and proving a refusal
+    /// means somebody who <i>may</i> charge has to have raised one first.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<IAccountChargeService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new AccountChargeService(
+            services.GetRequiredService<BillingDbContext>(),
+            services.GetRequiredService<IServiceAccountDirectory>(),
+            services.GetRequiredService<IFeeScheduleService>(),
+            services.GetRequiredService<IBillNumberGenerator>(),
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            services.GetRequiredService<IEventPublisher>(),
             caller,
             services.GetRequiredService<TimeProvider>())));
     }

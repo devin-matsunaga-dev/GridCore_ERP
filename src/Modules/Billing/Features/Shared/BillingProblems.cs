@@ -22,6 +22,10 @@ public static class BillingProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Bill not found");
         }
+        catch (AccountChargeNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Account charge not found");
+        }
         catch (RatePlanNotFoundException exception)
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Rate plan not found");
@@ -47,6 +51,10 @@ public static class BillingProblems
     /// <summary>A 404 for an id that matched nothing on a read path, where nothing was thrown.</summary>
     public static IResult BillNotFound(Guid id) =>
         Problem(new BillNotFoundException(id), StatusCodes.Status404NotFound, "Bill not found");
+
+    /// <summary>A 404 for a charge id that matched nothing on a read path.</summary>
+    public static IResult AccountChargeNotFound(Guid id) =>
+        Problem(new AccountChargeNotFoundException(id), StatusCodes.Status404NotFound, "Account charge not found");
 
     private static IResult Problem(BillingRegistryException exception, int statusCode, string title) =>
         Results.Problem(new ProblemDetails

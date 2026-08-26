@@ -94,7 +94,10 @@ const billColumns: Column<Bill>[] = [
           {formatDate(bill.periodStart)} – {formatDate(bill.periodEnd)}
         </span>
         <span className="text-muted block truncate text-xs">
-          {formatQuantity(bill.consumption)} {bill.unitOfMeasure} · {bill.ratePlanCode}
+          {/* A charge bill has no units and no tariff to name — it carries fees alone (WP-2.16). */}
+          {bill.kind === 'Consumption'
+            ? `${formatQuantity(bill.consumption)} ${bill.unitOfMeasure} · ${bill.ratePlanCode}`
+            : 'Fees'}
         </span>
       </span>
     ),

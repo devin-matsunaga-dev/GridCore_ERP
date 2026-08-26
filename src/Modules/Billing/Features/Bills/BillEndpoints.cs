@@ -35,9 +35,9 @@ public sealed record OverdueReviewRequest(DateOnly? AsOf = null);
 
 /// <summary>One line of a bill, as the API returns it.</summary>
 /// <param name="Sequence">Position on the bill, from 1.</param>
-/// <param name="Kind">Whether this is the standing charge or a consumption block.</param>
+/// <param name="Kind">The standing charge, a consumption block, or a fee from the published schedule.</param>
 /// <param name="Description">What the line says.</param>
-/// <param name="TierSequence">Which tier of the tariff produced it.</param>
+/// <param name="TierSequence">Which tier of the tariff produced it. Absent on a fee.</param>
 /// <param name="Units">Units charged.</param>
 /// <param name="RatePerUnit">Price of one unit inside the tier.</param>
 /// <param name="Amount">What the line comes to.</param>
@@ -113,10 +113,11 @@ public sealed record BillAdjustmentResponse(
 /// <param name="CustomerId">Who owes it.</param>
 /// <param name="CustomerName">Their name at the time.</param>
 /// <param name="ServiceLocationId">The premise supplied.</param>
-/// <param name="RatePlanId">The tariff version priced against.</param>
-/// <param name="RatePlanCode">Its code.</param>
-/// <param name="RatePlanName">Its name.</param>
-/// <param name="RatePlanEffectiveFrom">The day that version took effect.</param>
+/// <param name="Kind">What the bill was raised for — a period of supply, or fees alone.</param>
+/// <param name="RatePlanId">The tariff version priced against. Absent on a charge bill.</param>
+/// <param name="RatePlanCode">Its code. Absent on a charge bill.</param>
+/// <param name="RatePlanName">Its name. Absent on a charge bill.</param>
+/// <param name="RatePlanEffectiveFrom">The day that version took effect. Absent on a charge bill.</param>
 /// <param name="Currency">ISO 4217 code every amount is expressed in.</param>
 /// <param name="UnitOfMeasure">What the units are measured in.</param>
 /// <param name="PeriodStart">First day of the billed period.</param>
@@ -129,6 +130,7 @@ public sealed record BillAdjustmentResponse(
 /// <param name="CurrentReading">The dials at the end of it.</param>
 /// <param name="Consumption">Units billed.</param>
 /// <param name="TotalAmount">What the bill comes to as printed. Never moves once it is calculated.</param>
+/// <param name="FeeAmount">How much of that is fees from the published schedule rather than supply.</param>
 /// <param name="AdjustmentTotal">The signed sum of the corrections made to it since.</param>
 /// <param name="AmountDue">What is owed today — the printed total plus those corrections.</param>
 /// <param name="AmountPaid">How much has been paid.</param>
@@ -153,22 +155,24 @@ public sealed record BillResponse(
     Guid CustomerId,
     string CustomerName,
     Guid ServiceLocationId,
-    Guid RatePlanId,
-    string RatePlanCode,
-    string RatePlanName,
-    DateOnly RatePlanEffectiveFrom,
+    string Kind,
+    Guid? RatePlanId,
+    string? RatePlanCode,
+    string? RatePlanName,
+    DateOnly? RatePlanEffectiveFrom,
     string Currency,
-    string UnitOfMeasure,
+    string? UnitOfMeasure,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
     string? CycleCode,
-    Guid MeterReadingId,
-    Guid MeterId,
-    string MeterNumber,
+    Guid? MeterReadingId,
+    Guid? MeterId,
+    string? MeterNumber,
     decimal? PreviousReading,
     decimal? CurrentReading,
     decimal Consumption,
     decimal TotalAmount,
+    decimal FeeAmount,
     decimal AdjustmentTotal,
     decimal AmountDue,
     decimal AmountPaid,
@@ -199,6 +203,7 @@ public sealed record BillResponse(
             bill.CustomerId,
             bill.CustomerName,
             bill.ServiceLocationId,
+            bill.Kind.ToString(),
             bill.RatePlanId,
             bill.RatePlanCode,
             bill.RatePlanName,
@@ -215,6 +220,7 @@ public sealed record BillResponse(
             bill.CurrentReading,
             bill.Consumption,
             bill.TotalAmount,
+            bill.FeeAmount,
             bill.AdjustmentTotal,
             bill.AmountDue,
             bill.AmountPaid,

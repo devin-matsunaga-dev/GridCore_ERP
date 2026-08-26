@@ -2,6 +2,7 @@ using System.Globalization;
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Rating;
 using GridCore.Modules.Billing.Features.Shared;
@@ -78,6 +79,13 @@ public sealed class BillsDemoSeeder(
 
     /// <summary>Which cycle's bill is cancelled, counted from the oldest.</summary>
     private const int CancelledCycleIndex = 1;
+
+    /// <summary>
+    /// How many bills the seeded world raises beyond one per cycle: the single counter bill that
+    /// carries a fee paid at the desk (WP-2.16). Named so the count a test asserts says why it is
+    /// what it is.
+    /// </summary>
+    public const int CounterBills = 1;
 
     /// <summary>
     /// How much of a disputed bill is credited or charged, as a fraction of what is owed. A
@@ -198,9 +206,133 @@ public sealed class BillsDemoSeeder(
 
         Correct(raised, Next);
 
+        await RaiseFeesAsync(
+            raised,
+            () => RegistryNumbers.Format(BillNumbers.BillNumberPrefix, ++ordinal),
+            Next,
+            today,
+            cancellationToken).ConfigureAwait(false);
+
         // No SaveChanges: the runner's unit of work saves these and the seed record in one
         // transaction, which is what makes a half-billed demo cycle impossible.
     }
+
+    /// <summary>
+    /// Raises two fees off the published schedule (WP-2.16): one left waiting for the next bill, one
+    /// already paid for at the counter.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two states, because one would not show what the register is for.</b> The pending charge is
+    /// what a reviewer sees land when they run the next billing cycle from the demonstration screen —
+    /// which is the whole of "it lands on the next bill", visible rather than described. The billed
+    /// one is a charge bill: a document with a fee line, no meter and no tariff, which is the shape
+    /// nothing else in the demo world has.
+    /// </para>
+    /// <para>
+    /// Through the real <see cref="AccountCharge"/> aggregate and the real
+    /// <see cref="FeeScheduleSelector"/>, as every other seeded row goes through the real code that
+    /// makes it — so a fee the schedule does not publish fails at startup rather than shipping. The
+    /// service is deliberately NOT used: it demands <c>billing.charge</c>, and the demo officer holds
+    /// no permissions at all (see <see cref="Officer"/>), which is the same reason the bills above go
+    /// through the aggregate rather than through <c>IBillService</c>.
+    /// </para>
+    /// </remarks>
+    private async Task RaiseFeesAsync(
+        IEnumerable<Bill> raised,
+        Func<string> nextBillNumber,
+        Func<DateTimeOffset> next,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        var schedule = await database.FeeSchedule.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        // The two most recently billed accounts, chosen the way Correct chooses its two and for the
+        // same reason: bill numbers are issued in order, so this is deterministic where ordering by
+        // id is not.
+        var billed = raised
+            .OrderByDescending(bill => bill.BillNumber, StringComparer.Ordinal)
+            .DistinctBy(bill => bill.ServiceAccountId)
+            .Take(2)
+            .ToList();
+
+        if (billed.Count < 2)
+        {
+            // A demo world too small to have two billed accounts. Nothing to charge, and a seeder
+            // must not be the thing that decides that is a failure.
+            return;
+        }
+
+        // Through the directory, never fabricated off the bill: a charge stamps the account as it
+        // stands now, and this module has no business inventing a service account's own facts.
+        var summaries = await accounts
+            .FindManyAsync([.. billed.Select(bill => bill.ServiceAccountId)], cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!summaries.TryGetValue(billed[0].ServiceAccountId, out var first)
+            || !summaries.TryGetValue(billed[1].ServiceAccountId, out var second))
+        {
+            return;
+        }
+
+        var waiting = Raise(
+            FeeCode.Reconnection,
+            first,
+            "Supply restored after the account was settled; fee raised for the next bill.",
+            today,
+            schedule,
+            next());
+
+        var atTheCounter = Raise(
+            FeeCode.MeterTest,
+            second,
+            "Customer asked for their meter to be tested and paid the fee at the desk.",
+            today,
+            schedule,
+            next());
+
+        if (waiting is null || atTheCounter is null)
+        {
+            return;
+        }
+
+        database.AccountCharges.Add(waiting);
+        database.AccountCharges.Add(atTheCounter);
+
+        var at = next();
+
+        var counterBill = Bill.ForCharges(
+            nextBillNumber(),
+            second,
+            [atTheCounter.AsBillLine()],
+            atTheCounter.Currency,
+            today,
+            Attribution,
+            at);
+
+        // Issued, not left a draft: a charge bill exists because somebody was standing at the
+        // counter, and a draft one would be a document nobody was ever handed.
+        counterBill.Issue(today, today.AddDays(BillingTerms.DueDays), Attribution, at, "Fee paid at the counter.");
+
+        atTheCounter.MarkBilled(counterBill.Id, counterBill.BillNumber, at);
+
+        database.Bills.Add(counterBill);
+    }
+
+    /// <summary>
+    /// Raises one fee against an account, or <see langword="null"/> where the schedule publishes no
+    /// figure for it today.
+    /// </summary>
+    private static AccountCharge? Raise(
+        FeeCode code,
+        ServiceAccountSummary account,
+        string reason,
+        DateOnly today,
+        IReadOnlyList<FeeScheduleEntry> schedule,
+        DateTimeOffset at) =>
+        FeeScheduleSelector.InForceOn(schedule, code, today) is { } entry
+            ? AccountCharge.Raise(FeeAssessment.Of(entry), account, today, reason, Attribution, at)
+            : null;
 
     /// <summary>
     /// Corrects two of the seeded bills — one credited, one charged — through the real aggregate.

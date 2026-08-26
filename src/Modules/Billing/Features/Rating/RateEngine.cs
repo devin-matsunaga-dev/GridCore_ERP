@@ -16,6 +16,19 @@ public enum ChargeKind
 
     /// <summary>Units consumed inside one tier of the tariff, at that tier's rate.</summary>
     Consumption = 2,
+
+    /// <summary>
+    /// A fee from the published schedule, raised against the account and landed on this bill
+    /// (WP-2.16) — a reconnection, a returned payment, a meter test.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not per unit, and that is what tells it from a consumption line.</b> A fee carries no
+    /// tier, no units and no rate: it is a published figure, priced by the schedule row in force on
+    /// the day it was raised rather than by anything the meter did. The rate engine never produces
+    /// one — <c>RateEngine.Calculate</c> knows about a tariff and nothing else — so a fee line
+    /// reaches a bill only through a charge somebody raised.
+    /// </remarks>
+    Fee = 3,
 }
 
 /// <summary>

@@ -97,28 +97,36 @@ export function BillDocumentPage() {
               // updated it would be a different document.
               { label: 'Billed to', value: bill.customerName },
               { label: 'Account', value: <span className="tabular">{bill.accountNumber}</span> },
-              { label: 'Meter', value: <span className="tabular">{bill.meterNumber}</span> },
-              {
-                label: 'Tariff',
-                value: `${bill.ratePlanName} (${bill.ratePlanCode}, from ${formatDate(bill.ratePlanEffectiveFrom)})`,
-              },
-              {
-                label: 'Readings',
-                value: (
-                  <span className="tabular">
-                    {orNotRecorded(bill.previousReading !== null && formatQuantity(bill.previousReading))} →{' '}
-                    {orNotRecorded(bill.currentReading !== null && formatQuantity(bill.currentReading))}
-                  </span>
-                ),
-              },
-              {
-                label: 'Consumption',
-                value: (
-                  <span className="tabular">
-                    {formatQuantity(bill.consumption)} {bill.unitOfMeasure}
-                  </span>
-                ),
-              },
+
+              // A charge bill has no meter, no tariff, no dials and no units — it carries fees
+              // alone (WP-2.16). The rows are left out rather than printed empty: a document
+              // reading "Meter —" invites the question of which meter, and there was never one.
+              ...(bill.kind === 'Consumption'
+                ? [
+                    { label: 'Meter', value: <span className="tabular">{bill.meterNumber}</span> },
+                    {
+                      label: 'Tariff',
+                      value: `${bill.ratePlanName} (${bill.ratePlanCode}, from ${formatDate(bill.ratePlanEffectiveFrom ?? '')})`,
+                    },
+                    {
+                      label: 'Readings',
+                      value: (
+                        <span className="tabular">
+                          {orNotRecorded(bill.previousReading !== null && formatQuantity(bill.previousReading))} →{' '}
+                          {orNotRecorded(bill.currentReading !== null && formatQuantity(bill.currentReading))}
+                        </span>
+                      ),
+                    },
+                    {
+                      label: 'Consumption',
+                      value: (
+                        <span className="tabular">
+                          {formatQuantity(bill.consumption)} {bill.unitOfMeasure}
+                        </span>
+                      ),
+                    },
+                  ]
+                : [{ label: 'Raised', value: formatDate(bill.periodEnd) }]),
               { label: 'Due', value: orNotRecorded(bill.dueDate && formatDate(bill.dueDate)) },
             ]}
           />

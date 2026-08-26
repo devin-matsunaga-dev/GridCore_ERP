@@ -20,6 +20,14 @@ public sealed class BillNotFoundException(Guid id)
     public Guid BillId { get; } = id;
 }
 
+/// <summary>No account charge with that id (WP-2.16). Surfaces as 404.</summary>
+public sealed class AccountChargeNotFoundException(Guid id)
+    : BillingRegistryException($"Account charge '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid AccountChargeId { get; } = id;
+}
+
 /// <summary>
 /// No rate plan with that code, or none in force on the day asked about. Surfaces as 404 — tariffs
 /// are reference data, so a code that matches nothing is a caller naming a plan the utility has
