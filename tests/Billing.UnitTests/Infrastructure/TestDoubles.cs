@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -96,11 +97,13 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
     /// the meter at its premise.
     /// </param>
     /// <param name="accountNumber">Its number, if the test needs a specific one.</param>
+    /// <param name="serviceType">Which supply it takes. Electricity, as every account a billing run touches is.</param>
     public ServiceAccountSummary Add(
         Guid serviceLocationId,
         string status = "Active",
         bool energised = true,
-        string? accountNumber = null)
+        string? accountNumber = null,
+        ServiceType serviceType = ServiceType.Electricity)
     {
         var id = Guid.CreateVersion7();
 
@@ -111,6 +114,8 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
             $"Customer {_ordinal}",
             serviceLocationId,
             status,
+            serviceType,
+            ServiceTypes.IsMetered(serviceType),
             HoldsPremise: !string.Equals(status, "Closed", StringComparison.Ordinal),
             energised ? DateTimeOffset.UnixEpoch : null);
 
@@ -148,17 +153,19 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
     /// <inheritdoc />
     public Task<ServiceAccountSummary?> FindOpenAtLocationAsync(
         Guid serviceLocationId,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default)
     {
         Lookups.Add(serviceLocationId);
 
         return Task.FromResult(_accounts.Values.FirstOrDefault(account =>
-            account.ServiceLocationId == serviceLocationId && account.HoldsPremise));
+            account.ServiceLocationId == serviceLocationId && account.ServiceType == serviceType && account.HoldsPremise));
     }
 
     /// <inheritdoc />
     public Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindOpenAtLocationsAsync(
         IReadOnlyCollection<Guid> serviceLocationIds,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceLocationIds);
@@ -167,9 +174,29 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
 
         var wanted = serviceLocationIds.Distinct().ToHashSet();
 
+        // Filtered on the service as the real directory is, so a test that seeds two accounts at one
+        // premise proves the same thing here that ux_service_accounts_open_location proves there.
         IReadOnlyDictionary<Guid, ServiceAccountSummary> found = _accounts.Values
-            .Where(account => account.HoldsPremise && wanted.Contains(account.ServiceLocationId))
+            .Where(account => account.HoldsPremise && account.ServiceType == serviceType)
+            .Where(account => wanted.Contains(account.ServiceLocationId))
             .ToDictionary(account => account.ServiceLocationId);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ServiceAccountSummary>> ListOpenAtLocationAsync(
+        Guid serviceLocationId,
+        CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(serviceLocationId);
+
+        IReadOnlyList<ServiceAccountSummary> found =
+        [
+            .. _accounts.Values
+                .Where(account => account.ServiceLocationId == serviceLocationId && account.HoldsPremise)
+                .OrderBy(account => account.ServiceType),
+        ];
 
         return Task.FromResult(found);
     }

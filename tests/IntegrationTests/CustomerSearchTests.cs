@@ -1,4 +1,5 @@
 using GridCore.IntegrationTests.Infrastructure;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -60,7 +61,7 @@ public sealed class CustomerSearchTests(GateFixture fixture) : IAsyncLifetime
         await using var scope = fixture.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<IServiceAccountService>()
-            .OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, "Requested at the counter"));
+            .OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity, "Requested at the counter"));
     }
 
     private async Task<string> AMeterAtAsync(string serialNumber, Guid premise)

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.Shared;
@@ -26,7 +27,7 @@ public class AccountTransitionTests
         Customer.Register("C-000001", "Sablan Family Residence", CustomerClass.Residential, Now);
 
     private static ServiceAccount AnAccount(Customer customer, string number = "A-000001") =>
-        ServiceAccount.Open(number, customer.Id, Guid.CreateVersion7(Now), Agent, Now);
+        ServiceAccount.Open(number, customer.Id, Guid.CreateVersion7(Now), ServiceType.Electricity, Agent, Now);
 
     [Fact]
     public void A_class_change_records_both_sides_by_name()

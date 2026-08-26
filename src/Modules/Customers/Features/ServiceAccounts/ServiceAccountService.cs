@@ -1,4 +1,5 @@
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Shared;
@@ -14,20 +15,31 @@ namespace GridCore.Modules.Customers.Features.ServiceAccounts;
 /// <summary>What a caller supplies to open a service account.</summary>
 /// <param name="CustomerId">Who is to be served.</param>
 /// <param name="ServiceLocationId">Where they are to be served.</param>
+/// <param name="ServiceType">
+/// Which supply they are taking (WP-2.17). Required and not defaulted: the account is the customer,
+/// the premise and the service, and a default here would be GridCore deciding on a rep's behalf what
+/// somebody had applied for — which then decides their deposit and their tariff.
+/// </param>
 /// <param name="Reason">Why the account is being opened, for the history.</param>
-public sealed record OpenServiceAccountInput(Guid CustomerId, Guid ServiceLocationId, string? Reason = null);
+public sealed record OpenServiceAccountInput(
+    Guid CustomerId,
+    Guid ServiceLocationId,
+    ServiceType ServiceType,
+    string? Reason = null);
 
 /// <summary>How the service account list is filtered.</summary>
 /// <param name="Search">Matched against the account number, case-insensitively.</param>
 /// <param name="CustomerId">Only accounts held by this customer — the customer 360 query.</param>
 /// <param name="ServiceLocationId">Only accounts at this premise.</param>
 /// <param name="Status">Only accounts in this status.</param>
+/// <param name="ServiceType">Only accounts taking this supply (WP-2.17).</param>
 /// <param name="Limit">Most rows to return.</param>
 public sealed record ServiceAccountQuery(
     string? Search = null,
     Guid? CustomerId = null,
     Guid? ServiceLocationId = null,
     ServiceAccountStatus? Status = null,
+    ServiceType? ServiceType = null,
     int Limit = 50);
 
 /// <summary>The service account registry and its lifecycle. Endpoints are a thin layer over it.</summary>
@@ -121,16 +133,23 @@ public sealed class ServiceAccountService(
                 // Opening the customer's status is not this call's to do. A prospect becoming a
                 // customer is somebody's decision, and a cross-aggregate side effect here would
                 // move a status nobody asked to move — WP-2.x can consume ServiceStarted for that.
+                //
+                // Narrowed to the SAME SERVICE since WP-2.17. A premise taking electricity is not a
+                // premise that may not also take water; what it may not do is take electricity twice.
+                // ux_service_accounts_open_location is keyed on the pair and is the real guarantee —
+                // this is what turns the loser of a race into a 409 that names the collision.
                 var openAtPremise = await database.ServiceAccounts
                     .Where(existing => existing.ServiceLocationId == input.ServiceLocationId)
+                    .Where(existing => existing.ServiceType == input.ServiceType)
                     .Where(existing => existing.Status != ServiceAccountStatus.Closed)
                     .FirstOrDefaultAsync(ct).ConfigureAwait(false);
 
                 if (openAtPremise is not null)
                 {
                     throw new RegistryWorkflowException(
-                        $"Service location {location.LocationCode} is already served by account {openAtPremise.AccountNumber} "
-                        + $"({openAtPremise.Status}). Close that account before opening another there.");
+                        $"Service location {location.LocationCode} already takes {input.ServiceType} on account "
+                        + $"{openAtPremise.AccountNumber} ({openAtPremise.Status}). Close that account before opening "
+                        + "another for the same service there.");
                 }
 
                 var accountNumber = await numbers.NextServiceAccountNumberAsync(ct).ConfigureAwait(false);
@@ -147,6 +166,7 @@ public sealed class ServiceAccountService(
                     accountNumber,
                     input.CustomerId,
                     input.ServiceLocationId,
+                    input.ServiceType,
                     RegistryActor.Of(currentUser),
                     now,
                     input.Reason);
@@ -234,6 +254,11 @@ public sealed class ServiceAccountService(
             accounts = accounts.Where(account => account.Status == status);
         }
 
+        if (query.ServiceType is { } serviceType)
+        {
+            accounts = accounts.Where(account => account.ServiceType == serviceType);
+        }
+
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             // Lower-cased on both sides rather than ILIKE, so the fast tier exercises the same SQL
@@ -312,6 +337,7 @@ public sealed class ServiceAccountService(
 /// <param name="AccountNumber">Its number.</param>
 /// <param name="CustomerId">Who is served.</param>
 /// <param name="ServiceLocationId">Where.</param>
+/// <param name="ServiceType">Which supply it takes.</param>
 /// <param name="Status">Where the account stands.</param>
 /// <param name="ServiceStartedAt">When supply was most recently energised.</param>
 /// <param name="ServiceEndedAt">When supply was most recently cut.</param>
@@ -321,6 +347,7 @@ public sealed record ServiceAccountSnapshot(
     string AccountNumber,
     Guid CustomerId,
     Guid ServiceLocationId,
+    ServiceType ServiceType,
     ServiceAccountStatus Status,
     DateTimeOffset? ServiceStartedAt,
     DateTimeOffset? ServiceEndedAt,
@@ -336,6 +363,7 @@ public sealed record ServiceAccountSnapshot(
             account.AccountNumber,
             account.CustomerId,
             account.ServiceLocationId,
+            account.ServiceType,
             account.Status,
             account.ServiceStartedAt,
             account.ServiceEndedAt,

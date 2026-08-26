@@ -55,6 +55,11 @@ public sealed class MeteringTestHost : IDisposable
         services.AddSingleton(currentUser ?? SystemUser.Instance);
         services.AddSingleton<IEventPublisher>(Events);
         services.AddSingleton<IServiceLocationDirectory>(ServiceLocations);
+
+        // Customers registers the real IServiceAccountDirectory; a Metering test may not resolve it,
+        // for the reason the premise directory beside it is faked. WP-2.17's meter guard asks it
+        // whether every supply taken at a premise is unmetered before a meter is fitted there.
+        services.AddSingleton<IServiceAccountDirectory>(ServiceAccounts);
         services.AddSingleton(readings ?? new SimulatedMeterReadingProvider());
 
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
@@ -69,6 +74,7 @@ public sealed class MeteringTestHost : IDisposable
         services.AddScoped<IMeterReadingService, MeterReadingService>();
         services.AddScoped<IMeterReadingDirectory, MeterReadingDirectory>();
         services.AddScoped<IMeterDirectory, MeterDirectory>();
+        services.AddScoped<IUsageDirectory, UsageDirectory>();
         services.AddScoped<MetersDemoSeeder>();
         services.AddScoped<MeterReadingsDemoSeeder>();
 
@@ -82,6 +88,9 @@ public sealed class MeteringTestHost : IDisposable
 
     /// <summary>The premises the register is allowed to see. A test adds one before assigning to it.</summary>
     public FakeServiceLocationDirectory ServiceLocations { get; } = new();
+
+    /// <summary>The account registry the meter guard asks what supplies a premise takes (WP-2.17).</summary>
+    public FakeServiceAccountDirectory ServiceAccounts { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)

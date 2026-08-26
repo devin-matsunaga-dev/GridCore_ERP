@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.Documents;
@@ -111,7 +112,7 @@ public class CustomerDocumentServiceTests
             new ServiceLocationInput(Address.Create("9 As Nieves Road", "Songsong", "Rota", "MP", postalCode: "96951"), "House")));
 
         var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(
-            new OpenServiceAccountInput(customer.Id, premise.Id)));
+            new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         host.Bills.Issued(customer.Id, new DateOnly(2026, 8, 5), totalAmount: 120.00m);
 

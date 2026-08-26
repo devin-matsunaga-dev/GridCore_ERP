@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Transitions;
@@ -40,7 +41,7 @@ public class ServiceAccountServiceTests
         var premise = await APremiseAsync(host);
 
         return await host.WithAccountsAsync(accounts =>
-            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, "Requested at the counter")));
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity, "Requested at the counter")));
     }
 
     [Fact]
@@ -69,7 +70,7 @@ public class ServiceAccountServiceTests
         var premise = await APremiseAsync(host, "14 Tatachog Street");
 
         var second = await host.WithAccountsAsync(accounts =>
-            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id)));
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         Assert.Equal("A-000002", second.AccountNumber);
     }
@@ -233,14 +234,119 @@ public class ServiceAccountServiceTests
         var first = await ACustomerAsync(host);
         var premise = await APremiseAsync(host);
 
-        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(first.Id, premise.Id)));
+        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(first.Id, premise.Id, ServiceType.Electricity)));
 
         var second = await ACustomerAsync(host, "Taisacan Household");
 
         var failure = await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(second.Id, premise.Id))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(second.Id, premise.Id, ServiceType.Electricity))));
 
         Assert.Contains("A-000001", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_premise_may_take_one_account_of_each_service_at_once()
+    {
+        // The shape WP-2.17 exists to make expressible. ux_service_accounts_open_location is keyed on
+        // the premise AND the service, so a house on electricity, water and wastewater is three open
+        // accounts rather than one account that means all three.
+        using var host = NewHost();
+
+        var customer = await ACustomerAsync(host);
+        var premise = await APremiseAsync(host);
+
+        foreach (var serviceType in ServiceTypes.All)
+        {
+            await host.WithAccountsAsync(accounts =>
+                accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, serviceType)));
+        }
+
+        var open = await host.WithAccountsAsync(accounts =>
+            accounts.ListAsync(new ServiceAccountQuery(ServiceLocationId: premise.Id)));
+
+        Assert.Equal(ServiceTypes.All.Count, open.Count);
+        Assert.Equal(ServiceTypes.All.Order(), open.Select(account => account.ServiceType).Order());
+    }
+
+    [Fact]
+    public async Task A_premise_cannot_take_the_same_service_twice()
+    {
+        // What the widened index still refuses, and the thing that mattered all along: two open
+        // accounts billing one meter at one address.
+        using var host = NewHost();
+
+        var first = await ACustomerAsync(host);
+        var premise = await APremiseAsync(host);
+
+        await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(first.Id, premise.Id, ServiceType.Water)));
+
+        var second = await ACustomerAsync(host, "Taisacan Household");
+
+        var failure = await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
+            host.WithAccountsAsync(accounts =>
+                accounts.OpenAsync(new OpenServiceAccountInput(second.Id, premise.Id, ServiceType.Water))));
+
+        Assert.Contains("A-000001", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("Water", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_account_declares_its_service_and_says_whether_it_is_metered()
+    {
+        using var host = NewHost();
+
+        var customer = await ACustomerAsync(host);
+        var premise = await APremiseAsync(host);
+
+        var wastewater = await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Wastewater)));
+
+        Assert.Equal(ServiceType.Wastewater, wastewater.ServiceType);
+        Assert.False(wastewater.IsMetered);
+
+        var electricity = await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
+
+        Assert.True(electricity.IsMetered);
+    }
+
+    [Fact]
+    public async Task An_account_cannot_be_opened_for_a_service_GridCore_does_not_declare()
+    {
+        // A cast integer arriving from a wire or a stale row. A 400, because the caller sent it —
+        // and refused in the aggregate as well as at the edge, because the deposit schedule, the
+        // tariff and the meter guard all key on this value.
+        using var host = NewHost();
+
+        var customer = await ACustomerAsync(host);
+        var premise = await APremiseAsync(host);
+
+        var failure = await Assert.ThrowsAsync<RegistryValidationException>(() =>
+            host.WithAccountsAsync(accounts =>
+                accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, (ServiceType)99))));
+
+        Assert.Contains("not a service GridCore declares", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_list_filters_on_the_service_a_premise_takes()
+    {
+        using var host = NewHost();
+
+        var customer = await ACustomerAsync(host);
+        var premise = await APremiseAsync(host);
+
+        await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
+
+        await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Wastewater)));
+
+        var water = await host.WithAccountsAsync(accounts =>
+            accounts.ListAsync(new ServiceAccountQuery(ServiceType: ServiceType.Wastewater)));
+
+        Assert.Equal(ServiceType.Wastewater, Assert.Single(water).ServiceType);
     }
 
     [Fact]
@@ -252,7 +358,7 @@ public class ServiceAccountServiceTests
         var outgoing = await ACustomerAsync(host);
         var premise = await APremiseAsync(host);
 
-        var first = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(outgoing.Id, premise.Id)));
+        var first = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(outgoing.Id, premise.Id, ServiceType.Electricity)));
 
         clock.Advance(TimeSpan.FromDays(1));
         await host.WithAccountsAsync(accounts => accounts.CloseAsync(first.Id, "Tenant moved out"));
@@ -260,7 +366,7 @@ public class ServiceAccountServiceTests
         clock.Advance(TimeSpan.FromDays(1));
         var incoming = await ACustomerAsync(host, "Taisacan Household");
 
-        var second = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(incoming.Id, premise.Id)));
+        var second = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(incoming.Id, premise.Id, ServiceType.Electricity)));
 
         Assert.Equal("A-000002", second.AccountNumber);
         Assert.Equal(ServiceAccountStatus.Pending, second.Status);
@@ -277,7 +383,7 @@ public class ServiceAccountServiceTests
         var customer = await ACustomerAsync(host);
         var premise = await APremiseAsync(host);
 
-        var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id)));
+        var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         clock.Advance(TimeSpan.FromDays(1));
         await host.WithAccountsAsync(accounts => accounts.StartServiceAsync(account.Id, null));
@@ -288,7 +394,7 @@ public class ServiceAccountServiceTests
         var other = await ACustomerAsync(host, "Taisacan Household");
 
         await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(other.Id, premise.Id))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(other.Id, premise.Id, ServiceType.Electricity))));
     }
 
     [Fact]
@@ -300,8 +406,8 @@ public class ServiceAccountServiceTests
         var first = await APremiseAsync(host);
         var second = await APremiseAsync(host, "14 Tatachog Street");
 
-        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, first.Id)));
-        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, second.Id)));
+        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, first.Id, ServiceType.Electricity)));
+        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, second.Id, ServiceType.Electricity)));
 
         var held = await host.WithAccountsAsync(accounts => accounts.ListAsync(new ServiceAccountQuery(CustomerId: customer.Id)));
 
@@ -325,7 +431,7 @@ public class ServiceAccountServiceTests
             new ChangeCustomerStatusInput(CustomerStatus.Suspended, TransitionReasonCode.UnpaidBalance)));
 
         var failure = await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity))));
 
         Assert.Contains("Suspended", failure.Message, StringComparison.Ordinal);
     }
@@ -343,7 +449,7 @@ public class ServiceAccountServiceTests
             new ServiceLocationInput(premise.Address, premise.Description, IsActive: false, "Demolished")));
 
         var failure = await Assert.ThrowsAsync<RegistryWorkflowException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity))));
 
         Assert.Contains("deactivated", failure.Message, StringComparison.Ordinal);
     }
@@ -356,7 +462,7 @@ public class ServiceAccountServiceTests
         var premise = await APremiseAsync(host);
 
         await Assert.ThrowsAsync<CustomerNotFoundException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(Guid.CreateVersion7(Now), premise.Id))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(Guid.CreateVersion7(Now), premise.Id, ServiceType.Electricity))));
     }
 
     [Fact]
@@ -367,7 +473,7 @@ public class ServiceAccountServiceTests
         var customer = await ACustomerAsync(host);
 
         await Assert.ThrowsAsync<ServiceLocationNotFoundException>(() =>
-            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, Guid.CreateVersion7(Now)))));
+            host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, Guid.CreateVersion7(Now), ServiceType.Electricity))));
     }
 
     [Fact]
@@ -389,7 +495,7 @@ public class ServiceAccountServiceTests
         var customer = await ACustomerAsync(host);
         var premise = await APremiseAsync(host);
 
-        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id)));
+        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         await using var database = host.NewCustomersContext();
 
@@ -406,8 +512,8 @@ public class ServiceAccountServiceTests
         var first = await APremiseAsync(host);
         var second = await APremiseAsync(host, "14 Tatachog Street");
 
-        var live = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, first.Id)));
-        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, second.Id)));
+        var live = await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, first.Id, ServiceType.Electricity)));
+        await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, second.Id, ServiceType.Electricity)));
 
         clock.Advance(TimeSpan.FromDays(1));
         await host.WithAccountsAsync(accounts => accounts.StartServiceAsync(live.Id, null));

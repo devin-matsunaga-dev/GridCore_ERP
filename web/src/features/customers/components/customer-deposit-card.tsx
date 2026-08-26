@@ -8,8 +8,10 @@ import type { Bill } from '@/api/billing';
 import {
   customerKeys,
   customersApi,
+  serviceTypeLabel,
   type DepositEntry,
   type DepositLedger,
+  type DepositRequirement,
 } from '@/api/customers';
 import { toast } from '@/components/feedback/toast';
 import type { Column } from '@/components/registry/data-table';
@@ -29,6 +31,7 @@ import { IntakeField, IntakeFields } from '../registration/components/intake-fie
 import {
   applicableAmount,
   billsADepositCouldSettle,
+  depositBasisLabel,
   depositKindLabel,
   depositKindTone,
   depositStanding,
@@ -143,6 +146,10 @@ export function CustomerDepositCard({
         </CardContent>
       </Card>
 
+      {ledger && ledger.requirement.accounts.length > 0 && (
+        <DepositRequirementCard requirement={ledger.requirement} />
+      )}
+
       <div className="space-y-4">
         <h3 className="text-heading text-lg font-semibold">Movements</h3>
 
@@ -168,6 +175,59 @@ export function CustomerDepositCard({
   );
 }
 
+/**
+ * What the schedule asks, one line per open account (WP-2.17).
+ *
+ * Its own card rather than a line in the panel above, because a customer taking three supplies is
+ * assessed three times and one figure could only ever describe one of them. A register of like rows
+ * is a table (WP-2.10's rule) — but a customer holds at most three, so this is a definition list
+ * rather than a data table with a header, a sort and a paging window it will never use.
+ *
+ * The BASIS is the column that earns its place: "two months of your average usage" and "the
+ * published minimum" are what a rep reads out, and the figure alone cannot be argued with.
+ */
+function DepositRequirementCard({ requirement }: { requirement: DepositRequirement }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>What the schedule asks</CardTitle>
+        <p className="text-muted mt-1 text-[13px]">
+          One line per open account. {requirement.customerClass} rates, assessed against what each premise uses.
+        </p>
+      </CardHeader>
+
+      <CardContent className="space-y-0 pt-0">
+        {requirement.accounts.map((line) => (
+          <div
+            key={line.serviceAccountId}
+            className="border-border flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t py-3 first:border-t-0"
+          >
+            <div className="min-w-0">
+              <p className="text-body text-sm font-medium">
+                {serviceTypeLabel(line.serviceType)}
+                <span className="text-muted ml-2 text-[13px] whitespace-nowrap">{line.accountNumber}</span>
+              </p>
+              <p className="text-muted mt-0.5 text-[13px]">{depositBasisLabel(line)}</p>
+            </div>
+
+            <p className="tabular text-heading text-sm font-semibold">{formatMoney(line.requiredAmount)}</p>
+          </div>
+        ))}
+
+        <div className="border-border flex items-baseline justify-between gap-4 border-t pt-3">
+          <p className="text-heading text-sm font-semibold">Total required</p>
+          <p className="tabular text-heading text-sm font-bold">{formatMoney(requirement.requiredAmount)}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** How many accounts a total is spread across, in words rather than a bare digit. */
+function accountsPhrase(count: number): string {
+  return count === 1 ? '1 account' : `${count} accounts`;
+}
+
 /** The balance, what the schedule asks, and whether the two agree. */
 function DepositStandingRow({ ledger }: { ledger: DepositLedger }) {
   const standing = depositStanding(ledger);
@@ -182,11 +242,17 @@ function DepositStandingRow({ ledger }: { ledger: DepositLedger }) {
         <p className="text-muted mt-2 text-[13px]">
           {/*
             The schedule is what a rep quotes on the telephone, so it is on screen beside the
-            balance rather than a click away. The shortfall comes from the host already floored at
-            zero — a customer holding more than the schedule asks is not short by a negative amount.
+            balance rather than a click away. Since WP-2.17 it is a SUM over the supplies this
+            customer takes, which is why the line says how many accounts are behind it. The shortfall
+            comes from the host already floored at zero — a customer holding more than the schedule
+            asks is not short by a negative amount.
           */}
-          Schedule asks {formatMoney(ledger.assessedAmount)} for a {ledger.customerClass.toLowerCase()} customer
-          {toCents(ledger.shortfallAmount) > 0 && <> · {formatMoney(ledger.shortfallAmount)} short</>}
+          {ledger.requirement.accounts.length === 0
+            ? 'No open account — the schedule asks nothing until a supply is taken'
+            : `Schedule asks ${formatMoney(ledger.requirement.requiredAmount)} across ${accountsPhrase(ledger.requirement.accounts.length)}`}
+          {toCents(ledger.requirement.shortfallAmount) > 0 && (
+            <> · {formatMoney(ledger.requirement.shortfallAmount)} short</>
+          )}
         </p>
       </div>
 
@@ -436,8 +502,8 @@ function DepositActForm({
 function ceilingHint(act: DepositAct, ledger: DepositLedger, bill: Bill | undefined): string | undefined {
   switch (act) {
     case 'collect':
-      return toCents(ledger.shortfallAmount) > 0
-        ? `${formatMoney(ledger.shortfallAmount)} would bring this customer up to the schedule.`
+      return toCents(ledger.requirement.shortfallAmount) > 0
+        ? `${formatMoney(ledger.requirement.shortfallAmount)} would bring this customer up to the schedule.`
         : 'The schedule is already covered; more may still be taken.';
     case 'apply':
       return bill

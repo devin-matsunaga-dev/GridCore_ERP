@@ -1,20 +1,8 @@
 using System.Globalization;
+using GridCore.Contracts.Services;
 using GridCore.Platform.Data;
 
 namespace GridCore.Modules.Billing.Features.RatePlans;
-
-/// <summary>What a rate plan charges for.</summary>
-public enum ServiceType
-{
-    /// <summary>Electricity, metered in kWh.</summary>
-    Electricity,
-
-    /// <summary>Water, metered in cubic metres.</summary>
-    Water,
-
-    /// <summary>Gas, metered in therms.</summary>
-    Gas,
-}
 
 /// <summary>
 /// A published tariff: a fixed monthly service charge plus tiered consumption rates, effective from

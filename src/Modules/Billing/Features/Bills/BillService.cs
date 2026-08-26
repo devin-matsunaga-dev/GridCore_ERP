@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Fees;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -284,8 +285,16 @@ public sealed class BillService(
 
                 // One boundary call for the whole cycle rather than one per meter — the batched
                 // shape WP-2.1 established for premises, applied to the accounts on them.
+                // ELECTRICITY, stated rather than defaulted (WP-2.17). A premise may now hold an
+                // electric, a water and a wastewater account at once, and the reading this run is
+                // billing came off a revenue meter — which in this deployment measures electricity
+                // and nothing else. Asking for "the open account" without saying which supply would
+                // be this run picking whichever row the index happened to return.
                 var openAccounts = await accounts
-                    .FindOpenAtLocationsAsync([.. cycle.Select(reading => reading.ServiceLocationId)], ct)
+                    .FindOpenAtLocationsAsync(
+                        [.. cycle.Select(reading => reading.ServiceLocationId)],
+                        ServiceType.Electricity,
+                        ct)
                     .ConfigureAwait(false);
 
                 var tariffs = await TariffsAsync(openAccounts.Values, ct).ConfigureAwait(false);

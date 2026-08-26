@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.Shared;
@@ -84,6 +85,11 @@ public sealed class ServiceAccountsDemoSeeder(CustomersDbContext database, TimeP
                 RegistryNumbers.Format(CustomerNumbers.ServiceAccountPrefix, ++ordinal),
                 customerId,
                 locationId,
+
+                // Every seeded account is an electric one: the demo world is a distribution utility
+                // with meters and readings behind it, and a water or wastewater account here would be
+                // a premise with a deposit and no bill anybody could raise against it.
+                ServiceType.Electricity,
                 Attribution,
                 Next(),
                 pairing.OpenedReason);

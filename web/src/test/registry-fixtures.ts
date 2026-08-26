@@ -8,7 +8,9 @@ import type {
   CustomerNote,
   CustomerProfile,
   DepositEntry,
+  DepositAccountRequirement,
   DepositLedger,
+  DepositRequirement,
   ServiceAccount,
   ServiceLocation,
   StatementEntry,
@@ -184,12 +186,55 @@ export function depositLedger(overrides: Partial<DepositLedger> = {}): DepositLe
     accountNumber: customer().accountNumber,
     balance: 450,
     currency: 'USD',
-    customerClass: 'Commercial',
-    assessedAmount: 450,
-    shortfallAmount: 0,
-    ruleId: '0192f000-0000-7000-8000-0000000007f1',
+    requirement: depositRequirement(),
     isInterestBearing: false,
     entries: [depositEntry()],
+    ...overrides,
+  };
+}
+
+/**
+ * What the schedule asks of one customer (WP-2.17): one commercial electricity account, covered.
+ *
+ * A composite since the schedule was re-keyed on (class × service) — a customer taking three
+ * supplies is assessed three times, and one figure could only ever have described one of them.
+ */
+export function depositRequirement(overrides: Partial<DepositRequirement> = {}): DepositRequirement {
+  return {
+    customerId: customer().id,
+    accountNumber: customer().accountNumber,
+    customerClass: 'Commercial',
+    currency: 'USD',
+    heldAmount: 450,
+    requiredAmount: 450,
+    shortfallAmount: 0,
+    isCovered: true,
+    assessedAt: '2026-08-26T10:15:00+00:00',
+    accounts: [depositAccountRequirement()],
+    ...overrides,
+  };
+}
+
+/** One open account's share of a deposit requirement. */
+export function depositAccountRequirement(
+  overrides: Partial<DepositAccountRequirement> = {},
+): DepositAccountRequirement {
+  return {
+    serviceAccountId: serviceAccount().id,
+    accountNumber: serviceAccount().accountNumber,
+    serviceLocationId: serviceLocation().id,
+    status: 'Active',
+    serviceType: 'Electricity',
+    isMetered: true,
+    requiredAmount: 450,
+    minimumAmount: 450,
+    isUsageBased: false,
+    averageMonthlyUsage: null,
+    usageMonths: 2,
+    usageRate: 0.32,
+    hasUsageHistory: false,
+    description: 'Commercial electricity: the greater of $450 and two months of average usage.',
+    ruleId: '0192f000-0000-7000-8000-0000000007f1',
     ...overrides,
   };
 }
@@ -312,6 +357,8 @@ export function serviceAccount(overrides: Partial<ServiceAccount> = {}): Service
     accountNumber: 'A-000001',
     customerId: customer().id,
     serviceLocationId: serviceLocation().id,
+    serviceType: 'Electricity',
+    isMetered: true,
     status: 'Active',
     allowedTransitions: ['Disconnected', 'Closed'],
     openedAt: '2026-02-12T00:30:00+00:00',

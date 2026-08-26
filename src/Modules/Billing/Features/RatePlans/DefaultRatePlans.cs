@@ -1,3 +1,5 @@
+using GridCore.Contracts.Services;
+
 namespace GridCore.Modules.Billing.Features.RatePlans;
 
 /// <summary>
@@ -96,8 +98,38 @@ public static class DefaultRatePlans
     /// <summary>Every tier of every plan version, validated as a set when this type is first touched.</summary>
     public static IReadOnlyList<RatePlanTier> AllTiers { get; } = BuildTiers();
 
-    /// <summary>The code a service account with no tariff of its own is billed on.</summary>
+    /// <summary>
+    /// The code an <b>electricity</b> service account with no tariff of its own is billed on.
+    /// </summary>
+    /// <remarks>
+    /// The unqualified default, kept because electricity is the one service the demonstration
+    /// utility distributes and every consumption bill in GridCore is raised for it. A caller holding
+    /// a service type wants <see cref="DefaultCodeFor"/> instead, which is the same answer here and
+    /// a different one the day a water tariff ships.
+    /// </remarks>
     public static string DefaultCode => ResidentialStandard;
+
+    /// <summary>
+    /// The code a service account taking <paramref name="serviceType"/> falls back to, or
+    /// <see langword="null"/> where the utility publishes no default tariff for that service.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A null is a real answer (WP-2.17).</b> The shipped schedule is entirely electricity, so
+    /// water, gas and wastewater have no default and this says so rather than quietly billing a water
+    /// account on the residential electric tariff. What the caller does with the null is its own
+    /// business — <c>RatePlanService.ForAccountAsync</c> turns it into a refusal that names the
+    /// billing-deepening pass, which is the package that owns unmetered and non-electric billing.
+    /// </para>
+    /// <para>
+    /// Read off the shipped set rather than hard-coded per service, so adding a default water tariff
+    /// is a migration and a row in <see cref="All"/> — never an edit here as well.
+    /// </para>
+    /// </remarks>
+    public static string? DefaultCodeFor(ServiceType serviceType) =>
+        All.Where(plan => plan.ServiceType == serviceType && plan.IsDefault)
+            .Select(plan => plan.Code)
+            .FirstOrDefault();
 
     /// <summary>Every version of <paramref name="code"/>, oldest first; empty if no such tariff ships.</summary>
     public static IReadOnlyList<RatePlan> VersionsOf(string code)

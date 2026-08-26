@@ -15,17 +15,28 @@ import { CustomerRegistrationPage } from './customer-registration-page';
  * on, and one that four separate calls would quietly break without any of them failing.
  */
 
+/** The schedule as the host publishes it — keyed on (class × service) since WP-2.17. */
 const schedule: DepositRule[] = [
   {
     customerClass: 'Residential',
+    serviceType: 'Electricity',
+    isMetered: true,
     amount: 75,
-    description: 'Two months of a typical household bill.',
+    minimumAmount: 75,
+    usageMonths: 2,
+    usageRate: 0.32,
+    description: 'The greater of $75 and two months of average usage.',
     ruleId: '0192f000-0000-7000-8000-0000000000d1',
   },
   {
     customerClass: 'Commercial',
+    serviceType: 'Electricity',
+    isMetered: true,
     amount: 450,
-    description: 'Two months of a small-premises bill.',
+    minimumAmount: 450,
+    usageMonths: 2,
+    usageRate: 0.32,
+    description: 'The greater of $450 and two months of average usage.',
     ruleId: '0192f000-0000-7000-8000-0000000000d2',
   },
 ];
@@ -140,7 +151,32 @@ describe('CustomerRegistrationPage', () => {
 
     expect(await screen.findByText('Assessed for a commercial connection')).toBeInTheDocument();
     expect(screen.getByText('$450.00')).toBeInTheDocument();
-    expect(screen.getByText('Two months of a small-premises bill.')).toBeInTheDocument();
+    expect(screen.getByText('The greater of $450 and two months of average usage.')).toBeInTheDocument();
+  });
+
+  it('offers the supplies GridCore declares, and says which of them is unmetered', async () => {
+    // WP-2.17: the account is the customer, the premise AND the service, so the wizard has to ask.
+    renderPage();
+    await screen.findByLabelText('Customer name');
+
+    await completeIdentity();
+    await completePremise();
+
+    const service = await screen.findByLabelText('Service');
+
+    expect(service).toHaveValue('Electricity');
+    expect(
+      screen.getByText('A metered supply. The deposit is assessed from this and the class together.'),
+    ).toBeInTheDocument();
+
+    await userEvent.selectOptions(service, 'Wastewater');
+
+    // Not "no meter fitted yet" — there will never be one, which is the shape the package added.
+    expect(
+      await screen.findByText(
+        'An unmetered supply — no meter is fitted and no reading is taken, so it is billed a flat charge.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('refuses more than the schedule asks for, on the step that asked for it', async () => {
@@ -155,7 +191,7 @@ describe('CustomerRegistrationPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }));
 
     expect(
-      await screen.findByText('The schedule asks 75.00 for this class. Collect that or less.'),
+      await screen.findByText('The schedule asks 75.00 for a residential electricity account. Collect that or less.'),
     ).toBeInTheDocument();
 
     // Still on the deposit step: the wizard did not carry a doomed figure to the review.

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Events;
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Billing.Data;
@@ -93,7 +94,7 @@ public sealed class BillingRegistryTests(GateFixture fixture) : IAsyncLifetime
         {
             var accounts = scope.ServiceProvider.GetRequiredService<IServiceAccountService>();
 
-            account = (await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, "Requested at the counter"))).Id;
+            account = (await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, ServiceType.Electricity, "Requested at the counter"))).Id;
 
             // Energised: an account that never was is deliberately not billed for the units on the
             // meter at its premise.

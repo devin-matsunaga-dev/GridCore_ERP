@@ -1,4 +1,5 @@
 using FluentValidation;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -110,7 +111,7 @@ public class RegistryValidatorTests
     [Fact]
     public void A_complete_account_opening_passes() =>
         Assert.True(OpenAccountRules
-            .Validate(new OpenServiceAccountRequest(Guid.CreateVersion7(), Guid.CreateVersion7(), "Requested at the counter"))
+            .Validate(new OpenServiceAccountRequest(Guid.CreateVersion7(), Guid.CreateVersion7(), ServiceType.Electricity, "Requested at the counter"))
             .IsValid);
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Globalization;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Platform.Data;
 using GridCore.Platform.Monetary;
@@ -114,9 +115,12 @@ public sealed class FeeScheduleEntry
     /// <remarks>
     /// Carried on the row rather than left implicit, because the reference publishes different
     /// figures per service — but the utility bills one service today, so every shipped row is
-    /// electricity. <b>The code alone is the fee's identity, not the code and the service</b>: a
-    /// water reconnection fee that differs from the electric one is exactly what WP-2.17 re-keys
-    /// this on, once a service account can say which service it takes.
+    /// electricity. <b>The code alone is the fee's identity, not the code and the service.</b>
+    /// WP-2.17 gave a service account a service and re-keyed the <i>deposit</i> schedule on it, and
+    /// deliberately left this one alone: no fee GridCore publishes yet differs by supply, and
+    /// re-keying a catalogue in anticipation would move every id in it for nothing. The day a water
+    /// reconnection fee differs from the electric one, this index and
+    /// <see cref="FeeSchedules.RequireComplete"/> are what change.
     /// </remarks>
     public ServiceType ServiceType { get; private init; }
 

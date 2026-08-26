@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -25,6 +26,7 @@ public sealed record NewPremiseRequest(AddressPayload Address, string? Descripti
 /// <param name="Name">Who they are.</param>
 /// <param name="Class">Residential or commercial.</param>
 /// <param name="Premise">Where they are to be served.</param>
+/// <param name="ServiceType">Which supply they are applying for. Electricity when the caller does not say.</param>
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
@@ -35,6 +37,7 @@ public sealed record RegisterCustomerIntakeRequest(
     string Name,
     CustomerClass Class,
     IntakePremiseRequest Premise,
+    ServiceType ServiceType = ServiceType.Electricity,
     string? ContactName = null,
     string? Email = null,
     string? Phone = null,
@@ -44,10 +47,27 @@ public sealed record RegisterCustomerIntakeRequest(
 
 /// <summary>A deposit rule as the API returns it.</summary>
 /// <param name="CustomerClass">Which class it applies to.</param>
-/// <param name="Amount">What that class is asked for.</param>
+/// <param name="ServiceType">Which service it applies to. Half the key since WP-2.17.</param>
+/// <param name="IsMetered">Whether that service is measured at all — an unmetered one can only ever be flat.</param>
+/// <param name="Amount">
+/// What the pair is asked for off the published floor alone. The schedule answer, with no usage in
+/// it: a screen listing the schedule is showing what a rule says, not what one customer would pay.
+/// </param>
+/// <param name="MinimumAmount">The published floor. The same figure as <paramref name="Amount"/> here, and named so the browser need not infer it.</param>
+/// <param name="UsageMonths">How many months of average usage the rule takes above the floor, where it takes any.</param>
+/// <param name="UsageRate">What one unit is priced at for deposit purposes, where usage applies.</param>
 /// <param name="Description">Why the figure is what it is.</param>
 /// <param name="RuleId">The reference row.</param>
-public sealed record DepositRuleResponse(string CustomerClass, decimal Amount, string Description, Guid RuleId)
+public sealed record DepositRuleResponse(
+    string CustomerClass,
+    string ServiceType,
+    bool IsMetered,
+    decimal Amount,
+    decimal MinimumAmount,
+    int? UsageMonths,
+    decimal? UsageRate,
+    string Description,
+    Guid RuleId)
 {
     /// <summary>Projects an assessment for the wire.</summary>
     public static DepositRuleResponse From(DepositAssessment assessment)
@@ -56,7 +76,12 @@ public sealed record DepositRuleResponse(string CustomerClass, decimal Amount, s
 
         return new DepositRuleResponse(
             assessment.CustomerClass.ToString(),
+            assessment.ServiceType.ToString(),
+            ServiceTypes.IsMetered(assessment.ServiceType),
             assessment.Amount,
+            assessment.MinimumAmount,
+            assessment.UsageMonths,
+            assessment.UsageRate,
             assessment.Description,
             assessment.RuleId);
     }
@@ -87,6 +112,7 @@ public sealed record CustomerRegistrationResponse(
             ServiceAccountResponse.From(registration.Account),
             new DepositOutcomeResponse(
                 registration.Assessment.CustomerClass.ToString(),
+                registration.Assessment.ServiceType.ToString(),
                 registration.Assessment.Amount,
                 registration.DepositCollected,
                 registration.Assessment.RuleId));
@@ -95,10 +121,16 @@ public sealed record CustomerRegistrationResponse(
 
 /// <summary>The deposit side of an intake's receipt.</summary>
 /// <param name="CustomerClass">The class assessed.</param>
+/// <param name="ServiceType">The service assessed — the other half of the rule's key.</param>
 /// <param name="AssessedAmount">What the schedule asked for.</param>
 /// <param name="CollectedAmount">What was taken.</param>
 /// <param name="RuleId">The reference row the figure came from.</param>
-public sealed record DepositOutcomeResponse(string CustomerClass, decimal AssessedAmount, decimal CollectedAmount, Guid RuleId);
+public sealed record DepositOutcomeResponse(
+    string CustomerClass,
+    string ServiceType,
+    decimal AssessedAmount,
+    decimal CollectedAmount,
+    Guid RuleId);
 
 /// <summary>Customer intake's HTTP surface.</summary>
 public static class RegistrationEndpoints
@@ -133,6 +165,7 @@ public static class RegistrationEndpoints
                                     ? new ServiceLocationInput(premise.Address.ToAddress(), premise.Description)
                                     : null,
                                 body.Premise.ServiceLocationId),
+                            body.ServiceType,
                             body.ContactName,
                             body.Email,
                             body.Phone,

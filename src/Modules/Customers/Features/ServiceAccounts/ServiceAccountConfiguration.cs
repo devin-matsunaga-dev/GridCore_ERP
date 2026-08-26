@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
@@ -11,10 +12,10 @@ namespace GridCore.Modules.Customers.Features.ServiceAccounts;
 public sealed class ServiceAccountConfiguration : IEntityTypeConfiguration<ServiceAccount>
 {
     /// <summary>
-    /// The filtered unique index that stops a premise being double-booked. Written against the
-    /// stored column and the stored enum <i>name</i>, in SQL both Postgres and the fast tier's
-    /// SQLite parse identically — the same reason the number generator uses ORDER BY rather than a
-    /// provider-specific MAX.
+    /// The filtered unique index that stops a premise being double-booked <i>for one service</i>.
+    /// Written against the stored column and the stored enum <i>name</i>, in SQL both Postgres and
+    /// the fast tier's SQLite parse identically — the same reason the number generator uses ORDER BY
+    /// rather than a provider-specific MAX.
     /// </summary>
     public const string OnePremiseFilter = "\"status\" <> 'Closed'";
 
@@ -41,6 +42,16 @@ public sealed class ServiceAccountConfiguration : IEntityTypeConfiguration<Servi
 
         builder.Property(account => account.CustomerId).HasColumnName("customer_id");
         builder.Property(account => account.ServiceLocationId).HasColumnName("service_location_id");
+
+        // Stored by name, like every other enum in this schema. WP217_ServiceTypes backfills every
+        // existing row as 'Electricity' rather than letting EF write the empty string a new
+        // non-nullable string column defaults to — which is not an enum member and would fail to
+        // materialise the first time anybody listed the accounts.
+        builder.Property(account => account.ServiceType)
+            .HasColumnName("service_type")
+            .HasConversion<string>()
+            .HasMaxLength(ServiceAccount.EnumNameLength)
+            .IsRequired();
 
         // Foreign keys without navigations. Both registries are this module's own, so the database
         // can guarantee an account never points at a customer or a premise that is not there — but
@@ -91,11 +102,16 @@ public sealed class ServiceAccountConfiguration : IEntityTypeConfiguration<Servi
         builder.HasIndex(account => account.CustomerId).HasDatabaseName("ix_service_accounts_customer_id");
         builder.HasIndex(account => account.Status).HasDatabaseName("ix_service_accounts_status");
 
-        // One open account per premise, as a database fact. The service checks first so the loser
-        // of a race gets a 409 it can act on, but this index is what makes two accounts billing the
-        // same meter impossible rather than merely unlikely. Closed accounts are excluded, which is
-        // what lets the next occupant be given one.
-        builder.HasIndex(account => account.ServiceLocationId)
+        // One open account per premise PER SERVICE, as a database fact (WP-2.17). The service checks
+        // first so the loser of a race gets a 409 it can act on, but this index is what makes two
+        // accounts billing the same meter impossible rather than merely unlikely. Closed accounts
+        // are excluded, which is what lets the next occupant be given one.
+        //
+        // Keyed on the premise ALONE until WP-2.17, which is what made a premise taking electricity
+        // and water inexpressible. Widening it to the pair is the one schema change that lets a
+        // house hold an electric, a water and a wastewater account at once — and it still refuses
+        // the thing that mattered, two open accounts for the SAME supply at one address.
+        builder.HasIndex(account => new { account.ServiceLocationId, account.ServiceType })
             .HasDatabaseName("ux_service_accounts_open_location")
             .IsUnique()
             .HasFilter(OnePremiseFilter);

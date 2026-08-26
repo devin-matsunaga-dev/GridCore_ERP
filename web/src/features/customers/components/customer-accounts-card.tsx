@@ -1,6 +1,6 @@
 import { FileText } from 'lucide-react';
 import { useState } from 'react';
-import type { ServiceAccount, ServiceAccountHistoryEntry, ServiceLocation } from '@/api/customers';
+import { serviceTypeLabel, type ServiceAccount, type ServiceAccountHistoryEntry, type ServiceLocation } from '@/api/customers';
 import type { Meter } from '@/api/metering';
 import type { Column } from '@/components/registry/data-table';
 import { EmptyState } from '@/components/registry/empty-state';
@@ -136,6 +136,17 @@ function accountColumns(
       },
     },
     {
+      key: 'serviceType',
+      header: 'Service',
+      // What the account is FOR (WP-2.17). Beside the premise rather than at the end, because a
+      // customer holding three accounts at one address is reading down this column to tell them
+      // apart — every other cell in those three rows says the same thing.
+      sortValue: (account) => account.serviceType,
+      cell: (account) => (
+        <span className="text-body text-xs font-medium">{serviceTypeLabel(account.serviceType)}</span>
+      ),
+    },
+    {
       key: 'meter',
       header: 'Meter',
       // Through the premise, never through the account: a meter is fitted to a place and holds no
@@ -143,6 +154,10 @@ function accountColumns(
       // can be requested and an account opened before a crew has been out.
       sortValue: (account) => meters.get(account.serviceLocationId)?.meterNumber,
       cell: (account) => {
+        // An unmetered account never has one and never will (WP-2.17), so it says so rather than
+        // showing the em dash that means "not fitted yet" on every other row.
+        if (!account.isMetered) return <span className="text-muted text-xs">Unmetered</span>;
+
         const meter = meters.get(account.serviceLocationId);
 
         if (meter) return <span className="tabular text-xs">{meter.meterNumber}</span>;

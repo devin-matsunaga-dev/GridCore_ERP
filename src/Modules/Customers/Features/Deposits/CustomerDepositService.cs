@@ -38,7 +38,12 @@ public sealed record RefundDepositInput(decimal Amount, string? Reason = null);
 /// <param name="AccountNumber">The number they quote.</param>
 /// <param name="Balance">What the utility holds — <see cref="Customer.DepositHeld"/>, which these entries add up to.</param>
 /// <param name="Currency">ISO 4217 code the balance is expressed in.</param>
-/// <param name="Assessment">What the schedule asks of a customer of this class, so a screen can say whether they are short.</param>
+/// <param name="Requirement">
+/// What the schedule asks of this customer across every open account they hold, so a screen can say
+/// whether they are short without a second request. A whole re-assessment since WP-2.17 rather than
+/// the single class-keyed figure it replaced: a customer taking two supplies is asked for two
+/// deposits, and one number could only ever have been one of them.
+/// </param>
 /// <param name="IsInterestBearing">Whether the most recent collection was taken on interest-bearing terms.</param>
 /// <param name="Entries">Every movement, newest first.</param>
 public sealed record DepositLedger(
@@ -46,7 +51,7 @@ public sealed record DepositLedger(
     string AccountNumber,
     decimal Balance,
     string Currency,
-    DepositAssessment Assessment,
+    DepositRequirement Requirement,
     bool IsInterestBearing,
     IReadOnlyList<DepositEntry> Entries);
 
@@ -98,7 +103,7 @@ public interface ICustomerDepositService
 /// </remarks>
 public sealed class CustomerDepositService(
     CustomersDbContext database,
-    IDepositRuleService rules,
+    IDepositReassessmentService reassessment,
     IBillDirectory bills,
     IUnitOfWork unitOfWork,
     IAuditLog audit,
@@ -129,7 +134,7 @@ public sealed class CustomerDepositService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var assessment = await rules.AssessAsync(customer.Class, cancellationToken).ConfigureAwait(false);
+        var requirement = await reassessment.ReassessAsync(customerId, cancellationToken).ConfigureAwait(false);
 
         // The terms come from the most recent collection, which is the one under which the money now
         // held was taken. A customer who has never paid one has no terms, and false is what "no
@@ -140,8 +145,8 @@ public sealed class CustomerDepositService(
             customer.Id,
             customer.AccountNumber,
             customer.DepositHeld,
-            latestCollection?.Currency ?? assessment.Currency,
-            assessment,
+            latestCollection?.Currency ?? requirement.Currency,
+            requirement,
             latestCollection?.IsInterestBearing ?? false,
             entries);
     }
@@ -155,19 +160,22 @@ public sealed class CustomerDepositService(
             customerId,
             async (customer, actor, now, ct) =>
             {
-                var assessment = await rules.AssessAsync(customer.Class, ct).ConfigureAwait(false);
+                // The whole re-assessment, not one rule: since WP-2.17 what a customer is asked for
+                // is the sum over the supplies they take, so "what was asked" on this entry is that
+                // total and the rules behind it are a list.
+                var requirement = await reassessment.ReassessAsync(customer.Id, ct).ConfigureAwait(false);
 
                 var entry = DepositEntry.Collect(
                     customer,
                     input.Amount,
-                    assessment.Currency,
+                    requirement.Currency,
                     input.IsInterestBearing,
                     input.Reason,
                     actor,
                     now);
 
                 // WP-2.8's shape kept: the entry carries what was asked for beside what was taken and
-                // the rule that said so, which is the only place that difference is recorded.
+                // the rules that said so, which is the only place that difference is recorded.
                 audit.Record(
                     AuditActions.CustomerDepositCollected,
                     AuditEntityTypes.Customer,
@@ -176,9 +184,9 @@ public sealed class CustomerDepositService(
                     after: new DepositCollectionSnapshot(
                         customer.Id,
                         customer.AccountNumber,
-                        assessment.CustomerClass,
-                        assessment.RuleId,
-                        assessment.Amount,
+                        requirement.CustomerClass,
+                        [.. requirement.Accounts.Select(line => line.Assessment.RuleId)],
+                        requirement.RequiredAmount,
                         entry.Amount,
                         entry.BalanceAfter,
                         entry.IsInterestBearing));
@@ -271,13 +279,13 @@ public sealed class CustomerDepositService(
             customerId,
             async (customer, actor, now, ct) =>
             {
-                var assessment = await rules.AssessAsync(customer.Class, ct).ConfigureAwait(false);
+                var requirement = await reassessment.ReassessAsync(customer.Id, ct).ConfigureAwait(false);
 
                 // "A refund cannot exceed the held balance" is not checked here: DepositEntry.Refund
                 // moves the balance through Customer.RecordDepositMovement, which refuses to go below
                 // zero. One guard, covering refunds and bill applications alike — a rule per kind is
                 // a rule a fourth kind gets added without.
-                var entry = DepositEntry.Refund(customer, input.Amount, assessment.Currency, input.Reason, actor, now);
+                var entry = DepositEntry.Refund(customer, input.Amount, requirement.Currency, input.Reason, actor, now);
 
                 audit.Record(
                     AuditActions.CustomerDepositRefunded,
@@ -396,13 +404,18 @@ public sealed class CustomerDepositService(
 
 /// <summary>
 /// The shape a deposit collection is audited as: what the schedule asked for, beside what was taken,
-/// and which rule said so.
+/// and which rules said so.
 /// </summary>
 /// <param name="CustomerId">Who paid it.</param>
 /// <param name="AccountNumber">The number they quote.</param>
 /// <param name="CustomerClass">The class assessed.</param>
-/// <param name="RuleId">The reference row the assessed figure came from.</param>
-/// <param name="AssessedAmount">What the schedule asks of a customer of that class.</param>
+/// <param name="RuleIds">
+/// The reference rows the assessed figure came from — one per open account, since WP-2.17 keyed the
+/// schedule on the service as well as the class. A list rather than the single id it replaced: a
+/// customer taking electricity and wastewater was assessed by two rules, and recording one of them
+/// would leave the other half of the figure untraceable.
+/// </param>
+/// <param name="AssessedAmount">What the schedule asks across every open account they hold.</param>
 /// <param name="CollectedAmount">What was actually taken.</param>
 /// <param name="BalanceAfter">What the utility holds once it was.</param>
 /// <param name="IsInterestBearing">The terms it was taken under.</param>
@@ -410,7 +423,7 @@ public sealed record DepositCollectionSnapshot(
     Guid CustomerId,
     string AccountNumber,
     CustomerClass CustomerClass,
-    Guid RuleId,
+    IReadOnlyList<Guid> RuleIds,
     decimal AssessedAmount,
     decimal CollectedAmount,
     decimal BalanceAfter,

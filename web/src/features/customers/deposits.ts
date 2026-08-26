@@ -1,4 +1,9 @@
-import type { DepositEntry, DepositEntryKind, DepositLedger } from '@/api/customers';
+import type {
+  DepositAccountRequirement,
+  DepositEntry,
+  DepositEntryKind,
+  DepositLedger,
+} from '@/api/customers';
 import type { Bill } from '@/api/billing';
 import type { StatusTone } from '@/components/ui/status';
 import { toCents } from '@/lib/money';
@@ -62,15 +67,38 @@ export type DepositStanding = 'none' | 'short' | 'covered';
  * part-payment at the counter with a balance still to come. A screen that showed both as "short"
  * would send a rep chasing a customer who was never asked.
  *
- * Compared in cents, so a balance of 75 against an assessment of 75 is covered rather than short by
+ * Measured against `requirement.requiredAmount` since WP-2.17 — the sum over the supplies this
+ * customer actually takes, rather than one figure read off their class. A customer taking nothing is
+ * covered: the schedule asks nothing of somebody with no open account.
+ *
+ * Compared in cents, so a balance of 75 against a requirement of 75 is covered rather than short by
  * a rounding artefact.
  */
 export function depositStanding(ledger: DepositLedger): DepositStanding {
   const held = toCents(ledger.balance);
 
-  if (held === 0) return 'none';
+  if (held === 0) {
+    return toCents(ledger.requirement.requiredAmount) === 0 ? 'covered' : 'none';
+  }
 
-  return held >= toCents(ledger.assessedAmount) ? 'covered' : 'short';
+  return held >= toCents(ledger.requirement.requiredAmount) ? 'covered' : 'short';
+}
+
+/**
+ * How one account's deposit line reads, in the words a rep would use down the telephone.
+ *
+ * The distinction the two-part rule exists for: "two months of your average usage" and "the
+ * published minimum" are different conversations that happen to produce a number each, and a screen
+ * showing only the figure makes the first indefensible.
+ */
+export function depositBasisLabel(line: DepositAccountRequirement): string {
+  if (!line.isMetered) return 'Flat charge — unmetered service';
+
+  if (line.isUsageBased && line.averageMonthlyUsage !== null && line.usageMonths !== null) {
+    return `${line.usageMonths} months of ${line.averageMonthlyUsage.toLocaleString()} a month`;
+  }
+
+  return line.hasUsageHistory ? 'Minimum — usage is below it' : 'Minimum — nothing read here yet';
 }
 
 /** What the standing reads as beside the balance. */

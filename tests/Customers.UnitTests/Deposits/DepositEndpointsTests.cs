@@ -49,6 +49,23 @@ public class DepositEndpointsTests
             PermissionPolicy.NameFor(Permissions.Customers.Read),
             PolicyOf(EndpointAt(DepositEndpoints.RoutePrefix + "/", "GET")));
 
+    [Fact]
+    public void Re_assessing_a_deposit_is_gated_on_the_read_permission() =>
+        // WP-2.17, and the owner's call. Quoting a customer what they would now be asked for is
+        // clerical work a rep does down the telephone; customers.deposit stays for the acts that
+        // actually create or move deposit money, which are the three POSTs below.
+        Assert.Equal(
+            PermissionPolicy.NameFor(Permissions.Customers.Read),
+            PolicyOf(EndpointAt(DepositEndpoints.RoutePrefix + "/assessment", "GET")));
+
+    [Fact]
+    public void The_re_assessment_is_a_read_and_maps_no_write() =>
+        // A GET and nothing else. A re-assessment that could be POSTed would be one somebody could
+        // mistake for collecting the shortfall it quotes.
+        Assert.All(
+            MappedEndpoints().Where(endpoint => endpoint.RoutePattern.RawText!.EndsWith("/assessment", StringComparison.Ordinal)),
+            endpoint => Assert.Equal(["GET"], endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()!.HttpMethods));
+
     [Theory]
     [InlineData("/collections")]
     [InlineData("/applications")]

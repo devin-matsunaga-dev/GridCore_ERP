@@ -30,6 +30,11 @@ export function AccountStep({
       const opened = await customersApi.openAccount({
         customerId: customer.id,
         serviceLocationId: location.id,
+
+        // The demonstration walk is the revenue cycle — a meter, a reading and a bill — so the
+        // account it opens is an electricity one. Stated rather than defaulted (WP-2.17): the
+        // service is what the deposit and the tariff both key on.
+        serviceType: 'Electricity',
         reason: 'Requested at the counter',
       });
 

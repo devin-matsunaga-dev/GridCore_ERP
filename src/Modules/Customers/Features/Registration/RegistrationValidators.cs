@@ -59,6 +59,7 @@ public sealed class RegisterCustomerIntakeRequestValidator : AbstractValidator<R
     {
         RuleFor(request => request.Name).NotEmpty().MaximumLength(Customer.NameLength);
         RuleFor(request => request.Class).IsInEnum();
+        RuleFor(request => request.ServiceType).IsInEnum().WithMessage("Not a service GridCore declares.");
         RuleFor(request => request.ContactName!).MaximumLength(Customer.NameLength);
         RuleFor(request => request.Phone!).MaximumLength(Customer.PhoneLength);
         RuleFor(request => request.Reason!).MaximumLength(ServiceAccount.ReasonLength);

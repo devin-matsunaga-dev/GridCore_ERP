@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -41,11 +42,13 @@ public sealed record ChangeCustomerStatusInput(
 /// <summary>What a caller supplies to move a customer in at a premise they were not being served at.</summary>
 /// <param name="ServiceLocationId">Where they are moving in.</param>
 /// <param name="ReasonCode">Why, from the fixed list.</param>
+/// <param name="ServiceType">Which supply they are taking up. Electricity when the caller does not say.</param>
 /// <param name="EffectiveOn">The day service is taken up. Today when the caller does not say.</param>
 /// <param name="Notes">What the operator wants to add. Required with <see cref="TransitionReasonCode.Other"/>.</param>
 public sealed record MoveInInput(
     Guid ServiceLocationId,
     TransitionReasonCode ReasonCode,
+    ServiceType ServiceType = ServiceType.Electricity,
     DateOnly? EffectiveOn = null,
     string? Notes = null);
 
@@ -307,7 +310,11 @@ public sealed class CustomerTransitionService(
                 // audit entry and publishes ServiceAccountOpened. A move-in is that act with a reason
                 // code and a date recorded beside it, not a second implementation of it.
                 var opened = await accounts.OpenAsync(
-                    new OpenServiceAccountInput(customer.Id, input.ServiceLocationId, Describe(input.ReasonCode, input.Notes)),
+                    new OpenServiceAccountInput(
+                        customer.Id,
+                        input.ServiceLocationId,
+                        input.ServiceType,
+                        Describe(input.ReasonCode, input.Notes)),
                     ct).ConfigureAwait(false);
 
                 var transition = AccountTransition.MovedIn(
@@ -411,7 +418,15 @@ public sealed class CustomerTransitionService(
                 var closed = await accounts.CloseAsync(account.Id, Describe(input.ReasonCode, input.Notes), ct).ConfigureAwait(false);
 
                 var opened = await accounts.OpenAsync(
-                    new OpenServiceAccountInput(customer.Id, input.ToServiceLocationId, Describe(input.ReasonCode, input.Notes)),
+                    new OpenServiceAccountInput(
+                        customer.Id,
+                        input.ToServiceLocationId,
+
+                        // The service the customer was already taking, never a choice. A transfer
+                        // moves one supply from one address to another; changing what is supplied on
+                        // the way would be a move-out and a move-in wearing one reason code.
+                        account.ServiceType,
+                        Describe(input.ReasonCode, input.Notes)),
                     ct).ConfigureAwait(false);
 
                 var (carried, currency, entry) = await CarryDepositAsync(customer, closed, opened, actor, now, ct).ConfigureAwait(false);
@@ -486,7 +501,9 @@ public sealed class CustomerTransitionService(
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        currency ??= (await rules.AssessAsync(customer.Class, cancellationToken).ConfigureAwait(false)).Currency;
+        // The schedule for the supply being transferred, for a customer who has never paid a
+        // deposit and so has no collection to read terms off.
+        currency ??= (await rules.AssessAsync(customer.Class, opened.ServiceType, cancellationToken).ConfigureAwait(false)).Currency;
 
         var held = customer.DepositHeld;
 

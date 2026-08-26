@@ -4,8 +4,9 @@ import type {
   DepositRule,
   ServiceAccount,
   ServiceLocation,
+  ServiceType,
 } from '@/api/customers';
-import { customerClasses } from '@/api/customers';
+import { customerClasses, isMeteredService, serviceTypeLabel, serviceTypes } from '@/api/customers';
 import { isWholeCents, toCents } from '@/lib/money';
 
 /**
@@ -38,6 +39,8 @@ export type IntakeValues = {
   postalCode: string;
   description: string;
   serviceLocationId: string;
+  /** Which supply the customer is applying for (WP-2.17) — half the deposit's key. */
+  serviceType: ServiceType;
   /** Energise supply as part of the same commit. */
   startService: boolean;
   reason: string;
@@ -75,13 +78,13 @@ export const intakeSteps: IntakeStep[] = [
   {
     id: 'service',
     title: 'Service account',
-    summary: 'The account joining the two. Energising it is a separate act, performed in the same commit.',
-    fields: ['startService', 'reason'],
+    summary: 'The account joining the two: which supply is taken, and whether it is energised now.',
+    fields: ['serviceType', 'startService', 'reason'],
   },
   {
     id: 'deposit',
     title: 'Deposit',
-    summary: 'Assessed from the class against the published schedule, and collected only by somebody permitted to.',
+    summary: 'Assessed from the class AND the supply against the published schedule, and collected only by somebody permitted to.',
     fields: ['depositCollected'],
   },
   {
@@ -107,6 +110,7 @@ export const emptyIntake: IntakeValues = {
   postalCode: '',
   description: '',
   serviceLocationId: '',
+  serviceType: 'Electricity',
   startService: true,
   reason: 'Requested at the counter',
   depositCollected: '',
@@ -125,13 +129,23 @@ export function stepStatus(currentIndex: number, index: number): IntakeStepStatu
   return index === currentIndex ? 'active' : 'waiting';
 }
 
-/** What the schedule asks of a class, or `undefined` while the schedule is still loading. */
+/**
+ * What the schedule asks of a class on a service, or `undefined` while the schedule is loading.
+ *
+ * Keyed on the PAIR since WP-2.17. A lookup by class alone would now match whichever of four rules
+ * the host happened to return first — the residential electric deposit and the residential
+ * wastewater one are different figures, and the wizard has to quote the one being applied for.
+ */
 export function assessmentFor(
   rules: readonly DepositRule[] | undefined,
   customerClass: IntakeValues['class'],
+  serviceType: ServiceType,
 ): DepositRule | undefined {
-  return rules?.find((rule) => rule.customerClass === customerClass);
+  return rules?.find((rule) => rule.customerClass === customerClass && rule.serviceType === serviceType);
 }
+
+/** The supplies the wizard offers, in the enum's order. */
+export const intakeServiceTypes = serviceTypes;
 
 /**
  * Money as a whole number of cents, and whether what somebody typed is exact to one.
@@ -180,6 +194,7 @@ export function intakeSchema({ assessedAmount, mayCollectDeposit }: IntakeRules)
       postalCode: z.string().trim().max(16),
       description: z.string().trim().max(256),
       serviceLocationId: z.string().trim(),
+      serviceType: z.enum(serviceTypes),
       startService: z.boolean(),
       reason: z.string().trim().max(512),
       depositCollected: z.string(),
@@ -231,7 +246,9 @@ export function intakeSchema({ assessedAmount, mayCollectDeposit }: IntakeRules)
       }
 
       if (assessedAmount !== undefined && toCents(collected) > toCents(assessedAmount)) {
-        reject(`The schedule asks ${assessedAmount.toFixed(2)} for this class. Collect that or less.`);
+        reject(
+          `The schedule asks ${assessedAmount.toFixed(2)} for a ${values.class.toLowerCase()} ${values.serviceType.toLowerCase()} account. Collect that or less.`,
+        );
       }
     });
 }
@@ -267,6 +284,7 @@ export function buildIntake(values: IntakeValues): CustomerIntakeInput {
             },
           }
         : { serviceLocationId: values.serviceLocationId },
+    serviceType: values.serviceType,
     depositCollected: parseDeposit(values.depositCollected),
     startService: values.startService,
     reason: blankToNull(values.reason),
@@ -289,10 +307,14 @@ function blankToNull(value: string): string | null {
 export function availablePremises(
   locations: readonly ServiceLocation[] | undefined,
   accounts: readonly ServiceAccount[] | undefined,
+  serviceType: ServiceType,
 ): ServiceLocation[] {
+  // Narrowed to the SAME SUPPLY since WP-2.17. A premise already on electricity is a perfectly good
+  // premise to open a water account at — what the host refuses is a second account for the supply
+  // being applied for, so that is what this hides.
   const served = new Set(
     (accounts ?? [])
-      .filter((account) => account.status !== 'Closed')
+      .filter((account) => account.status !== 'Closed' && account.serviceType === serviceType)
       .map((account) => account.serviceLocationId),
   );
 
@@ -322,6 +344,12 @@ export function reviewFacts(
     {
       label: values.premiseMode === 'new' ? 'New premise' : 'Existing premise',
       value: values.premiseMode === 'new' ? newPremiseLine(values) : (premiseLabel ?? '—'),
+    },
+    {
+      label: 'Service',
+      value: isMeteredService(values.serviceType)
+        ? serviceTypeLabel(values.serviceType)
+        : `${serviceTypeLabel(values.serviceType)} (unmetered)`,
     },
     { label: 'Supply', value: values.startService ? 'Energised on registration' : 'Account opened, not energised' },
     {

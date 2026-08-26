@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
@@ -39,6 +40,7 @@ public sealed class CustomerIntakeTests(GateFixture fixture) : IAsyncLifetime
             "Reyes Family Residence",
             CustomerClass.Residential,
             premise,
+            ServiceType.Electricity,
             "Ana Reyes",
             "ana.reyes@example.com",
             "+1-670-532-0199",
@@ -144,16 +146,20 @@ public sealed class CustomerIntakeTests(GateFixture fixture) : IAsyncLifetime
 
         var schedule = await scope.ServiceProvider.GetRequiredService<IDepositRuleService>().ListAsync();
 
+        // Keyed on the PAIR since WP-2.17: the schedule is the cross product of the classes and the
+        // services, and the migration writes exactly the rules DepositRules.All declares.
         Assert.Equal(
-            DepositRules.All.Select(rule => rule.CustomerClass).Order(),
-            schedule.Select(assessment => assessment.CustomerClass).Order());
+            DepositRules.All.Select(rule => rule.RuleKey).Order(),
+            schedule.Select(assessment => DepositRule.KeyFor(assessment.CustomerClass, assessment.ServiceType)).Order());
 
         var residential = await scope.ServiceProvider
             .GetRequiredService<IDepositRuleService>()
-            .AssessAsync(CustomerClass.Residential);
+            .AssessAsync(CustomerClass.Residential, ServiceType.Electricity);
 
         Assert.Equal(
-            DepositRules.All.Single(rule => rule.CustomerClass == CustomerClass.Residential).Amount,
+            DepositRules.All
+                .Single(rule => rule.CustomerClass == CustomerClass.Residential && rule.ServiceType == ServiceType.Electricity)
+                .MinimumAmount,
             residential.Amount);
     }
 

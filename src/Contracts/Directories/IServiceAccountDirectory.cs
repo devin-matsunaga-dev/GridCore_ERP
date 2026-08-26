@@ -1,3 +1,5 @@
+using GridCore.Contracts.Services;
+
 namespace GridCore.Contracts.Directories;
 
 /// <summary>
@@ -16,9 +18,21 @@ namespace GridCore.Contracts.Directories;
 /// <param name="CustomerName">Their name, so a bill header needs no second lookup.</param>
 /// <param name="ServiceLocationId">Where they are served.</param>
 /// <param name="Status">The account's status, by name — Contracts takes no dependency on the module's enum.</param>
+/// <param name="ServiceType">
+/// Which service this account takes (WP-2.17). The one field here carried as its own enum rather
+/// than by name, because <see cref="Services.ServiceType"/> is declared in <c>Contracts</c> and
+/// belongs to no module — see the type's own remarks.
+/// </param>
+/// <param name="IsMetered">
+/// Whether a device at the premise measures what this account consumes. Derived from
+/// <paramref name="ServiceType"/> through <see cref="ServiceTypes.IsMetered"/> and carried on the
+/// record anyway, so a caller can act on it without importing the rule and, one day, without
+/// GridCore's answer having to be derivable from the service alone.
+/// </param>
 /// <param name="HoldsPremise">
-/// Whether the account still holds its premise, which is what makes it "the open account here".
-/// Decided by Customers, because the rule belongs to the lifecycle that module owns.
+/// Whether the account still holds its premise <i>for its own service</i>, which is what makes it
+/// "the open electricity account here". Decided by Customers, because the rule belongs to the
+/// lifecycle that module owns.
 /// </param>
 /// <param name="ServiceStartedAt">When supply was most recently energised, if it ever was.</param>
 public sealed record ServiceAccountSummary(
@@ -28,6 +42,8 @@ public sealed record ServiceAccountSummary(
     string CustomerName,
     Guid ServiceLocationId,
     string Status,
+    ServiceType ServiceType,
+    bool IsMetered,
     bool HoldsPremise,
     DateTimeOffset? ServiceStartedAt);
 
@@ -49,6 +65,15 @@ public sealed record ServiceAccountSummary(
 /// <c>ux_service_accounts_open_location</c> makes it a database fact.
 /// </para>
 /// <para>
+/// <b>WP-2.17 made "the account open here" a question that needs a service to answer.</b> A premise
+/// may now hold an electricity account, a water account and a wastewater account at once, so the
+/// index those two lookups rely on is keyed on the premise <i>and the service</i> — and a caller
+/// that used to ask for "the open account" now has to say which supply it means. Billing asks for
+/// <see cref="ServiceType.Electricity"/> because a meter reading is an electricity reading; it is
+/// stated at the call site rather than defaulted here, because a default would be this interface
+/// guessing which supply a bill is for.
+/// </para>
+/// <para>
 /// Read-only, for <see cref="IServiceLocationDirectory"/>'s reason: opening, starting, stopping and
 /// closing an account stay behind <c>IServiceAccountService</c> inside Customers. A second module
 /// that could move an account through its lifecycle is a second module that owns it.
@@ -68,20 +93,50 @@ public interface IServiceAccountDirectory
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The account currently holding <paramref name="serviceLocationId"/>, or
-    /// <see langword="null"/> when nobody is taking service there. At most one exists: a closed
-    /// account releases its premise, which is what frees it for the next occupant.
+    /// The account currently taking <paramref name="serviceType"/> at
+    /// <paramref name="serviceLocationId"/>, or <see langword="null"/> when nobody is taking that
+    /// supply there. At most one exists: a closed account releases its premise for its own service,
+    /// which is what frees it for the next occupant.
     /// </summary>
+    /// <param name="serviceLocationId">The premise.</param>
+    /// <param name="serviceType">Which supply. Required since WP-2.17 — see the interface's remarks.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
     Task<ServiceAccountSummary?> FindOpenAtLocationAsync(
         Guid serviceLocationId,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The accounts open at the premises among <paramref name="serviceLocationIds"/>, keyed by
-    /// <b>premise</b>. The batched form of <see cref="FindOpenAtLocationAsync"/>, so a billing run
-    /// over a reading cycle makes one boundary call rather than one per meter.
+    /// The accounts taking <paramref name="serviceType"/> at the premises among
+    /// <paramref name="serviceLocationIds"/>, keyed by <b>premise</b>. The batched form of
+    /// <see cref="FindOpenAtLocationAsync"/>, so a billing run over a reading cycle makes one
+    /// boundary call rather than one per meter.
     /// </summary>
+    /// <param name="serviceLocationIds">The premises.</param>
+    /// <param name="serviceType">Which supply. Keying by premise is only unambiguous once it is fixed.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
     Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindOpenAtLocationsAsync(
         IReadOnlyCollection<Guid> serviceLocationIds,
+        ServiceType serviceType,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <b>Every</b> account open at <paramref name="serviceLocationId"/>, whatever service each
+    /// takes, in service order (WP-2.17).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The question the other two cannot ask, and it exists for one caller: Metering, deciding
+    /// whether a revenue meter may be fitted at a premise. That decision is not about one supply —
+    /// it is about whether <i>any</i> metered service is taken here — so a lookup keyed on a service
+    /// would have to be called once per member of an enum this module does not own.
+    /// </para>
+    /// <para>
+    /// Open accounts only, and at most one per service, so the answer is a short list rather than a
+    /// page: a premise has three supplies at the very most and usually one.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<ServiceAccountSummary>> ListOpenAtLocationAsync(
+        Guid serviceLocationId,
         CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Security;
@@ -54,11 +55,13 @@ public sealed record ChangeCustomerStatusRequest(
 /// <summary>Body of a request to move a customer in at a premise.</summary>
 /// <param name="ServiceLocationId">Where they are moving in.</param>
 /// <param name="ReasonCode">Why, from the fixed list.</param>
+/// <param name="ServiceType">Which supply they are taking up. Electricity when the caller does not say.</param>
 /// <param name="EffectiveOn">The day service is taken up.</param>
 /// <param name="Notes">What the operator wants to add.</param>
 public sealed record MoveInRequest(
     Guid ServiceLocationId,
     TransitionReasonCode ReasonCode,
+    ServiceType ServiceType = ServiceType.Electricity,
     DateOnly? EffectiveOn = null,
     string? Notes = null) : ITransitionRequest;
 
@@ -244,7 +247,7 @@ public static class TransitionEndpoints
                 RegistryProblems.RunAsync(async () =>
                     Created(customerId, await transitions.MoveInAsync(
                         customerId,
-                        new MoveInInput(body.ServiceLocationId, body.ReasonCode, body.EffectiveOn, body.Notes),
+                        new MoveInInput(body.ServiceLocationId, body.ReasonCode, body.ServiceType, body.EffectiveOn, body.Notes),
                         cancellationToken))))
             .RequirePermission(Permissions.Customers.Transition)
             .WithValidation<MoveInRequest>()

@@ -224,6 +224,32 @@ describe('CustomerDetailPage', () => {
     // The meter reaches the right row through the PREMISE; the premise with none shows a dash.
     expect(accounts.getByText('MTR-000001')).toBeInTheDocument();
     expect(accounts.getAllByText('—').length).toBeGreaterThan(0);
+
+    // Which supply each account is FOR (WP-2.17). A customer holding three accounts at one address
+    // is reading down this column to tell them apart.
+    expect(accounts.getAllByText('Electricity')).toHaveLength(2);
+  });
+
+  it('says an unmetered account has no meter rather than showing the dash that means "not yet"', async () => {
+    // WP-2.17: wastewater is billed a flat charge and GridCore refuses to fit a revenue meter where
+    // only unmetered service is taken, so the em dash — which everywhere else means "a crew has not
+    // been out" — would send a rep looking for a device nobody is going to install.
+    const wastewater = serviceAccount({
+      id: '0192f000-0000-7000-8000-000000000203',
+      accountNumber: 'A-000003',
+      serviceType: 'Wastewater',
+      isMetered: false,
+      history: [],
+    });
+
+    renderPage((url) =>
+      url.pathname === '/api/service-accounts' ? { body: [withoutHistory(wastewater)] } : fullWorld(url),
+    );
+
+    const accounts = within(await screen.findByRole('table', { name: 'Service accounts' }));
+
+    expect(accounts.getByText('Wastewater')).toBeInTheDocument();
+    expect(accounts.getByText('Unmetered')).toBeInTheDocument();
   });
 
   /** Cross-module rows are reached through the owning service — never a join, never a table read. */

@@ -56,6 +56,13 @@ public sealed class CustomersModule : IModule
         // reads (IMeterDirectory was the first, for WP-2.9's search).
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
 
+        // The deposit re-assessment (WP-2.17): what is held against what the schedule now asks across
+        // every open account. A read and only a read — it moves nothing, which is why it is a service
+        // of its own gated on customers.read while the lifecycle above gates on customers.deposit. It
+        // consumes IUsageDirectory, registered by Metering, because a usage-based deposit needs the
+        // authoritative average and this module may not read metering.meter_readings.
+        services.AddScoped<IDepositReassessmentService, DepositReassessmentService>();
+
         // The note log (WP-2.13): free-text notes and logged interactions, append-only. It consumes
         // TWO cross-module read seams — IBillDirectory, registered by Billing, and IPaymentDirectory,
         // registered by Payments — to confirm that a note filed against a bill or a payment names a

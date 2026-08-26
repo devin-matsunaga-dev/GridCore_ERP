@@ -1,4 +1,5 @@
 using GridCore.Contracts.Directories;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using Microsoft.EntityFrameworkCore;
@@ -65,9 +66,13 @@ public sealed class ServiceAccountDirectory(CustomersDbContext database) : IServ
     /// <inheritdoc />
     public async Task<ServiceAccountSummary?> FindOpenAtLocationAsync(
         Guid serviceLocationId,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default)
     {
-        var found = await Summaries(Open().Where(account => account.ServiceLocationId == serviceLocationId))
+        var found = await Summaries(
+                Open()
+                    .Where(account => account.ServiceLocationId == serviceLocationId)
+                    .Where(account => account.ServiceType == serviceType))
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -77,6 +82,7 @@ public sealed class ServiceAccountDirectory(CustomersDbContext database) : IServ
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindOpenAtLocationsAsync(
         IReadOnlyCollection<Guid> serviceLocationIds,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceLocationIds);
@@ -88,15 +94,37 @@ public sealed class ServiceAccountDirectory(CustomersDbContext database) : IServ
             return new Dictionary<Guid, ServiceAccountSummary>();
         }
 
-        var found = await Summaries(Open().Where(account => wanted.Contains(account.ServiceLocationId)))
+        var found = await Summaries(
+                Open()
+                    .Where(account => wanted.Contains(account.ServiceLocationId))
+                    .Where(account => account.ServiceType == serviceType))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         // Keyed by PREMISE, not by account: the caller is holding a meter's premise and asking who
-        // is being served there. At most one row per premise arrives —
-        // ux_service_accounts_open_location is what guarantees it — so a plain dictionary is safe
-        // and a second one there would be a database fault worth failing on.
+        // is being served there. At most one row per premise arrives ONCE THE SERVICE IS FIXED —
+        // ux_service_accounts_open_location is keyed on the pair since WP-2.17, which is exactly why
+        // the service is a parameter rather than something this method could leave open. A plain
+        // dictionary is safe, and a second row for one premise would be a database fault worth
+        // failing on.
         return found.ToDictionary(row => row.Account.ServiceLocationId, Summarise);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ServiceAccountSummary>> ListOpenAtLocationAsync(
+        Guid serviceLocationId,
+        CancellationToken cancellationToken = default)
+    {
+        // Unbounded on purpose, and safely so: the premise index and the open filter between them
+        // cap this at one row per service, which is three. No Take, because a cap here would be a
+        // cap that could hide the very account the caller is checking for.
+        var found = await Summaries(Open().Where(account => account.ServiceLocationId == serviceLocationId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // In service order rather than the newest-first the join imposes: the caller reads this as
+        // "what is taken here", which is a list of supplies and not a history.
+        return [.. found.Select(Summarise).OrderBy(account => account.ServiceType)];
     }
 
     /// <summary>Every account, untracked. A caller outside this module has no business holding one.</summary>
@@ -106,7 +134,7 @@ public sealed class ServiceAccountDirectory(CustomersDbContext database) : IServ
     /// The accounts still holding their premise. Expressed as "not Closed" rather than as a list of
     /// the three open statuses, so a status added later joins the set without this line being
     /// remembered — and it is the same predicate <c>ux_service_accounts_open_location</c> filters on,
-    /// which is what makes at most one row per premise a database fact.
+    /// which is what makes at most one row per premise <i>per service</i> a database fact.
     /// </summary>
     private IQueryable<ServiceAccount> Open() =>
         Accounts().Where(account => account.Status != ServiceAccountStatus.Closed);
@@ -139,6 +167,12 @@ public sealed class ServiceAccountDirectory(CustomersDbContext database) : IServ
 
             // By name, never the enum: Contracts takes no dependency on this module's types.
             row.Account.Status.ToString(),
+
+            // The one exception, and the exception proves the rule: ServiceType is declared in
+            // Contracts and owned by nobody, so handing it over as itself takes no dependency on
+            // anything of this module's. See the enum's own remarks.
+            row.Account.ServiceType,
+            row.Account.IsMetered,
             row.Account.HoldsPremise,
             row.Account.ServiceStartedAt);
 

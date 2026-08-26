@@ -1,5 +1,6 @@
 using System.Globalization;
 using GridCore.Contracts.Directories;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Fees;
@@ -149,8 +150,13 @@ public sealed class BillsDemoSeeder(
                 continue;
             }
 
+            // Electricity, for the reason BillService.RunAsync states: a seeded reading came off a
+            // revenue meter, and the demo world's accounts are all electric ones.
             var openAccounts = await accounts
-                .FindOpenAtLocationsAsync([.. cycle.Select(reading => reading.ServiceLocationId)], cancellationToken)
+                .FindOpenAtLocationsAsync(
+                    [.. cycle.Select(reading => reading.ServiceLocationId)],
+                    ServiceType.Electricity,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             // The one account somebody has deliberately put on the commercial tariff. Assigned on

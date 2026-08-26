@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -33,7 +34,7 @@ public class CustomerNoteServiceTests
             new ServiceLocationInput(Address.Create("1 Songsong Road", "Songsong", "Rota", "MP", postalCode: "96951"), "House")));
 
         var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(
-            new OpenServiceAccountInput(customer.Id, location.Id)));
+            new OpenServiceAccountInput(customer.Id, location.Id, ServiceType.Electricity)));
 
         return (customer, account);
     }

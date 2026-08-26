@@ -1,4 +1,5 @@
 using GridCore.IntegrationTests.Infrastructure;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Fees;
@@ -77,7 +78,7 @@ public sealed class AccountChargeTests(GateFixture fixture) : IAsyncLifetime
         {
             var accounts = scope.ServiceProvider.GetRequiredService<IServiceAccountService>();
 
-            var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, "Requested at the counter"));
+            var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, ServiceType.Electricity, "Requested at the counter"));
 
             await accounts.StartServiceAsync(account.Id, "Connected.");
 

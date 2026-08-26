@@ -53,11 +53,15 @@ public sealed class RatePlanConfiguration : IEntityTypeConfiguration<RatePlan>
             .HasDatabaseName("ux_rate_plans_code_effective")
             .IsUnique();
 
-        // "The default plan" cannot be two plans ON ONE DAY, so the database says so rather than the
-        // code hoping so. Filtered, because every other plan is legitimately not the default; keyed
-        // on the effective date as well, because every version of the default tariff carries the
-        // flag — repricing the default must not leave the utility without one.
-        builder.HasIndex(plan => new { plan.IsDefault, plan.EffectiveFrom })
+        // "The default plan" cannot be two plans ON ONE DAY FOR ONE SERVICE, so the database says so
+        // rather than the code hoping so. Filtered, because every other plan is legitimately not the
+        // default; keyed on the effective date as well, because every version of the default tariff
+        // carries the flag — repricing the default must not leave the utility without one.
+        //
+        // The SERVICE joined the key in WP-2.17. Keyed on the flag and the date alone, which is what
+        // WP-2.3 shipped when every tariff was an electric one, a default water tariff could never be
+        // published at all: it would collide with the electric default on its own effective date.
+        builder.HasIndex(plan => new { plan.ServiceType, plan.IsDefault, plan.EffectiveFrom })
             .HasDatabaseName("ux_rate_plans_default_effective")
             .IsUnique()
             .HasFilter("is_default");

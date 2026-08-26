@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.RatePlans;
@@ -26,6 +27,8 @@ public class BillTests
         "Ana Reyes",
         Guid.CreateVersion7(),
         "Active",
+        ServiceType.Electricity,
+        IsMetered: true,
         HoldsPremise: true,
         DateTimeOffset.UnixEpoch);
 

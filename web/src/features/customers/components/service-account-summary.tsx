@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { ServiceAccount } from '@/api/customers';
+import { serviceTypeLabel, type ServiceAccount } from '@/api/customers';
 import { StatusPill } from '@/components/ui/status';
 import { formatDate, formatLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,13 @@ export function ServiceAccountSummary({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="text-heading tabular text-[13px] font-semibold">{account.accountNumber}</span>
         <StatusPill status={formatLabel(account.status)} />
+
+        {/*
+          The supply, beside the status (WP-2.17). One premise may hold three of these rows and the
+          account number is the only other thing that would tell them apart — which is a number
+          nobody reads before they have found the row they wanted.
+        */}
+        <span className="text-muted text-xs font-medium">{serviceTypeLabel(account.serviceType)}</span>
       </div>
       {secondary && <p className="text-body mt-1 text-[13px]">{secondary}</p>}
       <p className="text-muted mt-1 text-xs">

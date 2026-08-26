@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { bill, paidBill } from '@/test/revenue-cycle-fixtures';
-import { depositEntry, depositLedger } from '@/test/registry-fixtures';
+import {
+  depositAccountRequirement,
+  depositEntry,
+  depositLedger,
+  depositRequirement,
+} from '@/test/registry-fixtures';
 import {
   applicableAmount,
   billsADepositCouldSettle,
+  depositBasisLabel,
   depositKindLabel,
   depositKindTone,
   depositStanding,
@@ -17,21 +23,47 @@ describe('depositStanding', () => {
     // Two different conversations. "Nothing held" is a waived or uncollected deposit; "short" is a
     // part-payment at the counter with a balance still to come — and a screen showing both as
     // short would send a rep chasing a customer who was never asked.
-    expect(depositStanding(depositLedger({ balance: 0, shortfallAmount: 450 }))).toBe('none');
-    expect(depositStanding(depositLedger({ balance: 200, shortfallAmount: 250 }))).toBe('short');
+    expect(depositStanding(depositLedger({ balance: 0 }))).toBe('none');
+    expect(depositStanding(depositLedger({ balance: 200 }))).toBe('short');
   });
+
+  it('treats a customer taking no service as covered rather than as holding nothing', () =>
+    // WP-2.17: the schedule is keyed on the SUPPLY, so a customer with no open account is asked for
+    // nothing. "None held" would send a rep chasing a deposit for a connection nobody applied for.
+    expect(
+      depositStanding(
+        depositLedger({ balance: 0, requirement: depositRequirement({ requiredAmount: 0, accounts: [] }) }),
+      ),
+    ).toBe('covered'));
+
+  it('measures against the sum over every supply the customer takes', () =>
+    // Two accounts at $75 and $30. A class-keyed figure would have called $100 covered.
+    expect(
+      depositStanding(
+        depositLedger({
+          balance: 100,
+          requirement: depositRequirement({
+            requiredAmount: 105,
+            accounts: [
+              depositAccountRequirement({ serviceType: 'Electricity', requiredAmount: 75 }),
+              depositAccountRequirement({ serviceType: 'Wastewater', requiredAmount: 30, isMetered: false }),
+            ],
+          }),
+        }),
+      ),
+    ).toBe('short'));
 
   it('treats a balance that exactly meets the schedule as covered', () => {
     // The boundary. Compared in cents, so 450 against 450 is met rather than short by a rounding
     // artefact — which is what a naive `>=` on parsed decimals would produce often enough to notice.
-    expect(depositStanding(depositLedger({ balance: 450, assessedAmount: 450 }))).toBe('covered');
-    expect(depositStanding(depositLedger({ balance: 449.99, assessedAmount: 450 }))).toBe('short');
+    expect(depositStanding(depositLedger({ balance: 450 }))).toBe('covered');
+    expect(depositStanding(depositLedger({ balance: 449.99 }))).toBe('short');
   });
 
   it('treats more than the schedule asks as covered rather than as its own state', () =>
     // A customer holding more than the schedule is not a case a rep has to act on. WP-2.12 does not
     // cap a collection, so this happens legitimately.
-    expect(depositStanding(depositLedger({ balance: 600, assessedAmount: 450 }))).toBe('covered'));
+    expect(depositStanding(depositLedger({ balance: 600 }))).toBe('covered'));
 
   it('reads a shortfall as a warning, never as an error', () => {
     // A deposit below the schedule is ordinary — a part-payment, or money spent on a bill. Rendering
@@ -41,6 +73,39 @@ describe('depositStanding', () => {
     expect(depositStandingTone('none')).toBe('neutral');
 
     expect(depositStandingLabel('short')).toBe('Below the schedule');
+  });
+});
+
+describe('depositBasisLabel', () => {
+  it('says an unmetered service is flat rather than pretending it has usage', () =>
+    // There is nothing to measure, so "minimum" would read as though usage had been considered.
+    expect(depositBasisLabel(depositAccountRequirement({ isMetered: false, usageMonths: null, usageRate: null }))).toBe(
+      'Flat charge — unmetered service',
+    ));
+
+  it('reads out the working when usage decided the figure', () =>
+    // What a rep says down the telephone. The figure alone cannot be argued with.
+    expect(
+      depositBasisLabel(
+        depositAccountRequirement({
+          isUsageBased: true,
+          hasUsageHistory: true,
+          averageMonthlyUsage: 400,
+          usageMonths: 2,
+        }),
+      ),
+    ).toBe('2 months of 400 a month'));
+
+  it('separates a premise nobody has read from one whose usage is simply below the floor', () => {
+    // Two different conversations that produce the same number, which is exactly why the basis is on
+    // screen at all.
+    expect(depositBasisLabel(depositAccountRequirement({ hasUsageHistory: false }))).toBe(
+      'Minimum — nothing read here yet',
+    );
+
+    expect(depositBasisLabel(depositAccountRequirement({ hasUsageHistory: true, isUsageBased: false }))).toBe(
+      'Minimum — usage is below it',
+    );
   });
 });
 

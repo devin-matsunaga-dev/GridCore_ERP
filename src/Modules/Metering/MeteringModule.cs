@@ -48,16 +48,21 @@ public sealed class MeteringModule : IModule
         // Customers knows the customer and neither may read the other's schema.
         services.AddScoped<IMeterDirectory, MeterDirectory>();
 
+        // What premises consume, as the rest of GridCore reads it (WP-2.17). Customers assesses a
+        // usage-based deposit against it — a derived statistic and never the readings themselves,
+        // which is why it is its own seam rather than a fourth method on the reading directory.
+        services.AddScoped<IUsageDirectory, UsageDirectory>();
+
         // The simulation seam. Metering owns the meter simulator (ARCHITECTURE.md's module table),
         // so unlike the premise directory this one IS registered here — but only ever against the
         // Contracts interface, which is what lets a production deployment swap in an AMI head-end by
         // changing this line and nothing else (invariant 6).
         services.AddSingleton<IMeterReadingProvider, SimulatedMeterReadingProvider>();
 
-        // Note what is NOT here: IServiceLocationDirectory. This module consumes it and the
-        // Customers module registers it, which is the whole point of putting the interface in
-        // Contracts — a module never registers another module's implementation, and never
-        // references the assembly that holds one.
+        // Note what is NOT here: IServiceLocationDirectory, and since WP-2.17 IServiceAccountDirectory
+        // as well. This module consumes both and the Customers module registers both, which is the
+        // whole point of putting the interfaces in Contracts — a module never registers another
+        // module's implementation, and never references the assembly that holds one.
 
         // Edge validation. Registered one by one rather than by scanning, so the composition stays
         // greppable — the same reason Program.cs lists the modules.

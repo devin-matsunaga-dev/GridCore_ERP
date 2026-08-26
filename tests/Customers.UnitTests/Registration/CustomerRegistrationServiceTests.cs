@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -44,6 +45,7 @@ public class CustomerRegistrationServiceTests
             "Reyes Family Residence",
             CustomerClass.Residential,
             premise ?? new IntakePremise(APremise()),
+            ServiceType.Electricity,
             "Ana Reyes",
             "ana.reyes@example.com",
             "+1-670-532-0199",
@@ -143,7 +145,9 @@ public class CustomerRegistrationServiceTests
     {
         using var host = NewHost();
 
-        var assessed = DepositRules.All.Single(rule => rule.CustomerClass == CustomerClass.Residential).Amount;
+        var assessed = DepositRules.All
+            .Single(rule => rule.CustomerClass == CustomerClass.Residential && rule.ServiceType == ServiceType.Electricity)
+            .MinimumAmount;
 
         var registration = await host.WithIntakeAsync(intake => intake.RegisterAsync(AnIntake(deposit: assessed)));
 
@@ -208,7 +212,7 @@ public class CustomerRegistrationServiceTests
             customers.RegisterAsync(new RegisterCustomerInput("Sitting tenant", CustomerClass.Residential)));
 
         await host.WithAccountsAsync(accounts =>
-            accounts.OpenAsync(new OpenServiceAccountInput(sittingTenant.Id, premise.Id)));
+            accounts.OpenAsync(new OpenServiceAccountInput(sittingTenant.Id, premise.Id, ServiceType.Electricity)));
 
         // The premise is already served, so the ACCOUNT step throws — after the deposit was taken.
         await Assert.ThrowsAsync<RegistryWorkflowException>(() =>

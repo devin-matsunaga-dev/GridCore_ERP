@@ -72,7 +72,7 @@ export function CustomerRegistrationPage() {
     (values, context, options) =>
       zodResolver(
         intakeSchema({
-          assessedAmount: assessmentFor(rules.data, values.class)?.amount,
+          assessedAmount: assessmentFor(rules.data, values.class, values.serviceType)?.amount,
           mayCollectDeposit,
         }),
       )(values, context, options),
@@ -86,7 +86,7 @@ export function CustomerRegistrationPage() {
   // object on every render, which React Compiler cannot memoize past.
   const values = useWatch({ control: form.control, defaultValue: emptyIntake }) as IntakeValues;
 
-  const assessment = assessmentFor(rules.data, values.class);
+  const assessment = assessmentFor(rules.data, values.class, values.serviceType);
 
   const premises = useServiceLocations({ isActive: true });
 

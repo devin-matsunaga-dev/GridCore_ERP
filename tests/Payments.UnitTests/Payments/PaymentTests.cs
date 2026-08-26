@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Providers;
 using GridCore.Modules.Payments.Features.Payments;
@@ -23,7 +24,9 @@ public sealed class PaymentTests
             "Elena Sablan",
             Guid.CreateVersion7(Now),
             "Active",
-            HoldsPremise: true,
+            ServiceType.Electricity,
+        IsMetered: true,
+        HoldsPremise: true,
             DateTimeOffset.UnixEpoch);
 
     private static BillSummary Bill(

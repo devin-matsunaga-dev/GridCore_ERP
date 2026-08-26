@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Platform.Registry;
@@ -16,7 +17,7 @@ public class ServiceAddressDefaultTests
     private static readonly RegistryActor Actor = new("auth0|cs-agent", "Ana Cruz");
 
     private static ServiceAccount AnAccount(string number, DateTimeOffset openedAt) =>
-        ServiceAccount.Open(number, Guid.CreateVersion7(Now), Guid.CreateVersion7(openedAt), Actor, openedAt);
+        ServiceAccount.Open(number, Guid.CreateVersion7(Now), Guid.CreateVersion7(openedAt), ServiceType.Electricity, Actor, openedAt);
 
     [Fact]
     public void No_accounts_means_no_service_address() =>

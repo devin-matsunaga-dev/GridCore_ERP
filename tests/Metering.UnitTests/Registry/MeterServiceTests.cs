@@ -1,4 +1,5 @@
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Metering.Features.Meters;
 using GridCore.Modules.Metering.Features.Shared;
 using GridCore.Modules.Metering.UnitTests.Infrastructure;
@@ -143,6 +144,78 @@ public sealed class MeterServiceTests : IDisposable
 
         Assert.Contains("L-000009", refused.Message, StringComparison.Ordinal);
         Assert.Contains("not in service", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_premise_that_takes_only_unmetered_service_cannot_be_metered()
+    {
+        // WP-2.17's refusal. Wastewater is billed a flat charge with no device on the wall, so a
+        // revenue meter fitted here would have nothing to measure — and the rule is stated over the
+        // premise's ACCOUNTS, because a meter is fitted to a premise and not to an account.
+        var premise = _host.ServiceLocations.Add("L-000021");
+
+        _host.ServiceAccounts.Open(premise, ServiceType.Wastewater);
+
+        var meter = await _host.RegisterMeterAsync("SEN-UM-1");
+
+        var refused = await Assert.ThrowsAsync<MeterWorkflowException>(() =>
+            _host.WithMetersAsync(meters => meters.AssignAsync(meter.Meter.Id, new AssignMeterInput(premise))));
+
+        Assert.Contains("L-000021", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("unmetered", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("Wastewater", refused.Message, StringComparison.Ordinal);
+
+        // Refused before the aggregate was touched, so the meter is still in the store.
+        var stored = await _host.WithMetersAsync(meters => meters.FindAsync(meter.Meter.Id));
+
+        Assert.False(stored!.Meter.IsFitted);
+    }
+
+    [Fact]
+    public async Task A_premise_taking_a_metered_service_beside_an_unmetered_one_may_still_be_metered()
+    {
+        // A house on electricity AND wastewater is the ordinary case WP-2.17 made expressible. The
+        // guard refuses a premise where NOTHING taken is measured, not one where something is.
+        var premise = _host.ServiceLocations.Add("L-000022");
+
+        _host.ServiceAccounts.Open(premise, ServiceType.Wastewater);
+        _host.ServiceAccounts.Open(premise, ServiceType.Electricity);
+
+        var meter = await _host.RegisterMeterAsync("SEN-UM-2");
+
+        var fitted = await _host.WithMetersAsync(meters => meters.AssignAsync(meter.Meter.Id, new AssignMeterInput(premise)));
+
+        Assert.True(fitted.Meter.IsFitted);
+        Assert.Equal(premise, fitted.Meter.ServiceLocationId);
+    }
+
+    [Fact]
+    public async Task A_premise_nobody_takes_service_at_may_be_metered()
+    {
+        // A new build is metered before anybody applies for supply, and the demo seeders fit meters
+        // before they open accounts. Refusing that would be Metering inventing an ordering rule for
+        // another module's registry.
+        var premise = _host.ServiceLocations.Add("L-000023");
+        var meter = await _host.RegisterMeterAsync("SEN-UM-3");
+
+        var fitted = await _host.WithMetersAsync(meters => meters.AssignAsync(meter.Meter.Id, new AssignMeterInput(premise)));
+
+        Assert.True(fitted.Meter.IsFitted);
+    }
+
+    [Fact]
+    public async Task A_closed_unmetered_account_does_not_block_a_meter()
+    {
+        // The guard reads OPEN accounts. A wastewater account that has been closed is not service
+        // being taken, so it says nothing about what may be fitted at the premise now.
+        var premise = _host.ServiceLocations.Add("L-000024");
+
+        _host.ServiceAccounts.Open(premise, ServiceType.Wastewater, status: "Closed");
+
+        var meter = await _host.RegisterMeterAsync("SEN-UM-4");
+
+        Assert.True((await _host.WithMetersAsync(meters =>
+            meters.AssignAsync(meter.Meter.Id, new AssignMeterInput(premise)))).Meter.IsFitted);
     }
 
     [Fact]

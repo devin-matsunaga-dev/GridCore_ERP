@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Directories;
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Billing.Features.Bills;
@@ -278,7 +279,7 @@ public sealed class CustomerDocumentTests(GateFixture fixture) : IAsyncLifetime
         await using (var scope = fixture.CreateScope())
         {
             var accounts = scope.ServiceProvider.GetRequiredService<IServiceAccountService>();
-            var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, "Requested at the counter"));
+            var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer, premise, ServiceType.Electricity, "Requested at the counter"));
 
             await accounts.StartServiceAsync(account.Id, "Connected.");
         }

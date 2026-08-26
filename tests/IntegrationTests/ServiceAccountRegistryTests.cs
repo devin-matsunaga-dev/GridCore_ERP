@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.IntegrationTests.Infrastructure;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
@@ -38,7 +39,7 @@ public sealed class ServiceAccountRegistryTests(GateFixture fixture) : IAsyncLif
         {
             var accounts = scope.ServiceProvider.GetRequiredService<IServiceAccountService>();
 
-            accountId = (await accounts.OpenAsync(new OpenServiceAccountInput(customerId, locationId, "Requested at the counter"))).Id;
+            accountId = (await accounts.OpenAsync(new OpenServiceAccountInput(customerId, locationId, ServiceType.Electricity, "Requested at the counter"))).Id;
         }
 
         await using (var scope = fixture.CreateScope())
@@ -82,7 +83,7 @@ public sealed class ServiceAccountRegistryTests(GateFixture fixture) : IAsyncLif
         await using (var scope = fixture.CreateScope())
         {
             await scope.ServiceProvider.GetRequiredService<IServiceAccountService>()
-                .OpenAsync(new OpenServiceAccountInput(customerId, locationId));
+                .OpenAsync(new OpenServiceAccountInput(customerId, locationId, ServiceType.Electricity));
         }
 
         await using var second = fixture.CreateScope();
@@ -93,6 +94,58 @@ public sealed class ServiceAccountRegistryTests(GateFixture fixture) : IAsyncLif
             "A-999999",
             otherCustomerId,
             locationId,
+            ServiceType.Electricity,
+            new RegistryActor("system", "system"),
+            DateTimeOffset.UtcNow));
+
+        var failure = await Assert.ThrowsAsync<DbUpdateException>(() => database.SaveChangesAsync());
+
+        Assert.Equal("23505", Assert.IsType<PostgresException>(failure.InnerException).SqlState);
+    }
+
+    [Fact]
+    public async Task One_premise_takes_one_account_of_each_service_and_the_database_refuses_a_second_of_one()
+    {
+        // WP-2.17 widened ux_service_accounts_open_location to (premise, service). Both halves of
+        // that need Postgres to prove: that a house may hold three open accounts at once, and that
+        // the index still refuses two for the SAME supply — which is the rule that mattered all
+        // along, and the only thing standing between a race and two accounts billing one meter.
+        var (customerId, locationId) = await ARegisteredPairingAsync();
+        var (otherCustomerId, _) = await ARegisteredPairingAsync("Taisacan Household", "14 Tatachog Street");
+
+        foreach (var serviceType in ServiceTypes.All)
+        {
+            await using var scope = fixture.CreateScope();
+
+            await scope.ServiceProvider.GetRequiredService<IServiceAccountService>()
+                .OpenAsync(new OpenServiceAccountInput(customerId, locationId, serviceType));
+        }
+
+        await using (var read = fixture.CreateScope())
+        {
+            var open = await read.ServiceProvider.GetRequiredService<CustomersDbContext>()
+                .ServiceAccounts.AsNoTracking()
+                .Where(account => account.ServiceLocationId == locationId)
+                .Select(account => account.ServiceType)
+                .ToListAsync();
+
+            // Ordered in memory, by the ENUM rather than by its stored name — the column holds
+            // 'Electricity', 'Gas', 'Wastewater', 'Water' and Postgres would sort it alphabetically.
+            // The same call ServiceAccountDirectory.ListOpenAtLocationAsync makes, for the same reason.
+            Assert.Equal(ServiceTypes.All, open.Order().ToList());
+        }
+
+        // Straight through the context, past the service's own check — which is exactly what a race
+        // between two requests does.
+        await using var collision = fixture.CreateScope();
+
+        var database = collision.ServiceProvider.GetRequiredService<CustomersDbContext>();
+
+        database.ServiceAccounts.Add(ServiceAccount.Open(
+            "A-999998",
+            otherCustomerId,
+            locationId,
+            ServiceType.Water,
             new RegistryActor("system", "system"),
             DateTimeOffset.UtcNow));
 
@@ -112,7 +165,7 @@ public sealed class ServiceAccountRegistryTests(GateFixture fixture) : IAsyncLif
         await using (var scope = fixture.CreateScope())
         {
             accountId = (await scope.ServiceProvider.GetRequiredService<IServiceAccountService>()
-                .OpenAsync(new OpenServiceAccountInput(customerId, locationId))).Id;
+                .OpenAsync(new OpenServiceAccountInput(customerId, locationId, ServiceType.Electricity))).Id;
         }
 
         await using (var scope = fixture.CreateScope())
@@ -126,7 +179,7 @@ public sealed class ServiceAccountRegistryTests(GateFixture fixture) : IAsyncLif
         // A closed account releases its premise, so the partial index no longer covers the old row
         // and the next occupant can be connected.
         var reopened = await reissue.ServiceProvider.GetRequiredService<IServiceAccountService>()
-            .OpenAsync(new OpenServiceAccountInput(nextCustomerId, locationId));
+            .OpenAsync(new OpenServiceAccountInput(nextCustomerId, locationId, ServiceType.Electricity));
 
         Assert.Equal(ServiceAccountStatus.Pending, reopened.Status);
     }

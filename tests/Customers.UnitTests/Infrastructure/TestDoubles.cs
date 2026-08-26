@@ -1,5 +1,6 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -546,5 +547,58 @@ public sealed class FakePaymentDirectory : IPaymentDirectory
             .ToList();
 
         return Task.FromResult(found);
+    }
+}
+
+/// <summary>
+/// The Metering module's usage register, as this module is allowed to see it — a dictionary rather
+/// than a decade of meter readings (WP-2.17).
+/// </summary>
+/// <remarks>
+/// <para>
+/// The sibling of <see cref="FakeMeterDirectory"/> and there for the same reason: WP-2.17's deposit
+/// re-assessment prices measured usage, and a Customers test may not resolve the real
+/// <c>UsageDirectory</c> because a metering schema is the thing this module must never know about.
+/// </para>
+/// <para>
+/// <b>Nothing measured is the default</b>, which is what a premise with no reading history answers —
+/// and the case a usage-based rule has to fall back to its minimum for. A test that wants an average
+/// says so with <see cref="Measured"/>.
+/// </para>
+/// </remarks>
+public sealed class FakeUsageDirectory : IUsageDirectory
+{
+    private readonly Dictionary<(Guid Premise, ServiceType Service), PremiseUsage> _usage = [];
+
+    /// <summary>Every premise a caller asked about — how a test proves the seam was consulted at all.</summary>
+    public List<Guid> Lookups { get; } = [];
+
+    /// <summary>The periods the last caller asked to average over.</summary>
+    public List<int> RequestedPeriods { get; } = [];
+
+    /// <summary>Records that <paramref name="serviceLocationId"/> averages <paramref name="average"/> a month.</summary>
+    public void Measured(Guid serviceLocationId, decimal average, ServiceType serviceType = ServiceType.Electricity, int periods = 2)
+    {
+        _usage[(serviceLocationId, serviceType)] = new PremiseUsage(
+            serviceLocationId,
+            average,
+            periods,
+            DaysCovered: periods * 30,
+            FirstPeriodStart: DateTimeOffset.UnixEpoch,
+            LastPeriodEnd: DateTimeOffset.UnixEpoch.AddDays(periods * 30));
+    }
+
+    /// <inheritdoc />
+    public Task<PremiseUsage> AverageMonthlyAtLocationAsync(
+        Guid serviceLocationId,
+        ServiceType serviceType,
+        int periods,
+        CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(serviceLocationId);
+        RequestedPeriods.Add(periods);
+
+        return Task.FromResult(
+            _usage.GetValueOrDefault((serviceLocationId, serviceType)) ?? PremiseUsage.None(serviceLocationId));
     }
 }

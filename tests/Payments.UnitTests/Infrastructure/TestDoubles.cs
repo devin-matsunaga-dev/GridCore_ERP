@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
 using GridCore.Contracts.Providers;
+using GridCore.Contracts.Services;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -254,6 +255,8 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
             $"Customer {_ordinal}",
             Guid.CreateVersion7(),
             status,
+            ServiceType.Electricity,
+            IsMetered: true,
             HoldsPremise: !string.Equals(status, "Closed", StringComparison.Ordinal),
             DateTimeOffset.UnixEpoch);
 
@@ -288,13 +291,15 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
     /// <inheritdoc />
     public Task<ServiceAccountSummary?> FindOpenAtLocationAsync(
         Guid serviceLocationId,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(_accounts.Values.FirstOrDefault(account =>
-            account.ServiceLocationId == serviceLocationId && account.HoldsPremise));
+            account.ServiceLocationId == serviceLocationId && account.ServiceType == serviceType && account.HoldsPremise));
 
     /// <inheritdoc />
     public Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindOpenAtLocationsAsync(
         IReadOnlyCollection<Guid> serviceLocationIds,
+        ServiceType serviceType,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceLocationIds);
@@ -302,8 +307,24 @@ public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
         var wanted = serviceLocationIds.Distinct().ToHashSet();
 
         IReadOnlyDictionary<Guid, ServiceAccountSummary> found = _accounts.Values
-            .Where(account => account.HoldsPremise && wanted.Contains(account.ServiceLocationId))
+            .Where(account => account.HoldsPremise && account.ServiceType == serviceType)
+            .Where(account => wanted.Contains(account.ServiceLocationId))
             .ToDictionary(account => account.ServiceLocationId);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ServiceAccountSummary>> ListOpenAtLocationAsync(
+        Guid serviceLocationId,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<ServiceAccountSummary> found =
+        [
+            .. _accounts.Values
+                .Where(account => account.ServiceLocationId == serviceLocationId && account.HoldsPremise)
+                .OrderBy(account => account.ServiceType),
+        ];
 
         return Task.FromResult(found);
     }

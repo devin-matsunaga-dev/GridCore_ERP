@@ -65,6 +65,11 @@ public sealed class CustomersTestHost : IDisposable
         // a real payment of that customer's, so the fast tier stands a double in front of it too.
         services.AddSingleton<IPaymentDirectory>(Payments);
 
+        // Metering registers the real IUsageDirectory; a Customers test may not resolve it, for the
+        // same reason again. WP-2.17's deposit re-assessment asks it what a premise averages a month
+        // before it prices a usage-based rule, so the fast tier stands a double in front of it too.
+        services.AddSingleton<IUsageDirectory>(Usage);
+
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
@@ -81,6 +86,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerSearchService, CustomerSearchService>();
         services.AddScoped<ICustomerContactService, CustomerContactService>();
         services.AddScoped<ICustomerProfileService, CustomerProfileService>();
+        services.AddScoped<IDepositReassessmentService, DepositReassessmentService>();
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
         services.AddScoped<ICustomerNoteService, CustomerNoteService>();
         services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
@@ -104,6 +110,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>The payment register the note log asks whether a linked payment is this customer's.</summary>
     public FakePaymentDirectory Payments { get; } = new();
+
+    /// <summary>The usage register a usage-based deposit is assessed against (WP-2.17).</summary>
+    public FakeUsageDirectory Usage { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -198,7 +207,7 @@ public sealed class CustomersTestHost : IDisposable
 
         return InScopeAsync(services => work(new CustomerDepositService(
             services.GetRequiredService<CustomersDbContext>(),
-            services.GetRequiredService<IDepositRuleService>(),
+            services.GetRequiredService<IDepositReassessmentService>(),
             Bills,
             services.GetRequiredService<IUnitOfWork>(),
             services.GetRequiredService<IAuditLog>(),
@@ -311,6 +320,14 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IDepositRuleService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the deposit re-assessment, in its own scope (WP-2.17).</summary>
+    public Task<TResult> WithReassessmentAsync<TResult>(Func<IDepositReassessmentService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IDepositReassessmentService>()));
     }
 
     /// <summary>

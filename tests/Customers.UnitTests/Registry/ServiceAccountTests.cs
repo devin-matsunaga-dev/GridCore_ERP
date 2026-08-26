@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
@@ -19,7 +20,7 @@ public class ServiceAccountTests
     private static readonly Guid APremise = Guid.CreateVersion7(Opened);
 
     private static ServiceAccount AnAccount(string? reason = null) =>
-        ServiceAccount.Open("A-000001", ACustomer, APremise, Agent, Opened, reason);
+        ServiceAccount.Open("A-000001", ACustomer, APremise, ServiceType.Electricity, Agent, Opened, reason);
 
     [Fact]
     public void An_account_opens_pending_and_not_yet_energised()
@@ -56,17 +57,17 @@ public class ServiceAccountTests
     [InlineData("   ")]
     public void An_account_cannot_be_opened_without_a_number(string accountNumber) =>
         Assert.Throws<RegistryValidationException>(() =>
-            ServiceAccount.Open(accountNumber, ACustomer, APremise, Agent, Opened));
+            ServiceAccount.Open(accountNumber, ACustomer, APremise, ServiceType.Electricity, Agent, Opened));
 
     [Fact]
     public void An_account_cannot_be_opened_without_a_customer() =>
         Assert.Throws<RegistryValidationException>(() =>
-            ServiceAccount.Open("A-000001", Guid.Empty, APremise, Agent, Opened));
+            ServiceAccount.Open("A-000001", Guid.Empty, APremise, ServiceType.Electricity, Agent, Opened));
 
     [Fact]
     public void An_account_cannot_be_opened_without_a_premise() =>
         Assert.Throws<RegistryValidationException>(() =>
-            ServiceAccount.Open("A-000001", ACustomer, Guid.Empty, Agent, Opened));
+            ServiceAccount.Open("A-000001", ACustomer, Guid.Empty, ServiceType.Electricity, Agent, Opened));
 
     [Fact]
     public void Starting_service_energises_it_and_stamps_the_start()

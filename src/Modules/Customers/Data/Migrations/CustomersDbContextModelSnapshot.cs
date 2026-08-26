@@ -404,11 +404,6 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("amount");
-
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(8)
@@ -423,35 +418,123 @@ namespace GridCore.Modules.Customers.Data.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
                         .HasColumnName("description");
+
+                    b.Property<decimal>("MinimumAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("minimum_amount");
+
+                    b.Property<string>("ServiceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("service_type");
+
+                    b.Property<int?>("UsageMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_months");
+
+                    b.Property<decimal?>("UsageRate")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("usage_rate");
 
                     b.HasKey("Id")
                         .HasName("pk_deposit_rules");
 
-                    b.HasIndex("CustomerClass")
+                    b.HasIndex("CustomerClass", "ServiceType")
                         .IsUnique()
-                        .HasDatabaseName("ux_deposit_rules_class");
+                        .HasDatabaseName("ux_deposit_rules_class_service");
 
                     b.ToTable("deposit_rules", "customers");
 
                     b.HasData(
                         new
                         {
-                            Id = new Guid("01a03637-7800-7b13-b0b4-4a028a08b4e8"),
-                            Amount = 75.00m,
+                            Id = new Guid("01a03637-7800-7065-af71-6221df4735ea"),
                             Currency = "USD",
                             CustomerClass = "Residential",
-                            Description = "One residential connection: two months of a typical household bill, refundable on close."
+                            Description = "Residential electricity: the greater of $75 and two months of average usage at $0.3200/kWh. Demonstration figures — CUC's published residential deposit and its energy rate both move, and neither is quoted here as authoritative.",
+                            MinimumAmount = 75.00m,
+                            ServiceType = "Electricity",
+                            UsageMonths = 2,
+                            UsageRate = 0.3200m
                         },
                         new
                         {
-                            Id = new Guid("01a03637-7800-7a7d-8b76-34355f44b9d8"),
-                            Amount = 450.00m,
+                            Id = new Guid("01a03637-7800-7896-beab-6e1fb5e65cfa"),
+                            Currency = "USD",
+                            CustomerClass = "Residential",
+                            Description = "Residential water: the greater of $50 and two months of average usage at $2.5000 per cubic metre. Demonstration figures — the utility in this MVP distributes electricity only, and the water schedule exists so the module can express a service it does not yet supply.",
+                            MinimumAmount = 50.00m,
+                            ServiceType = "Water",
+                            UsageMonths = 2,
+                            UsageRate = 2.5000m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-7a18-8779-ab6d1f2d9d9f"),
+                            Currency = "USD",
+                            CustomerClass = "Residential",
+                            Description = "Residential gas: the greater of $50 and two months of average usage at $1.5000 per therm. Demonstration figures — GridCore declares gas as a service type and the demonstration utility does not distribute it; the rule exists so the schedule is complete.",
+                            MinimumAmount = 50.00m,
+                            ServiceType = "Gas",
+                            UsageMonths = 2,
+                            UsageRate = 1.5000m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-7990-9709-6e7948af367d"),
+                            Currency = "USD",
+                            CustomerClass = "Residential",
+                            Description = "Residential wastewater: a flat $30. Unmetered — there is no wastewater meter, so there is nothing to average and no usage basis to apply. Demonstration figure.",
+                            MinimumAmount = 30.00m,
+                            ServiceType = "Wastewater"
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-7ff8-b74d-41c6cc4d344a"),
                             Currency = "USD",
                             CustomerClass = "Commercial",
-                            Description = "One commercial connection: two months of a small-premises bill, refundable on close."
+                            Description = "Commercial electricity: the greater of $450 and two months of average usage at $0.3200/kWh. Demonstration figures — CUC's published commercial deposit and its energy rate both move, and neither is quoted here as authoritative.",
+                            MinimumAmount = 450.00m,
+                            ServiceType = "Electricity",
+                            UsageMonths = 2,
+                            UsageRate = 0.3200m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-7d84-a36d-d09df560653d"),
+                            Currency = "USD",
+                            CustomerClass = "Commercial",
+                            Description = "Commercial water: the greater of $250 and two months of average usage at $2.5000 per cubic metre. Demonstration figures — see the residential water rule.",
+                            MinimumAmount = 250.00m,
+                            ServiceType = "Water",
+                            UsageMonths = 2,
+                            UsageRate = 2.5000m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-7159-991a-fed1e0114a6e"),
+                            Currency = "USD",
+                            CustomerClass = "Commercial",
+                            Description = "Commercial gas: the greater of $250 and two months of average usage at $1.5000 per therm. Demonstration figures — see the residential gas rule.",
+                            MinimumAmount = 250.00m,
+                            ServiceType = "Gas",
+                            UsageMonths = 2,
+                            UsageRate = 1.5000m
+                        },
+                        new
+                        {
+                            Id = new Guid("01a03637-7800-73ce-aafd-d7d13f799782"),
+                            Currency = "USD",
+                            CustomerClass = "Commercial",
+                            Description = "Commercial wastewater: a flat $150. Unmetered — there is no wastewater meter, so there is nothing to average and no usage basis to apply. Demonstration figure.",
+                            MinimumAmount = 150.00m,
+                            ServiceType = "Wastewater"
                         });
                 });
 
@@ -487,6 +570,12 @@ namespace GridCore.Modules.Customers.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("service_started_at");
 
+                    b.Property<string>("ServiceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("service_type");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -512,13 +601,13 @@ namespace GridCore.Modules.Customers.Data.Migrations
                     b.HasIndex("CustomerId")
                         .HasDatabaseName("ix_service_accounts_customer_id");
 
-                    b.HasIndex("ServiceLocationId")
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_service_accounts_status");
+
+                    b.HasIndex("ServiceLocationId", "ServiceType")
                         .IsUnique()
                         .HasDatabaseName("ux_service_accounts_open_location")
                         .HasFilter("\"status\" <> 'Closed'");
-
-                    b.HasIndex("Status")
-                        .HasDatabaseName("ix_service_accounts_status");
 
                     b.ToTable("service_accounts", "customers");
                 });

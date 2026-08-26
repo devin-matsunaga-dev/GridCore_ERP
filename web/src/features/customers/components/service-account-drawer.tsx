@@ -1,4 +1,4 @@
-import type { ServiceAccount, ServiceAccountHistoryEntry, ServiceLocation } from '@/api/customers';
+import { serviceTypeLabel, type ServiceAccount, type ServiceAccountHistoryEntry, type ServiceLocation } from '@/api/customers';
 import type { Meter } from '@/api/metering';
 import { DetailList, orNotRecorded } from '@/components/registry/detail-list';
 import { Drawer, DrawerSection } from '@/components/registry/drawer';
@@ -52,6 +52,7 @@ export function ServiceAccountDrawer({
             {location ? location.formattedAddress : 'Premise loading…'}
           </span>
           <StatusPill status={formatLabel(account.status)} />
+          <span className="text-muted text-[13px]">{serviceTypeLabel(account.serviceType)}</span>
         </>
       }
     >
@@ -59,6 +60,12 @@ export function ServiceAccountDrawer({
         <DrawerSection title="Account">
           <DetailList
             items={[
+              {
+                label: 'Service',
+                value: account.isMetered
+                  ? serviceTypeLabel(account.serviceType)
+                  : `${serviceTypeLabel(account.serviceType)} (unmetered)`,
+              },
               { label: 'Opened', value: formatDate(account.openedAt) },
               {
                 label: 'Premise code',
@@ -92,7 +99,17 @@ export function ServiceAccountDrawer({
         </DrawerSection>
 
         <DrawerSection title="Meter">
-          <ServiceAccountMeter meter={meter} isPending={isMeterPending} />
+          {account.isMetered ? (
+            <ServiceAccountMeter meter={meter} isPending={isMeterPending} />
+          ) : (
+            // Not "no meter fitted yet" — there will never be one. Wastewater is billed a flat
+            // charge and GridCore refuses to fit a revenue meter where only unmetered service is
+            // taken (WP-2.17), so a screen that showed the ordinary empty state here would be
+            // inviting a rep to go and look for a device nobody is going to install.
+            <p className="text-muted text-[13px]">
+              {serviceTypeLabel(account.serviceType)} is unmetered — no meter is fitted and no reading is taken.
+            </p>
+          )}
         </DrawerSection>
 
         {/*

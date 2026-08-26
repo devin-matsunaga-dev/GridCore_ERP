@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Security;
@@ -83,15 +84,117 @@ public sealed record DepositEntryResponse(
     }
 }
 
+/// <summary>What one open account contributes to a customer's deposit requirement, on the wire.</summary>
+/// <param name="ServiceAccountId">The account assessed.</param>
+/// <param name="AccountNumber">Its number, as quoted.</param>
+/// <param name="ServiceLocationId">The premise, which is where any usage behind it was measured.</param>
+/// <param name="Status">Where the account stands, by name.</param>
+/// <param name="ServiceType">Which supply it takes, by name.</param>
+/// <param name="IsMetered">Whether that supply is measured at all.</param>
+/// <param name="RequiredAmount">What the rule for this class and service asks.</param>
+/// <param name="MinimumAmount">The published floor, whether or not it is what answered.</param>
+/// <param name="IsUsageBased">Whether measured usage decided the figure rather than the floor.</param>
+/// <param name="AverageMonthlyUsage">The average that priced it, where usage was considered.</param>
+/// <param name="UsageMonths">How many months of usage the rule takes, where it takes any.</param>
+/// <param name="UsageRate">What one unit is priced at for deposit purposes.</param>
+/// <param name="HasUsageHistory">Whether anything has actually been measured at the premise.</param>
+/// <param name="Description">Why the figure is what it is, in the clerk's words.</param>
+/// <param name="RuleId">The reference row that answered.</param>
+public sealed record DepositAccountRequirementResponse(
+    Guid ServiceAccountId,
+    string AccountNumber,
+    Guid ServiceLocationId,
+    string Status,
+    string ServiceType,
+    bool IsMetered,
+    decimal RequiredAmount,
+    decimal MinimumAmount,
+    bool IsUsageBased,
+    decimal? AverageMonthlyUsage,
+    int? UsageMonths,
+    decimal? UsageRate,
+    bool HasUsageHistory,
+    string Description,
+    Guid RuleId)
+{
+    /// <summary>Projects one line for the wire.</summary>
+    public static DepositAccountRequirementResponse From(DepositAccountRequirement line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+
+        return new DepositAccountRequirementResponse(
+            line.ServiceAccountId,
+            line.AccountNumber,
+            line.ServiceLocationId,
+            line.Status,
+            line.Assessment.ServiceType.ToString(),
+            ServiceTypes.IsMetered(line.Assessment.ServiceType),
+            line.Assessment.Amount,
+            line.Assessment.MinimumAmount,
+            line.Assessment.IsUsageBased,
+            line.Assessment.AverageMonthlyUsage,
+            line.Assessment.UsageMonths,
+            line.Assessment.UsageRate,
+            line.HasUsageHistory,
+            line.Assessment.Description,
+            line.Assessment.RuleId);
+    }
+}
+
+/// <summary>
+/// What a customer is holding against what the schedule now asks of them, on the wire (WP-2.17).
+/// </summary>
+/// <param name="CustomerId">Whose deposit.</param>
+/// <param name="AccountNumber">The customer number they quote.</param>
+/// <param name="CustomerClass">The class every line was assessed on.</param>
+/// <param name="Currency">ISO 4217 code the figures are expressed in.</param>
+/// <param name="HeldAmount">What the utility holds.</param>
+/// <param name="RequiredAmount">What the schedule asks across every open account.</param>
+/// <param name="ShortfallAmount">What is still to be collected. Floored at zero by the host.</param>
+/// <param name="IsCovered">Whether the utility is holding at least what it asks for.</param>
+/// <param name="AssessedAt">When the usage behind it was cut off, so the answer is reproducible.</param>
+/// <param name="Accounts">The line per open account, in service order.</param>
+public sealed record DepositRequirementResponse(
+    Guid CustomerId,
+    string AccountNumber,
+    string CustomerClass,
+    string Currency,
+    decimal HeldAmount,
+    decimal RequiredAmount,
+    decimal ShortfallAmount,
+    bool IsCovered,
+    DateTimeOffset AssessedAt,
+    IReadOnlyList<DepositAccountRequirementResponse> Accounts)
+{
+    /// <summary>Projects a <see cref="DepositRequirement"/> for the wire.</summary>
+    public static DepositRequirementResponse From(DepositRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(requirement);
+
+        return new DepositRequirementResponse(
+            requirement.CustomerId,
+            requirement.AccountNumber,
+            requirement.CustomerClass.ToString(),
+            requirement.Currency,
+            requirement.HeldAmount,
+            requirement.RequiredAmount,
+            requirement.ShortfallAmount,
+            requirement.IsCovered,
+            requirement.AssessedAt,
+            [.. requirement.Accounts.Select(DepositAccountRequirementResponse.From)]);
+    }
+}
+
 /// <summary>One customer's deposit, as the API returns it.</summary>
 /// <param name="CustomerId">Whose deposit.</param>
 /// <param name="AccountNumber">The number they quote.</param>
 /// <param name="Balance">What the utility holds. These entries add up to it.</param>
 /// <param name="Currency">ISO 4217 code the balance is expressed in.</param>
-/// <param name="CustomerClass">The class the schedule was read for.</param>
-/// <param name="AssessedAmount">What the schedule asks of a customer of that class.</param>
-/// <param name="ShortfallAmount">How much less than the assessed figure is held, or zero when it is covered.</param>
-/// <param name="RuleId">The reference row the assessed figure came from.</param>
+/// <param name="Requirement">
+/// The whole re-assessment — what is asked per open account, what that comes to, and the shortfall.
+/// A composite since WP-2.17: one <c>assessedAmount</c> could only ever describe a customer taking
+/// one supply, and the point of the package is that they may take three.
+/// </param>
 /// <param name="IsInterestBearing">The terms the money now held was taken under.</param>
 /// <param name="Entries">Every movement, newest first.</param>
 public sealed record DepositLedgerResponse(
@@ -99,17 +202,14 @@ public sealed record DepositLedgerResponse(
     string AccountNumber,
     decimal Balance,
     string Currency,
-    string CustomerClass,
-    decimal AssessedAmount,
-    decimal ShortfallAmount,
-    Guid RuleId,
+    DepositRequirementResponse Requirement,
     bool IsInterestBearing,
     IReadOnlyList<DepositEntryResponse> Entries)
 {
     /// <summary>Projects a <see cref="DepositLedger"/> for the wire.</summary>
     /// <remarks>
-    /// The shortfall is computed here rather than in the browser, and it is <b>floored at zero</b>:
-    /// a customer holding more than the schedule asks for is not short by a negative amount, and a
+    /// The shortfall inside the requirement is computed by the host and <b>floored at zero</b>: a
+    /// customer holding more than the schedule asks for is not short by a negative amount, and a
     /// screen handed one would have to decide what a negative shortfall means.
     /// </remarks>
     public static DepositLedgerResponse From(DepositLedger ledger)
@@ -121,10 +221,7 @@ public sealed record DepositLedgerResponse(
             ledger.AccountNumber,
             ledger.Balance,
             ledger.Currency,
-            ledger.Assessment.CustomerClass.ToString(),
-            ledger.Assessment.Amount,
-            Math.Max(0m, ledger.Assessment.Amount - ledger.Balance),
-            ledger.Assessment.RuleId,
+            DepositRequirementResponse.From(ledger.Requirement),
             ledger.IsInterestBearing,
             [.. ledger.Entries.Select(DepositEntryResponse.From)]);
     }
@@ -169,6 +266,26 @@ public static class DepositEndpoints
                     Results.Ok(DepositLedgerResponse.From(await deposits.GetAsync(customerId, cancellationToken)))))
             .RequirePermission(Permissions.Customers.Read)
             .WithName("GetCustomerDeposits");
+
+        // WP-2.17's re-assessment, on its own resource and gated on READ rather than on
+        // customers.deposit (owner's call). Quoting a customer what they would now be asked for is
+        // clerical work a rep does down the telephone; customers.deposit stays for the acts that
+        // actually create or move deposit money, which are the three POSTs below.
+        //
+        // Its own route rather than only riding on the ledger, because the two are asked at
+        // different moments: the ledger is "what is this customer's deposit", and this is "what
+        // would we ask them for today" — which is the question a class change or a new supply
+        // prompts, and a screen that just changed one of those should not have to fetch a page of
+        // movements to find out.
+        group
+            .MapGet("/assessment", (
+                    [FromRoute] Guid customerId,
+                    [FromServices] IDepositReassessmentService reassessment,
+                    CancellationToken cancellationToken) =>
+                RegistryProblems.RunAsync(async () =>
+                    Results.Ok(DepositRequirementResponse.From(await reassessment.ReassessAsync(customerId, cancellationToken)))))
+            .RequirePermission(Permissions.Customers.Read)
+            .WithName("ReassessCustomerDeposit");
 
         group
             .MapPost("/collections", ([FromRoute] Guid customerId, CollectDepositRequest body, [FromServices] ICustomerDepositService deposits, CancellationToken cancellationToken) =>

@@ -13,9 +13,10 @@ import { IntakeField, IntakeFields } from './intake-field';
  * intake, or it is already there and the account is being opened at it. Both are ordinary — a new
  * house and a new tenant at an old one — and the host takes exactly one of the two.
  *
- * The picker lists only premises that are active and not already served. That is a courtesy, not
- * the rule: the host refuses an occupied premise with a 409 naming the account that holds it, which
- * is what makes the check correct even when this list is a page behind.
+ * The picker lists only premises that are active and not already served FOR THE SUPPLY BEING
+ * APPLIED FOR (WP-2.17). That is a courtesy, not the rule: the host refuses a premise that already
+ * takes that service with a 409 naming the account holding it, which is what makes the check correct
+ * even when this list is a page behind.
  */
 export function PremiseStep({ form }: { form: UseFormReturn<IntakeValues> }) {
   const { errors } = form.formState;
@@ -24,7 +25,10 @@ export function PremiseStep({ form }: { form: UseFormReturn<IntakeValues> }) {
   const locations = useServiceLocations({ isActive: true });
   const accounts = useServiceAccounts({}, mode === 'existing');
 
-  const available = availablePremises(locations.data, accounts.data);
+  // Narrowed to the supply being applied for: a premise already on electricity may still take a
+  // water account, and hiding it would make the three-supply premise WP-2.17 exists for unreachable
+  // from the wizard that opens accounts.
+  const available = availablePremises(locations.data, accounts.data, form.watch('serviceType'));
 
   return (
     <div className="space-y-5">

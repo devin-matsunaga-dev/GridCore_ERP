@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -22,8 +23,14 @@ public sealed record IntakePremise(ServiceLocationInput? NewPremise = null, Guid
 /// energised on the spot, and what deposit was taken.
 /// </summary>
 /// <param name="Name">Who they are.</param>
-/// <param name="Class">Residential or commercial — also what the deposit is assessed from.</param>
+/// <param name="Class">Residential or commercial — half of what the deposit is assessed from.</param>
 /// <param name="Premise">The premise to serve them at, new or existing.</param>
+/// <param name="ServiceType">
+/// Which supply they are applying for (WP-2.17) — the other half of the deposit key, and what the
+/// account will declare. Electricity by default, because that is the one service the demonstration
+/// utility distributes and an intake wizard that made a rep choose it every time would be a wizard
+/// asking a question with one real answer.
+/// </param>
 /// <param name="ContactName">Who to ask for.</param>
 /// <param name="Email">Where to email them.</param>
 /// <param name="Phone">Where to call them.</param>
@@ -37,6 +44,7 @@ public sealed record CustomerIntakeInput(
     string Name,
     CustomerClass Class,
     IntakePremise Premise,
+    ServiceType ServiceType = ServiceType.Electricity,
     string? ContactName = null,
     string? Email = null,
     string? Phone = null,
@@ -138,7 +146,11 @@ public sealed class CustomerRegistrationService(
         return unitOfWork.ExecuteAsync(
             async ct =>
             {
-                var assessment = await deposits.AssessAsync(input.Class, ct).ConfigureAwait(false);
+                // The schedule figure for the pair being applied for, and deliberately not a
+                // usage-based re-assessment: an intake has no premise history to average, and the
+                // premise may not even exist until this transaction commits. WP-2.17's re-assessment
+                // is what an established customer is asked, later, once there is something to measure.
+                var assessment = await deposits.AssessAsync(input.Class, input.ServiceType, ct).ConfigureAwait(false);
                 var collected = RequireCollectable(input.DepositCollected, assessment);
 
                 // Refused before a single row is written, and still refused by the ledger a few
@@ -160,21 +172,26 @@ public sealed class CustomerRegistrationService(
                     new RegisterCustomerInput(input.Name, input.Class, input.ContactName, input.Email, input.Phone),
                     ct).ConfigureAwait(false);
 
+                var account = await accounts.OpenAsync(
+                    new OpenServiceAccountInput(customer.Id, location.Id, input.ServiceType, input.Reason),
+                    ct).ConfigureAwait(false);
+
                 if (collected > Money.Zero)
                 {
-                    // The lifecycle's act, not a copy of it: one ledger entry, one audit entry
-                    // carrying assessed beside collected, and one event for Finance to post the
-                    // liability from. A waived deposit does none of that, because nothing changed
-                    // hands — which is also why it needs no permission.
+                    // AFTER the account is opened since WP-2.17, and the order is load-bearing. A
+                    // deposit is assessed against the supplies a customer takes, so the ledger's own
+                    // audit entry — which records what was asked for beside what was taken — has
+                    // nothing to ask about until the account exists. Collecting first would have
+                    // audited every intake deposit as "assessed: nothing".
+                    //
+                    // The lifecycle's act, not a copy of it: one ledger entry, one audit entry, and
+                    // one event for Finance to post the liability from. A waived deposit does none of
+                    // that, because nothing changed hands — which is also why it needs no permission.
                     await depositLedger.CollectAsync(
                         customer.Id,
                         new CollectDepositInput(collected, Reason: input.Reason ?? "Collected at intake."),
                         ct).ConfigureAwait(false);
                 }
-
-                var account = await accounts.OpenAsync(
-                    new OpenServiceAccountInput(customer.Id, location.Id, input.Reason),
-                    ct).ConfigureAwait(false);
 
                 if (input.StartService)
                 {
@@ -215,8 +232,8 @@ public sealed class CustomerRegistrationService(
         return collected <= assessment.Amount
             ? collected
             : throw new RegistryValidationException(
-                $"The deposit schedule asks {assessment.Amount:0.00} for a {assessment.CustomerClass} customer, "
-                + $"and {collected:0.00} was collected. Collect the assessed amount or less.");
+                $"The deposit schedule asks {assessment.Amount:0.00} for a {assessment.CustomerClass} customer "
+                + $"taking {assessment.ServiceType}, and {collected:0.00} was collected. Collect the assessed amount or less.");
     }
 
     private async Task<(ServiceLocation Location, bool WasRegistered)> PremiseAsync(CustomerIntakeInput input, CancellationToken cancellationToken)

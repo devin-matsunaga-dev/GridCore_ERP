@@ -1,4 +1,5 @@
 using GridCore.Contracts.Directories;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Platform.Audit;
@@ -44,6 +45,17 @@ public interface IRatePlanService
     Task<RatePlan> InForceAsync(string code, DateOnly on, CancellationToken cancellationToken = default);
 
     /// <summary>What <paramref name="serviceAccountId"/> is billed on, fallback included.</summary>
+    /// <remarks>
+    /// <b>The fallback is per service since WP-2.17.</b> An account nobody has assigned is billed on
+    /// the default tariff <i>for the supply it takes</i>, and the shipped schedule publishes one only
+    /// for electricity — so an account on any other service, and every unmetered account, has no
+    /// tariff to fall back to and this says so rather than inventing one.
+    /// </remarks>
+    /// <exception cref="ServiceAccountNotFoundException">There is no such service account.</exception>
+    /// <exception cref="RatePlanNotFoundException">
+    /// The utility publishes no default tariff for the service that account takes — see
+    /// <see cref="RatePlanService.UnmeteredBillingStub"/>.
+    /// </exception>
     Task<AccountTariff> ForAccountAsync(Guid serviceAccountId, CancellationToken cancellationToken = default);
 
     /// <summary>Puts an account on a tariff, or moves it to another one.</summary>
@@ -117,6 +129,32 @@ public sealed class RatePlanService(
                 + $"{versions.Min(plan => plan.EffectiveFrom):yyyy-MM-dd}.");
     }
 
+    /// <summary>
+    /// What GridCore says when asked to bill a service it cannot price yet — the seam WP-2.17 leaves
+    /// for the billing-deepening pass.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A refusal that names the package, rather than a silent fallback.</b> Wastewater is a flat
+    /// charge with no meter and no reading behind it, and the rate engine only knows how to turn
+    /// consumption into money — so there is nothing here that could bill one correctly. Falling back
+    /// to the electric default would produce a bill: a wrong one, on a tariff for a supply the
+    /// customer does not take, with a service charge nobody published for them.
+    /// </para>
+    /// <para>
+    /// The same message covers water and gas, which are metered but have no tariff shipped. Both
+    /// cases are "this deployment publishes no default tariff for that supply", and the fix for both
+    /// is a migration that ships one — plus, for wastewater, a flat-charge shape the rate engine does
+    /// not have.
+    /// </para>
+    /// </remarks>
+    public static string UnmeteredBillingStub(ServiceType serviceType) =>
+        $"GridCore publishes no default tariff for {serviceType}, so an account taking it cannot be billed. "
+        + (ServiceTypes.IsMetered(serviceType)
+            ? "Ship a default tariff for that service in a migration."
+            : "An unmetered service is billed a flat charge, which the rate engine does not yet raise — "
+              + "the billing-deepening pass owns that shape.");
+
     /// <inheritdoc />
     public async Task<AccountTariff> ForAccountAsync(Guid serviceAccountId, CancellationToken cancellationToken = default)
     {
@@ -125,7 +163,22 @@ public sealed class RatePlanService(
             .FirstOrDefaultAsync(row => row.ServiceAccountId == serviceAccountId, cancellationToken)
             .ConfigureAwait(false);
 
-        return Describe(serviceAccountId, assignment);
+        if (assignment is not null)
+        {
+            // Somebody chose this tariff for this account. The service it belongs to is not consulted
+            // and deliberately so: a billing officer who puts an account on a named plan has made a
+            // decision, and second-guessing it here would override a person with a lookup table.
+            return Describe(serviceAccountId, assignment);
+        }
+
+        // Only the fallback needs the account, so only the fallback pays for the boundary call.
+        var account = await accounts.FindAsync(serviceAccountId, cancellationToken).ConfigureAwait(false)
+            ?? throw new ServiceAccountNotFoundException(serviceAccountId);
+
+        var code = DefaultRatePlans.DefaultCodeFor(account.ServiceType)
+            ?? throw new RatePlanNotFoundException(UnmeteredBillingStub(account.ServiceType));
+
+        return new AccountTariff(serviceAccountId, code, IsDefault: true, null, null);
     }
 
     /// <inheritdoc />
@@ -191,6 +244,14 @@ public sealed class RatePlanService(
             cancellationToken);
     }
 
+    /// <summary>
+    /// Describes an assignment, or the electricity default where there is none.
+    /// </summary>
+    /// <remarks>
+    /// The unqualified default is right for every caller left here: <see cref="AssignAsync"/> only
+    /// reaches it holding a row it has just written or found. <see cref="ForAccountAsync"/> is the
+    /// one that resolves the fallback per service, and it does so without going through this.
+    /// </remarks>
     private static AccountTariff Describe(Guid serviceAccountId, AccountRatePlan? assignment) =>
         assignment is null
 

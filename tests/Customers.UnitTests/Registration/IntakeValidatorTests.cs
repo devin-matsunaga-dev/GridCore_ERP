@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -22,7 +23,7 @@ public class IntakeValidatorTests
         IntakePremiseRequest? premise = null,
         string? email = null,
         decimal deposit = 0m) =>
-        new(name, customerClass, premise ?? ANewPremise(), "Ana Reyes", email, "+1-670-532-0199", deposit);
+        new(name, customerClass, premise ?? ANewPremise(), ServiceType.Electricity, "Ana Reyes", email, "+1-670-532-0199", deposit);
 
     private static IReadOnlyList<string> ErrorsFor(RegisterCustomerIntakeRequest request) =>
         [.. Validator.Validate(request).Errors.Select(failure => failure.PropertyName)];

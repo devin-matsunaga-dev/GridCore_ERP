@@ -12,6 +12,39 @@ import { registryWindow } from './registry';
 export const customerClasses = ['Residential', 'Commercial'] as const;
 export type CustomerClass = (typeof customerClasses)[number];
 
+/**
+ * Mirrors `GridCore.Contracts.Services.ServiceType` (WP-2.17).
+ *
+ * In `Contracts` on the host and shared by three modules, so this list is the one vocabulary the
+ * deposit schedule, the tariff catalogue and the meter guard all key on. The order is the enum's.
+ */
+export const serviceTypes = ['Electricity', 'Water', 'Gas', 'Wastewater'] as const;
+export type ServiceType = (typeof serviceTypes)[number];
+
+/**
+ * Whether a device at the premise measures what an account of this service consumes.
+ *
+ * Duplicated from `ServiceTypes.IsMetered` deliberately, and kept to one line: the host is the
+ * authority and every response that matters carries an `isMetered` flag of its own, but a screen
+ * choosing what to offer before a request has been made needs the answer locally.
+ */
+export function isMeteredService(serviceType: ServiceType): boolean {
+  return serviceType !== 'Wastewater';
+}
+
+/** What each service reads as on a screen. Sentence case, as DESIGN.md asks. */
+const serviceTypeLabels: Record<ServiceType, string> = {
+  Electricity: 'Electricity',
+  Water: 'Water',
+  Gas: 'Gas',
+  Wastewater: 'Wastewater',
+};
+
+/** What a service reads as. */
+export function serviceTypeLabel(serviceType: ServiceType): string {
+  return serviceTypeLabels[serviceType];
+}
+
 /** Mirrors `CustomerStatus`. The order is the lifecycle's, not the alphabet's. */
 export const customerStatuses = ['Prospect', 'Active', 'Suspended', 'Closed'] as const;
 export type CustomerStatus = (typeof customerStatuses)[number];
@@ -89,6 +122,10 @@ export type ServiceAccount = {
   accountNumber: string;
   customerId: string;
   serviceLocationId: string;
+  /** Which supply this account takes (WP-2.17). Fixed at opening. */
+  serviceType: ServiceType;
+  /** Whether a device at the premise measures it — derived from `serviceType` by the host. */
+  isMetered: boolean;
   status: ServiceAccountStatus;
   allowedTransitions: ServiceAccountStatus[];
   openedAt: string;
@@ -117,6 +154,7 @@ export type ServiceAccountFilters = {
   customerId?: string;
   serviceLocationId?: string;
   status?: ServiceAccountStatus | '';
+  serviceType?: ServiceType | '';
 };
 
 /**
@@ -160,13 +198,27 @@ export type CreateServiceLocationInput = {
 export type OpenServiceAccountInput = {
   customerId: string;
   serviceLocationId: string;
+  serviceType: ServiceType;
   reason?: string | null;
 };
 
-/** Mirrors `DepositRuleResponse` — the class-based schedule, reference data on the host. */
+/**
+ * Mirrors `DepositRuleResponse` — the schedule, reference data on the host.
+ *
+ * Keyed on (class × service) since WP-2.17: `amount` is the published floor for the pair, with no
+ * usage in it, because a screen listing the schedule is showing what a rule says rather than what
+ * one customer would pay. What a particular customer is asked for is `DepositRequirement`.
+ */
 export type DepositRule = {
   customerClass: CustomerClass;
+  serviceType: ServiceType;
+  isMetered: boolean;
   amount: number;
+  minimumAmount: number;
+  /** Months of average usage the rule takes above the floor; `null` on a flat deposit. */
+  usageMonths: number | null;
+  /** What one unit is priced at for deposit purposes; `null` on a flat deposit. */
+  usageRate: number | null;
   description: string;
   ruleId: string;
 };
@@ -191,6 +243,7 @@ export type CustomerIntakeInput = {
   contactName?: string | null;
   email?: string | null;
   phone?: string | null;
+  serviceType: ServiceType;
   depositCollected?: number;
   startService?: boolean;
   reason?: string | null;
@@ -199,6 +252,7 @@ export type CustomerIntakeInput = {
 /** Mirrors `DepositOutcomeResponse`. */
 export type DepositOutcome = {
   customerClass: CustomerClass;
+  serviceType: ServiceType;
   assessedAmount: number;
   collectedAmount: number;
   ruleId: string;
@@ -339,12 +393,49 @@ export type DepositLedger = {
   accountNumber: string;
   balance: number;
   currency: string;
-  customerClass: CustomerClass;
-  assessedAmount: number;
-  shortfallAmount: number;
-  ruleId: string;
+  requirement: DepositRequirement;
   isInterestBearing: boolean;
   entries: DepositEntry[];
+};
+
+/** Mirrors `DepositAccountRequirementResponse` — one open account's share of the deposit (WP-2.17). */
+export type DepositAccountRequirement = {
+  serviceAccountId: string;
+  accountNumber: string;
+  serviceLocationId: string;
+  status: ServiceAccountStatus;
+  serviceType: ServiceType;
+  isMetered: boolean;
+  requiredAmount: number;
+  minimumAmount: number;
+  /** Whether measured usage decided the figure rather than the published floor. */
+  isUsageBased: boolean;
+  averageMonthlyUsage: number | null;
+  usageMonths: number | null;
+  usageRate: number | null;
+  /** Whether anything has actually been read at the premise. Different from `isUsageBased`. */
+  hasUsageHistory: boolean;
+  description: string;
+  ruleId: string;
+};
+
+/**
+ * Mirrors `DepositRequirementResponse` — what a customer holds against what the schedule now asks.
+ *
+ * A composite since WP-2.17, because a customer may take three supplies and be assessed for each:
+ * `requiredAmount` is the sum over `accounts`, and `shortfallAmount` is floored at zero by the host.
+ */
+export type DepositRequirement = {
+  customerId: string;
+  accountNumber: string;
+  customerClass: CustomerClass;
+  currency: string;
+  heldAmount: number;
+  requiredAmount: number;
+  shortfallAmount: number;
+  isCovered: boolean;
+  assessedAt: string;
+  accounts: DepositAccountRequirement[];
 };
 
 /** Mirrors `CollectDepositRequest`. */
@@ -804,6 +895,17 @@ export const customersApi = {
     api.get<DepositLedger>(`/api/customers/${customerId}/deposits`, { signal }),
 
   /**
+   * What the schedule asks of one customer today, across every open account they hold (WP-2.17).
+   *
+   * Its own resource rather than only riding on the ledger, because the two are asked at different
+   * moments: the ledger is "what is this customer's deposit", and this is "what would we ask them
+   * for now" — the question a class change or a new supply prompts. Gated on `customers.read` on the
+   * host: quoting a shortfall is clerical work, and `customers.deposit` stays for taking the money.
+   */
+  depositAssessment: (customerId: string, signal?: AbortSignal) =>
+    api.get<DepositRequirement>(`/api/customers/${customerId}/deposits/assessment`, { signal }),
+
+  /**
    * The three deposit movements (WP-2.12), each a POST sub-resource rather than a PUT of a balance:
    * the balance is a projection of immutable entries and is not a field anybody sets. All three
    * need `customers.deposit` on the host — narrower than the `customers.write` that opened the page.
@@ -906,6 +1008,7 @@ export const customerKeys = {
   contacts: (customerId: string) => ['customers', 'contacts', customerId] as const,
   profile: (customerId: string) => ['customers', 'profile', customerId] as const,
   deposits: (customerId: string) => ['customers', 'deposits', customerId] as const,
+  depositAssessment: (customerId: string) => ['customers', 'deposit-assessment', customerId] as const,
   /**
    * Every note query for one customer, whatever it was narrowed by — what a write invalidates.
    *
@@ -1081,6 +1184,22 @@ export function useCustomerDeposits(customerId: string | undefined) {
     queryKey: customerKeys.deposits(customerId ?? ''),
     queryFn: ({ signal }) => customersApi.deposits(customerId!, signal),
     enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * What the schedule asks of one customer today (WP-2.17), on demand.
+ *
+ * `enabled` off by default: the deposit tab already has the same figures inside the ledger, so
+ * fetching this on page load would be a second request for an answer that is already there. What it
+ * exists for is the re-ask — a rep presses "re-assess" after a class change or a new supply, and the
+ * host recomputes against whatever the meters now say.
+ */
+export function useDepositAssessment(customerId: string | undefined, enabled = false) {
+  return useQuery({
+    queryKey: customerKeys.depositAssessment(customerId ?? ''),
+    queryFn: ({ signal }) => customersApi.depositAssessment(customerId!, signal),
+    enabled: Boolean(customerId) && enabled,
   });
 }
 

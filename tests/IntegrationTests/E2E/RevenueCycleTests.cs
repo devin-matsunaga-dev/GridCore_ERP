@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Events;
 using System.Diagnostics;
 using GridCore.Contracts.Providers;
@@ -422,7 +423,7 @@ public sealed class RevenueCycleTests(GateFixture fixture) : IAsyncLifetime
         await using var scope = fixture.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<IServiceAccountService>()
-            .OpenAsync(new OpenServiceAccountInput(customerId, premiseId, "Requested at the counter"));
+            .OpenAsync(new OpenServiceAccountInput(customerId, premiseId, ServiceType.Electricity, "Requested at the counter"));
     }
 
     private async Task<ServiceAccount> StartServiceAsync(Guid accountId)

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Events;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -54,7 +55,7 @@ public class CustomerTransitionServiceTests
         var premise = await APremise(host);
 
         var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(
-            new OpenServiceAccountInput(customer.Id, premise.Id)));
+            new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         await host.WithAccountsAsync(accounts => accounts.StartServiceAsync(account.Id, "Connected."));
 
@@ -292,7 +293,7 @@ public class CustomerTransitionServiceTests
 
         var transition = await host.WithTransitionsAsync(transitions => transitions.MoveInAsync(
             customer.Id,
-            new MoveInInput(premise.Id, TransitionReasonCode.NewOccupancy, Today, "Keys collected this morning.")));
+            new MoveInInput(premise.Id, TransitionReasonCode.NewOccupancy, ServiceType.Electricity, Today, "Keys collected this morning.")));
 
         await using var database = host.NewCustomersContext();
         var account = await database.ServiceAccounts.SingleAsync();
@@ -764,7 +765,7 @@ public class CustomerTransitionServiceTests
         var premise = await APremise(host, line1);
 
         var account = await host.WithAccountsAsync(accounts => accounts.OpenAsync(
-            new OpenServiceAccountInput(customer.Id, premise.Id)));
+            new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
 
         return (customer, account, premise);
     }

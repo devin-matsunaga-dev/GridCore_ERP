@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Contracts.Events;
 using GridCore.Contracts.Providers;
+using GridCore.Contracts.Services;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
 
@@ -175,5 +176,115 @@ public sealed class ScriptedMeterReadingProvider : IMeterReadingProvider
             .ToList();
 
         return Task.FromResult(new MeterReadingBatch(cycle.CycleCode, cycle.ReadAt, cycle.Seed, readings));
+    }
+}
+
+/// <summary>
+/// The Customers module's service account registry, as this module is allowed to see it — a list
+/// rather than a database (WP-2.17).
+/// </summary>
+/// <remarks>
+/// <para>
+/// The sibling of <see cref="FakeServiceLocationDirectory"/> and there for the same reason. Fitting
+/// a meter now asks one more question across the boundary: is every supply taken at this premise
+/// unmetered, in which case a revenue meter has nothing to measure there.
+/// </para>
+/// <para>
+/// <b>Empty is the ordinary case</b>, and it allows the fit. A premise with no account at all is a
+/// new build metered before anybody applies, and every test written before WP-2.17 is one — which is
+/// exactly why the guard refuses only the premise where service IS taken and none of it is measured.
+/// </para>
+/// </remarks>
+public sealed class FakeServiceAccountDirectory : IServiceAccountDirectory
+{
+    private readonly List<ServiceAccountSummary> _accounts = [];
+    private int _ordinal;
+
+    /// <summary>Every premise a caller asked about, so a test can assert it went through the seam.</summary>
+    public List<Guid> Lookups { get; } = [];
+
+    /// <summary>Opens an account of <paramref name="serviceType"/> at <paramref name="serviceLocationId"/>.</summary>
+    public ServiceAccountSummary Open(Guid serviceLocationId, ServiceType serviceType, string status = "Active")
+    {
+        var account = new ServiceAccountSummary(
+            Guid.CreateVersion7(),
+            $"A-{++_ordinal:000000}",
+            Guid.CreateVersion7(),
+            $"Customer {_ordinal}",
+            serviceLocationId,
+            status,
+            serviceType,
+            ServiceTypes.IsMetered(serviceType),
+            HoldsPremise: !string.Equals(status, "Closed", StringComparison.Ordinal),
+            ServiceStartedAt: DateTimeOffset.UnixEpoch);
+
+        _accounts.Add(account);
+
+        return account;
+    }
+
+    /// <inheritdoc />
+    public Task<ServiceAccountSummary?> FindAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_accounts.FirstOrDefault(account => account.Id == id));
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindManyAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        IReadOnlyDictionary<Guid, ServiceAccountSummary> found = _accounts
+            .Where(account => ids.Contains(account.Id))
+            .ToDictionary(account => account.Id);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    public Task<ServiceAccountSummary?> FindOpenAtLocationAsync(
+        Guid serviceLocationId,
+        ServiceType serviceType,
+        CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(serviceLocationId);
+
+        return Task.FromResult(_accounts.FirstOrDefault(account =>
+            account.ServiceLocationId == serviceLocationId && account.ServiceType == serviceType && account.HoldsPremise));
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<Guid, ServiceAccountSummary>> FindOpenAtLocationsAsync(
+        IReadOnlyCollection<Guid> serviceLocationIds,
+        ServiceType serviceType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serviceLocationIds);
+
+        Lookups.AddRange(serviceLocationIds);
+
+        IReadOnlyDictionary<Guid, ServiceAccountSummary> found = _accounts
+            .Where(account => account.HoldsPremise && account.ServiceType == serviceType)
+            .Where(account => serviceLocationIds.Contains(account.ServiceLocationId))
+            .ToDictionary(account => account.ServiceLocationId);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<ServiceAccountSummary>> ListOpenAtLocationAsync(
+        Guid serviceLocationId,
+        CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(serviceLocationId);
+
+        IReadOnlyList<ServiceAccountSummary> found =
+        [
+            .. _accounts
+                .Where(account => account.ServiceLocationId == serviceLocationId && account.HoldsPremise)
+                .OrderBy(account => account.ServiceType),
+        ];
+
+        return Task.FromResult(found);
     }
 }

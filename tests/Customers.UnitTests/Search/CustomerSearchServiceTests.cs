@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Features.Search;
@@ -33,7 +34,7 @@ public class CustomerSearchServiceTests
 
     private static Task<ServiceAccount> ServedAsync(CustomersTestHost host, Customer customer, ServiceLocation premise) =>
         host.WithAccountsAsync(accounts =>
-            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, "Requested at the counter")));
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity, "Requested at the counter")));
 
     private static Task<CustomerSearchResult> SearchAsync(CustomersTestHost host, string? term, int page = 1, int pageSize = 20) =>
         host.WithSearchAsync(search => search.SearchAsync(new CustomerSearchQuery(term, Page: page, PageSize: pageSize)));

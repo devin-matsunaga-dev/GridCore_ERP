@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Registry;
 
@@ -38,6 +39,38 @@ public sealed class ServiceAccount
     /// <summary>Where they are being served. Also fixed: an account is the pairing, not a customer with a movable address.</summary>
     public Guid ServiceLocationId { get; private init; }
 
+    /// <summary>
+    /// Which utility service this account takes (WP-2.17). Fixed at opening, exactly as the customer
+    /// and the premise are.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The account is the customer, the premise AND the service.</b> Before this, a service
+    /// account was a customer↔location link with no notion of what was being supplied, so a premise
+    /// taking electricity and water had to be two customers or one account that meant both. Now one
+    /// premise holds one account per service — up to three — and
+    /// <c>ux_service_accounts_open_location</c> is keyed on the pair.
+    /// </para>
+    /// <para>
+    /// <b>Not settable, for the reason the other two are not.</b> Changing what a customer is
+    /// supplied with is not an edit to a row: it is closing one account and opening another, which
+    /// is what leaves the bills raised under the old supply attached to the account that was
+    /// actually billed. WP-2.15's transition register is where that pair of acts belongs.
+    /// </para>
+    /// </remarks>
+    public ServiceType ServiceType { get; private init; }
+
+    /// <summary>
+    /// Whether a device at the premise measures what this account consumes — <see cref="ServiceType"/>
+    /// read through <see cref="ServiceTypes.IsMetered"/>.
+    /// </summary>
+    /// <remarks>
+    /// Derived rather than stored: it is a fact about the service and not about the account, and a
+    /// column would be a second place for it to be wrong. An unmetered account has no meter, takes
+    /// no reading, and is billed a flat charge — see the type's remarks for what refuses what.
+    /// </remarks>
+    public bool IsMetered => ServiceTypes.IsMetered(ServiceType);
+
     /// <summary>Where the account stands.</summary>
     public ServiceAccountStatus Status { get; private set; }
 
@@ -66,7 +99,11 @@ public sealed class ServiceAccount
     /// <summary>The statuses this account may move to, for rendering transition buttons.</summary>
     public IReadOnlyList<ServiceAccountStatus> AllowedTransitions => ServiceAccountTransitions.AllowedFrom(Status);
 
-    /// <summary>Whether this account still holds its premise, so no other account may be opened there.</summary>
+    /// <summary>
+    /// Whether this account still holds its premise <i>for its own service</i>, so no other account
+    /// may take that supply there. Since WP-2.17 a premise can be held three times over — once per
+    /// service — and each holding is independent of the others.
+    /// </summary>
     public bool HoldsPremise => ServiceAccountTransitions.HoldsPremise(Status);
 
     /// <summary>
@@ -74,11 +111,14 @@ public sealed class ServiceAccount
     /// <see cref="IRegistryNumberGenerator"/>. It starts <see cref="ServiceAccountStatus.Pending"/>:
     /// asking for service and getting it are two different days, and the gap is the work order.
     /// </summary>
-    /// <exception cref="RegistryValidationException">The number is missing, or either id is empty.</exception>
+    /// <exception cref="RegistryValidationException">
+    /// The number is missing, either id is empty, or the service is not one GridCore declares.
+    /// </exception>
     public static ServiceAccount Open(
         string accountNumber,
         Guid customerId,
         Guid serviceLocationId,
+        ServiceType serviceType,
         RegistryActor actor,
         DateTimeOffset now,
         string? reason = null)
@@ -93,12 +133,21 @@ public sealed class ServiceAccount
         RequireId(customerId, nameof(customerId));
         RequireId(serviceLocationId, nameof(serviceLocationId));
 
+        // Checked here rather than only at the edge: the service is what the deposit schedule, the
+        // tariff and the meter guard all key on, so an account carrying a value nobody declared
+        // would be an account none of the three can answer for. A 400, because the caller sent it.
+        if (!ServiceTypes.IsDeclared(serviceType))
+        {
+            throw new RegistryValidationException($"'{serviceType}' is not a service GridCore declares.");
+        }
+
         var account = new ServiceAccount
         {
             Id = Guid.CreateVersion7(now),
             AccountNumber = accountNumber.Trim(),
             CustomerId = customerId,
             ServiceLocationId = serviceLocationId,
+            ServiceType = serviceType,
             Status = ServiceAccountStatus.Pending,
             OpenedAt = now,
             StatusChangedAt = now,

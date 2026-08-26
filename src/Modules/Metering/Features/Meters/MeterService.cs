@@ -145,11 +145,20 @@ public interface IMeterService
 /// scope and therefore inside the same transaction — but it is a read, so nothing about the
 /// customers schema is written from here, and nothing here would be rolled back by it.
 /// </para>
+/// <para>
+/// <b>WP-2.17 added a second such read, and it is a refusal rather than a lookup.</b> Wastewater is
+/// GridCore's first unmetered service: no device is fitted, nothing is read, and the charge is flat.
+/// So a premise whose only open account takes an unmetered supply is a premise a revenue meter has
+/// nothing to measure at, and <see cref="IServiceAccountDirectory"/> is what lets this module say so
+/// instead of fitting one. See <see cref="AssignAsync"/> for why the rule is stated over the
+/// premise's accounts rather than over one account.
+/// </para>
 /// </remarks>
 public sealed class MeterService(
     MeteringDbContext database,
     IMeterNumberGenerator numbers,
     IServiceLocationDirectory serviceLocations,
+    IServiceAccountDirectory serviceAccounts,
     IUnitOfWork unitOfWork,
     IAuditLog audit,
     IEventPublisher events,
@@ -265,6 +274,30 @@ public sealed class MeterService(
                     // premise is not somewhere a crew fits a revenue meter.
                     throw new MeterWorkflowException(
                         $"Premise {premise.LocationCode} is not in service, so a meter cannot be fitted there.");
+                }
+
+                // WP-2.17: a meter cannot be fitted where nothing it could measure is taken.
+                //
+                // The rule is stated over the premise's OPEN ACCOUNTS rather than over one account,
+                // because a meter is fitted to a premise and not to an account (see Meter's own
+                // remarks) — the device stays on the wall when the occupant leaves. So the question
+                // is not "is this account unmetered" but "is every supply taken here unmetered", and
+                // only the accounts can answer it.
+                //
+                // No accounts at all is allowed, deliberately. A new build is metered before anybody
+                // applies for supply, and the demo seeders fit meters before they open accounts;
+                // refusing that would be this module inventing an ordering rule for somebody else's
+                // registry. What is refused is the one case that is definitely wrong: a premise
+                // where service IS being taken and none of it is measured.
+                var openAccounts = await serviceAccounts.ListOpenAtLocationAsync(premise.Id, ct).ConfigureAwait(false);
+
+                if (openAccounts.Count > 0 && !openAccounts.Any(account => account.IsMetered))
+                {
+                    var unmetered = string.Join(", ", openAccounts.Select(account => $"{account.AccountNumber} ({account.ServiceType})"));
+
+                    throw new MeterWorkflowException(
+                        $"Premise {premise.LocationCode} takes only unmetered service ({unmetered}), so a revenue meter "
+                        + "has nothing to measure there. Open a metered service account before fitting one.");
                 }
 
                 // Checked here so the loser of a race reads as a conflict naming the meter it

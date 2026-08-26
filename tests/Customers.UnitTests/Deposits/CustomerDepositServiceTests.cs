@@ -1,7 +1,10 @@
 using System.Text.Json;
 using GridCore.Contracts.Events;
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.ServiceAccounts;
+using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.UnitTests.Infrastructure;
 using GridCore.Platform.Audit;
@@ -32,6 +35,32 @@ public class CustomerDepositServiceTests
         CustomerClass customerClass = CustomerClass.Residential) =>
         host.WithCustomersAsync(customers =>
             customers.RegisterAsync(new RegisterCustomerInput("Sablan Family Residence", customerClass)));
+
+    /// <summary>
+    /// A customer with one open electricity account — since WP-2.17, what a customer has to have
+    /// before the schedule asks them for anything.
+    /// </summary>
+    /// <remarks>
+    /// A deposit is assessed against the supplies somebody takes, so a bare customer record is
+    /// assessed at nothing at all. That is the right answer and it is asserted on its own below; it
+    /// is not what most of these tests are about, so they take an account.
+    /// </remarks>
+    private static async Task<Customer> AServedCustomerAsync(
+        CustomersTestHost host,
+        CustomerClass customerClass = CustomerClass.Residential)
+    {
+        var customer = await ARegisteredCustomerAsync(host, customerClass);
+
+        var premise = await host.WithLocationsAsync(locations => locations.RegisterAsync(
+            new ServiceLocationInput(
+                Address.Create("14 Sablan Street", "Songsong", "Rota", "MP"),
+                "Meter on the north wall")));
+
+        await host.WithAccountsAsync(accounts =>
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity)));
+
+        return customer;
+    }
 
     [Fact]
     public async Task Collecting_a_deposit_writes_the_entry_moves_the_balance_and_publishes_the_fact()
@@ -68,10 +97,10 @@ public class CustomerDepositServiceTests
     public async Task A_collection_is_audited_with_what_the_schedule_asked_for_beside_what_was_taken()
     {
         // Invariant 5, and WP-2.8's shape kept: the entry carries the assessed figure, the collected
-        // figure and the rule that said so, which is the only place that difference is recorded.
+        // figure and the rules that said so, which is the only place that difference is recorded.
         using var host = NewHost();
 
-        var customer = await ARegisteredCustomerAsync(host);
+        var customer = await AServedCustomerAsync(host);
 
         await host.WithDepositsAsync(deposits => deposits.CollectAsync(customer.Id, new CollectDepositInput(25.00m)));
 
@@ -90,9 +119,10 @@ public class CustomerDepositServiceTests
         Assert.Equal(25.00m, snapshot.CollectedAmount);
         Assert.Equal(25.00m, snapshot.BalanceAfter);
 
-        // The rule row that answered, so a figure on a customer's record can be traced to the
-        // reference data that explains it rather than to whoever typed it.
-        Assert.NotEqual(Guid.Empty, snapshot.RuleId);
+        // The rule rows that answered — one per open account since WP-2.17 keyed the schedule on
+        // the service too — so a figure on a customer's record can be traced to the reference data
+        // that explains it rather than to whoever typed it.
+        Assert.All(snapshot.RuleIds, ruleId => Assert.NotEqual(Guid.Empty, ruleId));
     }
 
     [Theory]
@@ -375,11 +405,19 @@ public class CustomerDepositServiceTests
     [Fact]
     public async Task The_ledger_reads_back_newest_first_with_the_balance_and_the_assessment()
     {
-        using var host = NewHost();
+        // The clock ADVANCES between the two movements, deliberately. Entry ids are Guid v7 minted
+        // from the clock, so two movements at the same instant differ only in their random bits and
+        // "newest first" would be a coin toss — the one thing this test is about.
+        var clock = new FakeClock(Now);
 
-        var customer = await ARegisteredCustomerAsync(host);
+        using var host = new CustomersTestHost(clock, new FakeCurrentUser("auth0|cs-agent", "Ana Cruz"));
+
+        var customer = await AServedCustomerAsync(host);
 
         await host.WithDepositsAsync(deposits => deposits.CollectAsync(customer.Id, new CollectDepositInput(50.00m)));
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+
         await host.WithDepositsAsync(deposits => deposits.RefundAsync(customer.Id, new RefundDepositInput(20.00m)));
 
         var ledger = await host.WithDepositsAsync(deposits => deposits.GetAsync(customer.Id));
@@ -387,10 +425,12 @@ public class CustomerDepositServiceTests
         Assert.Equal(30.00m, ledger.Balance);
         Assert.Equal(customer.AccountNumber, ledger.AccountNumber);
 
-        // The schedule rides along so a screen can say whether the customer is short of it without
-        // a second request.
-        Assert.Equal(75.00m, ledger.Assessment.Amount);
-        Assert.Equal(CustomerClass.Residential, ledger.Assessment.CustomerClass);
+        // The whole re-assessment rides along so a screen can say whether the customer is short of
+        // it without a second request. One open electric account, so it is the residential electric
+        // rule's $75 floor and nothing else.
+        Assert.Equal(75.00m, ledger.Requirement.RequiredAmount);
+        Assert.Equal(CustomerClass.Residential, ledger.Requirement.CustomerClass);
+        Assert.Equal(ServiceType.Electricity, Assert.Single(ledger.Requirement.Accounts).Assessment.ServiceType);
 
         Assert.Equal(
             [DepositEntryKind.Refunded, DepositEntryKind.Collected],
@@ -411,7 +451,36 @@ public class CustomerDepositServiceTests
         Assert.Equal(0m, ledger.Balance);
         Assert.Empty(ledger.Entries);
         Assert.False(ledger.IsInterestBearing);
-        Assert.Equal(75.00m, ledger.Assessment.Amount);
+
+        // Nothing held and nothing asked for: a customer record with no service account takes no
+        // supply, and since WP-2.17 the schedule is keyed on the supply. A shortfall here would be
+        // the utility chasing a deposit for a connection nobody has applied for.
+        Assert.Equal(0m, ledger.Requirement.RequiredAmount);
+        Assert.Equal(0m, ledger.Requirement.ShortfallAmount);
+        Assert.Empty(ledger.Requirement.Accounts);
+        Assert.True(ledger.Requirement.IsCovered);
+    }
+
+    [Fact]
+    public async Task A_served_customer_is_asked_for_the_schedule_figure_of_the_supply_they_take()
+    {
+        using var host = NewHost();
+
+        var customer = await AServedCustomerAsync(host);
+
+        var ledger = await host.WithDepositsAsync(deposits => deposits.GetAsync(customer.Id));
+
+        var line = Assert.Single(ledger.Requirement.Accounts);
+
+        Assert.Equal(ServiceType.Electricity, line.Assessment.ServiceType);
+        Assert.Equal(75.00m, ledger.Requirement.RequiredAmount);
+        Assert.Equal(75.00m, ledger.Requirement.ShortfallAmount);
+        Assert.False(ledger.Requirement.IsCovered);
+
+        // Nothing has been read at the premise, so the usage half of the rule has nothing to price
+        // and the published floor answers — never zero.
+        Assert.False(line.HasUsageHistory);
+        Assert.False(line.Assessment.IsUsageBased);
     }
 
     [Fact]

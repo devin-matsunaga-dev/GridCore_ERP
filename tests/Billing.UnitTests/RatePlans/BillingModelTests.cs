@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Features.RatePlans;
 using Microsoft.EntityFrameworkCore;
 

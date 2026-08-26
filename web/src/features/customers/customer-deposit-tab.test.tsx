@@ -4,7 +4,13 @@ import { Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CustomerDetailPage } from './customer-detail-page';
 import { stubFetch, type FetchStub, type StubbedResponse } from '@/test/api-stub';
-import { customer, depositEntry, depositLedger } from '@/test/registry-fixtures';
+import {
+  customer,
+  depositAccountRequirement,
+  depositEntry,
+  depositLedger,
+  depositRequirement,
+} from '@/test/registry-fixtures';
 import { bill, paidBill } from '@/test/revenue-cycle-fixtures';
 import { renderWithProviders } from '@/test/render';
 
@@ -87,8 +93,72 @@ describe('the deposit tab', () => {
 
     // The schedule is what a rep quotes on the telephone, so it is on screen beside the balance
     // rather than a click away.
-    expect(screen.getByText(/Schedule asks \$450\.00 for a commercial customer/)).toBeInTheDocument();
+    expect(screen.getByText(/Schedule asks \$450\.00 across 1 account/)).toBeInTheDocument();
     expect(screen.getByText('Schedule met')).toBeInTheDocument();
+  });
+
+  it('itemises what is asked for, one line per supply, when a premise takes several', async () => {
+    // WP-2.17's shape on screen. A customer taking three supplies is assessed three times, and one
+    // figure could only ever have described one of them — so the card lists them and totals them.
+    renderTab(
+      world((url) =>
+        url.pathname === depositsPath
+          ? {
+              body: depositLedger({
+                balance: 0,
+                requirement: depositRequirement({
+                  customerClass: 'Residential',
+                  heldAmount: 0,
+                  requiredAmount: 361,
+                  shortfallAmount: 361,
+                  isCovered: false,
+                  accounts: [
+                    depositAccountRequirement({
+                      serviceAccountId: 'a-elec',
+                      accountNumber: 'A-000001',
+                      serviceType: 'Electricity',
+                      requiredAmount: 256,
+                      minimumAmount: 75,
+                      isUsageBased: true,
+                      hasUsageHistory: true,
+                      averageMonthlyUsage: 400,
+                      usageMonths: 2,
+                    }),
+                    depositAccountRequirement({
+                      serviceAccountId: 'a-water',
+                      accountNumber: 'A-000002',
+                      serviceType: 'Water',
+                      requiredAmount: 75,
+                      minimumAmount: 75,
+                    }),
+                    depositAccountRequirement({
+                      serviceAccountId: 'a-waste',
+                      accountNumber: 'A-000003',
+                      serviceType: 'Wastewater',
+                      isMetered: false,
+                      requiredAmount: 30,
+                      minimumAmount: 30,
+                      usageMonths: null,
+                      usageRate: null,
+                    }),
+                  ],
+                }),
+                entries: [],
+              }),
+            }
+          : undefined,
+      ),
+    );
+
+    expect(await screen.findByText('What the schedule asks')).toBeInTheDocument();
+
+    // The BASIS is what a rep reads out. The figure alone cannot be argued with.
+    expect(screen.getByText('2 months of 400 a month')).toBeInTheDocument();
+    expect(screen.getByText('Minimum — nothing read here yet')).toBeInTheDocument();
+    expect(screen.getByText('Flat charge — unmetered service')).toBeInTheDocument();
+
+    expect(screen.getByText('Total required')).toBeInTheDocument();
+    expect(screen.getByText(/Schedule asks \$361\.00 across 3 accounts/)).toBeInTheDocument();
   });
 
   it('says how far short a part-paid deposit is, and does not read as an error', async () => {
@@ -97,7 +167,11 @@ describe('the deposit tab', () => {
     renderTab(
       world((url) =>
         url.pathname === depositsPath
-          ? { body: depositLedger({ balance: 200, shortfallAmount: 250, entries: [depositEntry({ amount: 200, balanceAfter: 200, signedAmount: 200 })] }) }
+          ? { body: depositLedger({
+              balance: 200,
+              requirement: depositRequirement({ heldAmount: 200, shortfallAmount: 250, isCovered: false }),
+              entries: [depositEntry({ amount: 200, balanceAfter: 200, signedAmount: 200 })],
+            }) }
           : undefined,
       ),
     );
@@ -115,7 +189,7 @@ describe('the deposit tab', () => {
           ? {
               body: depositLedger({
                 balance: 410,
-                shortfallAmount: 40,
+                requirement: depositRequirement({ heldAmount: 410, shortfallAmount: 40, isCovered: false }),
                 entries: [
                   depositEntry({ id: 'entry-1', amount: 450, signedAmount: 450, balanceAfter: 450 }),
                   depositEntry({
@@ -161,7 +235,13 @@ describe('the deposit tab', () => {
     renderTab(
       world((url) =>
         url.pathname === depositsPath
-          ? { body: depositLedger({ balance: 0, shortfallAmount: 450, entries: [] }) }
+          ? {
+              body: depositLedger({
+                balance: 0,
+                requirement: depositRequirement({ heldAmount: 0, shortfallAmount: 450, isCovered: false }),
+                entries: [],
+              }),
+            }
           : undefined,
       ),
     );
@@ -175,7 +255,13 @@ describe('the deposit tab', () => {
     renderTab(
       world((url) =>
         url.pathname === depositsPath
-          ? { body: depositLedger({ balance: 0, shortfallAmount: 450, entries: [] }) }
+          ? {
+              body: depositLedger({
+                balance: 0,
+                requirement: depositRequirement({ heldAmount: 0, shortfallAmount: 450, isCovered: false }),
+                entries: [],
+              }),
+            }
           : undefined,
       ),
     );

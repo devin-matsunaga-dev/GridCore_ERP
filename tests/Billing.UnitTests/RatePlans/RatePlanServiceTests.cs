@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.UnitTests.Infrastructure;
@@ -96,6 +97,68 @@ public class RatePlanServiceTests
         Assert.Equal(DefaultRatePlans.DefaultCode, tariff.RatePlanCode);
         Assert.True(tariff.IsDefault);
         Assert.Null(tariff.AssignedAt);
+    }
+
+    [Fact]
+    public async Task An_unmetered_account_has_no_tariff_to_fall_back_to_and_says_so()
+    {
+        // WP-2.17's stub, and a refusal rather than a silent fallback. Wastewater is a flat charge
+        // with no meter behind it and the rate engine only knows how to turn consumption into money,
+        // so falling back to the electric default would produce a bill: a wrong one, on a tariff for
+        // a supply the customer does not take.
+        using var host = NewHost();
+
+        var account = host.Accounts.Add(Guid.CreateVersion7(), serviceType: ServiceType.Wastewater);
+
+        var refused = await Assert.ThrowsAsync<RatePlanNotFoundException>(() =>
+            host.WithTariffsAsync(tariffs => tariffs.ForAccountAsync(account.Id)));
+
+        Assert.Contains("Wastewater", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("billing-deepening pass", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_metered_service_with_no_tariff_published_says_to_ship_one()
+    {
+        // Water IS metered; what it lacks is a published tariff. Different fix, different sentence —
+        // and neither of them is "bill it on the electric rates".
+        using var host = NewHost();
+
+        var account = host.Accounts.Add(Guid.CreateVersion7(), serviceType: ServiceType.Water);
+
+        var refused = await Assert.ThrowsAsync<RatePlanNotFoundException>(() =>
+            host.WithTariffsAsync(tariffs => tariffs.ForAccountAsync(account.Id)));
+
+        Assert.Contains("Water", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("Ship a default tariff", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unmetered_account_a_billing_officer_put_on_a_tariff_stays_on_it()
+    {
+        // The fallback is what the service is missing, not the assignment. Somebody who names a
+        // tariff for an account has made a decision, and second-guessing it here would override a
+        // person with a lookup table.
+        using var host = NewHost();
+
+        var account = host.Accounts.Add(Guid.CreateVersion7(), serviceType: ServiceType.Wastewater);
+
+        await host.WithTariffsAsync(tariffs => tariffs.AssignAsync(account.Id, DefaultRatePlans.CommercialStandard));
+
+        var tariff = await host.WithTariffsAsync(tariffs => tariffs.ForAccountAsync(account.Id));
+
+        Assert.Equal(DefaultRatePlans.CommercialStandard, tariff.RatePlanCode);
+        Assert.False(tariff.IsDefault);
+    }
+
+    [Fact]
+    public void The_default_for_a_service_is_read_off_the_shipped_set()
+    {
+        // Adding a default water tariff has to be a migration and a row in DefaultRatePlans.All,
+        // never an edit to a switch somewhere as well.
+        Assert.Equal(DefaultRatePlans.ResidentialStandard, DefaultRatePlans.DefaultCodeFor(ServiceType.Electricity));
+        Assert.Null(DefaultRatePlans.DefaultCodeFor(ServiceType.Water));
+        Assert.Null(DefaultRatePlans.DefaultCodeFor(ServiceType.Wastewater));
     }
 
     [Fact]

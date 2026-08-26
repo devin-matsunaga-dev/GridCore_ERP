@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Platform.Security;
 using GridCore.Platform.Validation;
@@ -11,8 +12,13 @@ namespace GridCore.Modules.Customers.Features.ServiceAccounts;
 /// <summary>Body of a request to open a service account.</summary>
 /// <param name="CustomerId">Who is to be served.</param>
 /// <param name="ServiceLocationId">Where they are to be served.</param>
+/// <param name="ServiceType">Which supply they are taking. Electricity when the caller does not say.</param>
 /// <param name="Reason">Why, for the account history.</param>
-public sealed record OpenServiceAccountRequest(Guid CustomerId, Guid ServiceLocationId, string? Reason = null);
+public sealed record OpenServiceAccountRequest(
+    Guid CustomerId,
+    Guid ServiceLocationId,
+    ServiceType ServiceType = ServiceType.Electricity,
+    string? Reason = null);
 
 /// <summary>
 /// Body of a request to start, stop or close service. One DTO for all three: they carry the same
@@ -60,6 +66,8 @@ public sealed record ServiceAccountHistoryEntryResponse(
 /// <param name="AccountNumber">The number quoted for this supply.</param>
 /// <param name="CustomerId">Who is served.</param>
 /// <param name="ServiceLocationId">Where.</param>
+/// <param name="ServiceType">Which supply it takes.</param>
+/// <param name="IsMetered">Whether a device at the premise measures it.</param>
 /// <param name="Status">Where the account stands.</param>
 /// <param name="AllowedTransitions">Statuses it may still move to — what a UI renders as buttons.</param>
 /// <param name="OpenedAt">When the account was opened.</param>
@@ -73,6 +81,8 @@ public sealed record ServiceAccountResponse(
     string AccountNumber,
     Guid CustomerId,
     Guid ServiceLocationId,
+    string ServiceType,
+    bool IsMetered,
     string Status,
     IReadOnlyList<string> AllowedTransitions,
     DateTimeOffset OpenedAt,
@@ -92,6 +102,8 @@ public sealed record ServiceAccountResponse(
             account.AccountNumber,
             account.CustomerId,
             account.ServiceLocationId,
+            account.ServiceType.ToString(),
+            account.IsMetered,
             account.Status.ToString(),
             account.AllowedTransitions.Select(status => status.ToString()).ToList(),
             account.OpenedAt,
@@ -125,11 +137,12 @@ public static class ServiceAccountEndpoints
                     Guid? customerId,
                     Guid? serviceLocationId,
                     ServiceAccountStatus? status,
+                    ServiceType? serviceType,
                     int? limit,
                     [FromServices] IServiceAccountService accounts,
                     CancellationToken cancellationToken) =>
                 Results.Ok((await accounts.ListAsync(
-                        new ServiceAccountQuery(search, customerId, serviceLocationId, status, limit ?? 50),
+                        new ServiceAccountQuery(search, customerId, serviceLocationId, status, serviceType, limit ?? 50),
                         cancellationToken))
                     .Select(ServiceAccountResponse.From)
                     .ToList()))
@@ -162,7 +175,7 @@ public static class ServiceAccountEndpoints
                 RegistryProblems.RunAsync(async () =>
                 {
                     var account = await accounts.OpenAsync(
-                        new OpenServiceAccountInput(body.CustomerId, body.ServiceLocationId, body.Reason),
+                        new OpenServiceAccountInput(body.CustomerId, body.ServiceLocationId, body.ServiceType, body.Reason),
                         cancellationToken);
 
                     return Results.Created($"{RoutePrefix}/{account.Id}", ServiceAccountResponse.From(account));

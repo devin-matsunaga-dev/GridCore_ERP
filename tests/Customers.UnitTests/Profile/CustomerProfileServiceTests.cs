@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -30,7 +31,7 @@ public class CustomerProfileServiceTests
         var location = await host.WithLocationsAsync(locations => locations.RegisterAsync(
             new ServiceLocationInput(Address.Create(line1, "Songsong", "Rota", "MP"), "House")));
 
-        return await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, location.Id)));
+        return await host.WithAccountsAsync(accounts => accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, location.Id, ServiceType.Electricity)));
     }
 
     private static Address AMailingAddress() =>

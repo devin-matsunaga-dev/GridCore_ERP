@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Documents;
@@ -33,6 +34,8 @@ public class BillDocumentTests
             customerName,
             Guid.CreateVersion7(Issued),
             "Open",
+            ServiceType.Electricity,
+            IsMetered: true,
             HoldsPremise: true,
             ServiceStartedAt: Issued.AddMonths(-6));
 

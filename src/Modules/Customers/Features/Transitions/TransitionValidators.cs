@@ -69,7 +69,11 @@ public sealed class ChangeCustomerStatusRequestValidator : TransitionRequestVali
 public sealed class MoveInRequestValidator : TransitionRequestValidator<MoveInRequest>
 {
     /// <summary>Builds the rules.</summary>
-    public MoveInRequestValidator() => RuleFor(request => request.ServiceLocationId).NotEmpty();
+    public MoveInRequestValidator()
+    {
+        RuleFor(request => request.ServiceLocationId).NotEmpty();
+        RuleFor(request => request.ServiceType).IsInEnum().WithMessage("Not a service GridCore declares.");
+    }
 }
 
 /// <summary>Rules for ending a customer's service at a premise.</summary>

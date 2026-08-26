@@ -24,20 +24,36 @@ import {
  * step is a worse product than one that says so on the step that caused it.
  */
 
+/**
+ * The schedule as the host publishes it: keyed on (class × service) since WP-2.17, so a lookup by
+ * class alone would now match whichever of these the array happened to yield first.
+ */
 const schedule: DepositRule[] = [
-  {
-    customerClass: 'Residential',
-    amount: 75,
-    description: 'Two months of a typical household bill.',
-    ruleId: '0192f000-0000-7000-8000-0000000000d1',
-  },
-  {
-    customerClass: 'Commercial',
-    amount: 450,
-    description: 'Two months of a small-premises bill.',
-    ruleId: '0192f000-0000-7000-8000-0000000000d2',
-  },
+  rule('Residential', 'Electricity', 75, 'd1', { usageMonths: 2, usageRate: 0.32 }),
+  rule('Residential', 'Wastewater', 30, 'd2'),
+  rule('Commercial', 'Electricity', 450, 'd3', { usageMonths: 2, usageRate: 0.32 }),
+  rule('Commercial', 'Wastewater', 150, 'd4'),
 ];
+
+function rule(
+  customerClass: DepositRule['customerClass'],
+  serviceType: DepositRule['serviceType'],
+  amount: number,
+  suffix: string,
+  usage: { usageMonths: number; usageRate: number } | null = null,
+): DepositRule {
+  return {
+    customerClass,
+    serviceType,
+    isMetered: serviceType !== 'Wastewater',
+    amount,
+    minimumAmount: amount,
+    usageMonths: usage?.usageMonths ?? null,
+    usageRate: usage?.usageRate ?? null,
+    description: `${customerClass} ${serviceType}.`,
+    ruleId: `0192f000-0000-7000-8000-00000000${suffix}00`,
+  };
+}
 
 function values(overrides: Partial<IntakeValues> = {}): IntakeValues {
   return {
@@ -127,21 +143,42 @@ describe('the premise', () => {
       serviceAccount({ id: 'a2', serviceLocationId: 'free', status: 'Closed' }),
     ];
 
-    const offered = availablePremises([served, retired, free] as ServiceLocation[], accounts);
+    const offered = availablePremises([served, retired, free] as ServiceLocation[], accounts, 'Electricity');
 
     expect(offered.map((location) => location.id)).toEqual(['free']);
   });
 
+  it('still offers a premise that takes a different supply', () => {
+    // WP-2.17's shape. A house already on electricity may take water and wastewater as well, and
+    // hiding it would make the three-supply premise unreachable from the wizard that opens accounts.
+    const premise = serviceLocation({ id: 'served', locationCode: 'L-000002' });
+
+    const accounts: ServiceAccount[] = [
+      serviceAccount({ id: 'a1', serviceLocationId: 'served', status: 'Active', serviceType: 'Electricity' }),
+    ];
+
+    expect(availablePremises([premise] as ServiceLocation[], accounts, 'Water').map((l) => l.id)).toEqual(['served']);
+    expect(availablePremises([premise] as ServiceLocation[], accounts, 'Electricity')).toEqual([]);
+  });
+
   it('offers nothing rather than throwing while the registries are still loading', () => {
-    expect(availablePremises(undefined, undefined)).toEqual([]);
+    expect(availablePremises(undefined, undefined, 'Electricity')).toEqual([]);
   });
 });
 
 describe('the deposit', () => {
-  it('assesses from the schedule the host published, per class', () => {
-    expect(assessmentFor(schedule, 'Residential')?.amount).toBe(75);
-    expect(assessmentFor(schedule, 'Commercial')?.amount).toBe(450);
-    expect(assessmentFor(undefined, 'Residential')).toBeUndefined();
+  it('assesses from the schedule the host published, per class AND service', () => {
+    expect(assessmentFor(schedule, 'Residential', 'Electricity')?.amount).toBe(75);
+    expect(assessmentFor(schedule, 'Commercial', 'Electricity')?.amount).toBe(450);
+
+    // The half WP-2.17 added. A lookup by class alone would have matched the electric rule for both.
+    expect(assessmentFor(schedule, 'Residential', 'Wastewater')?.amount).toBe(30);
+    expect(assessmentFor(schedule, 'Commercial', 'Wastewater')?.amount).toBe(150);
+
+    expect(assessmentFor(undefined, 'Residential', 'Electricity')).toBeUndefined();
+
+    // A pair the schedule does not cover reads as "still loading", not as zero.
+    expect(assessmentFor(schedule, 'Residential', 'Gas')).toBeUndefined();
   });
 
   it('reads an empty box as nothing collected rather than as NaN', () => {
@@ -162,7 +199,7 @@ describe('the deposit', () => {
 
   it('refuses more than the schedule asks for, and says what it asks for', () => {
     expect(messagesFor(validate(values({ depositCollected: '500' })), 'depositCollected')).toEqual([
-      'The schedule asks 75.00 for this class. Collect that or less.',
+      'The schedule asks 75.00 for a residential electricity account. Collect that or less.',
     ]);
   });
 
@@ -227,6 +264,7 @@ describe('the request the form becomes', () => {
           description: 'Meter on the north wall',
         },
       },
+      serviceType: 'Electricity',
       depositCollected: 75,
       startService: true,
       reason: 'Requested at the counter',

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Features.Bills;
 using GridCore.Modules.Billing.Features.Fees;
@@ -27,6 +28,8 @@ public class BillFeeLineTests
         "Rosa Sablan",
         Guid.CreateVersion7(),
         "Active",
+        ServiceType.Electricity,
+        IsMetered: true,
         HoldsPremise: true,
         ServiceStartedAt: Now.AddYears(-1));
 

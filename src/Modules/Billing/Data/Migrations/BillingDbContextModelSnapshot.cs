@@ -687,7 +687,7 @@ namespace GridCore.Modules.Billing.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_rate_plans_code_effective");
 
-                    b.HasIndex("IsDefault", "EffectiveFrom")
+                    b.HasIndex("ServiceType", "IsDefault", "EffectiveFrom")
                         .IsUnique()
                         .HasDatabaseName("ux_rate_plans_default_effective")
                         .HasFilter("is_default");

@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -29,7 +30,7 @@ public class ServiceAccountDirectoryTests
                 "Single-storey house")));
 
         return await host.WithAccountsAsync(accounts =>
-            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, "Requested at the counter")));
+            accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity, "Requested at the counter")));
     }
 
     [Fact]
@@ -105,7 +106,7 @@ public class ServiceAccountDirectoryTests
         var account = await AnAccountAsync(host);
 
         var found = await host.WithAccountDirectoryAsync(directory =>
-            directory.FindOpenAtLocationAsync(account.ServiceLocationId));
+            directory.FindOpenAtLocationAsync(account.ServiceLocationId, ServiceType.Electricity));
 
         Assert.Equal(account.Id, found!.Id);
         Assert.True(found.HoldsPremise);
@@ -123,7 +124,7 @@ public class ServiceAccountDirectoryTests
         await host.WithAccountsAsync(accounts => accounts.CloseAsync(account.Id, "Tenant moved out."));
 
         Assert.Null(await host.WithAccountDirectoryAsync(directory =>
-            directory.FindOpenAtLocationAsync(account.ServiceLocationId)));
+            directory.FindOpenAtLocationAsync(account.ServiceLocationId, ServiceType.Electricity)));
 
         // The account itself is still there and still readable by id — it is the premise it has let
         // go of, not its own record.
@@ -146,7 +147,7 @@ public class ServiceAccountDirectoryTests
         await host.WithAccountsAsync(accounts => accounts.StopServiceAsync(account.Id, "Unpaid balance."));
 
         var found = await host.WithAccountDirectoryAsync(directory =>
-            directory.FindOpenAtLocationAsync(account.ServiceLocationId));
+            directory.FindOpenAtLocationAsync(account.ServiceLocationId, ServiceType.Electricity));
 
         Assert.Equal(account.Id, found!.Id);
         Assert.Equal(nameof(ServiceAccountStatus.Disconnected), found.Status);
@@ -164,7 +165,7 @@ public class ServiceAccountDirectoryTests
         using var host = NewHost();
 
         Assert.Null(await host.WithAccountDirectoryAsync(directory =>
-            directory.FindOpenAtLocationAsync(Guid.CreateVersion7())));
+            directory.FindOpenAtLocationAsync(Guid.CreateVersion7(), ServiceType.Electricity)));
     }
 
     [Fact]
@@ -182,7 +183,7 @@ public class ServiceAccountDirectoryTests
             first.ServiceLocationId,
             second.ServiceLocationId,
             Guid.CreateVersion7(),
-        ]));
+        ], ServiceType.Electricity));
 
         Assert.Equal(2, found.Count);
         Assert.Equal(first.Id, found[first.ServiceLocationId].Id);
@@ -195,7 +196,7 @@ public class ServiceAccountDirectoryTests
         using var host = NewHost();
 
         Assert.Empty(await host.WithAccountDirectoryAsync(directory => directory.FindManyAsync([])));
-        Assert.Empty(await host.WithAccountDirectoryAsync(directory => directory.FindOpenAtLocationsAsync([])));
+        Assert.Empty(await host.WithAccountDirectoryAsync(directory => directory.FindOpenAtLocationsAsync([], ServiceType.Electricity)));
     }
 
     [Fact]

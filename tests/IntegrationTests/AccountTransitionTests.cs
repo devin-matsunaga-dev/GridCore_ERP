@@ -1,3 +1,4 @@
+using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -255,7 +256,7 @@ public sealed class AccountTransitionTests(GateFixture fixture) : IAsyncLifetime
 
         var accounts = scope.ServiceProvider.GetRequiredService<IServiceAccountService>();
 
-        var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id));
+        var account = await accounts.OpenAsync(new OpenServiceAccountInput(customer.Id, premise.Id, ServiceType.Electricity));
 
         await accounts.StartServiceAsync(account.Id, "Connected.");
 

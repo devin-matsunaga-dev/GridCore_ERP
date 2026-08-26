@@ -17,6 +17,10 @@ public sealed class OpenServiceAccountRequestValidator : AbstractValidator<OpenS
     {
         RuleFor(request => request.CustomerId).NotEmpty().WithMessage("A customer is required to open a service account.");
         RuleFor(request => request.ServiceLocationId).NotEmpty().WithMessage("A service location is required to open a service account.");
+
+        // A 400 at the edge, so a body carrying a service nobody declares never reaches the
+        // aggregate that would throw the same thing as a 400 anyway — one refusal, at the boundary.
+        RuleFor(request => request.ServiceType).IsInEnum().WithMessage("Not a service GridCore declares.");
         RuleFor(request => request.Reason!).MaximumLength(ServiceAccount.ReasonLength);
     }
 }
