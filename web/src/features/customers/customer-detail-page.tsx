@@ -6,6 +6,7 @@ import {
   useCustomer,
   useCustomerContacts,
   useCustomerDeposits,
+  useCustomerNotes,
   useCustomerProfile,
   useServiceAccountHistories,
   useServiceAccounts,
@@ -28,6 +29,8 @@ import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
 import { CustomerDepositCard } from './components/customer-deposit-card';
+import { CustomerNotesCard } from './components/customer-notes-card';
+import { CustomerPinnedNotes } from './components/customer-pinned-notes';
 import { CustomerProfileCard } from './components/customer-profile-card';
 import { CustomerBillsCard } from './components/customer-bills-card';
 import { CustomerPaymentsCard } from './components/customer-payments-card';
@@ -90,6 +93,11 @@ export function CustomerDetailPage() {
   // customer who exists — a zero balance and no entries is an ordinary position, not a 404.
   const deposits = useCustomerDeposits(customerId);
 
+  // The note log (WP-2.13), here at the page with every other query — and read by three panels, not
+  // one: the notes tab, the pinned strip on the summary, and the timeline's fifth source. That is
+  // the strongest case yet for WP-2.10's rule that the queries live at the page.
+  const notes = useCustomerNotes(customerId);
+
   const balance = useMemo(() => customerBalance(bills.data ?? []), [bills.data]);
 
   const timeline = useMemo(
@@ -99,8 +107,9 @@ export function CustomerDetailPage() {
         historyByAccountId: histories.byAccountId,
         bills: bills.data ?? [],
         payments: payments.data ?? [],
+        notes: notes.data ?? [],
       }),
-    [accounts.data, histories.byAccountId, bills.data, payments.data],
+    [accounts.data, histories.byAccountId, bills.data, payments.data, notes.data],
   );
 
   // An unrecognised segment is a typo, not a tab. Sending it back to the customer keeps the URL
@@ -163,6 +172,14 @@ export function CustomerDetailPage() {
             payments={payments.data ?? []}
             isPending={bills.isPending || payments.isPending}
           />
+
+          {/*
+            WORK_PACKAGES.md: "pinned notes surface at the top of the 360". Above the customer record
+            rather than below it, because a standing instruction — a dog on the property, a customer
+            who may not be rung before ten — is the thing a rep has to see before they act, not after
+            they have read an address.
+          */}
+          <CustomerPinnedNotes notes={notes.data ?? []} isLoading={notes.isPending} />
 
           <Card>
             <CardHeader>
@@ -267,6 +284,20 @@ export function CustomerDetailPage() {
         </div>
       )}
 
+      {active === 'notes' && customerId && (
+        <CustomerNotesCard
+          customerId={customerId}
+          notes={notes.data ?? []}
+          // The bills and payments a note could be filed against come from the windows this page
+          // already fetched, so choosing one issues no request — the call WP-2.12's deposit tab made.
+          bills={bills.data ?? []}
+          payments={payments.data ?? []}
+          isLoading={notes.isPending}
+          error={notes.isError ? notes.error : undefined}
+          onRetry={() => void notes.refetch()}
+        />
+      )}
+
       {active === 'bills' && (
         <CustomerBillsCard
           bills={bills.data ?? []}
@@ -307,17 +338,22 @@ export function CustomerDetailPage() {
           // on any of them is still loading; any of them refusing is an error, because a feed
           // silently missing one module's entries reads as a feed, not as a failure.
           isLoading={
-            accounts.isPending || bills.isPending || payments.isPending || histories.isPending
+            accounts.isPending
+            || bills.isPending
+            || payments.isPending
+            || histories.isPending
+            || notes.isPending
           }
           error={
-            accounts.isError || bills.isError || payments.isError
-              ? (accounts.error ?? bills.error ?? payments.error)
+            accounts.isError || bills.isError || payments.isError || notes.isError
+              ? (accounts.error ?? bills.error ?? payments.error ?? notes.error)
               : undefined
           }
           onRetry={() => {
             void accounts.refetch();
             void bills.refetch();
             void payments.refetch();
+            void notes.refetch();
           }}
         />
       )}

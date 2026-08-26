@@ -3,6 +3,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
@@ -53,6 +54,13 @@ public sealed class CustomersModule : IModule
         // reads (IMeterDirectory was the first, for WP-2.9's search).
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
 
+        // The note log (WP-2.13): free-text notes and logged interactions, append-only. It consumes
+        // TWO cross-module read seams — IBillDirectory, registered by Billing, and IPaymentDirectory,
+        // registered by Payments — to confirm that a note filed against a bill or a payment names a
+        // real one of this customer's. A work-order link is stored unverified until WP-3.1 builds
+        // that register; see CustomerNoteLinkKinds.IsVerifiable, which is the one method that changes.
+        services.AddScoped<ICustomerNoteService, CustomerNoteService>();
+
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
         // rules, and only one of them has a permission gate inside it.
@@ -92,11 +100,15 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<CollectDepositRequest, CollectDepositRequestValidator>();
         services.AddGridCoreValidator<ApplyDepositRequest, ApplyDepositRequestValidator>();
         services.AddGridCoreValidator<RefundDepositRequest, RefundDepositRequestValidator>();
+        services.AddGridCoreValidator<LogNoteRequest, LogNoteRequestValidator>();
+        services.AddGridCoreValidator<CorrectNoteRequest, CorrectNoteRequestValidator>();
+        services.AddGridCoreValidator<PinNoteRequest, PinNoteRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
         services.AddDemoSeeder<CustomersDemoSeeder>();
         services.AddDemoSeeder<ServiceAccountsDemoSeeder>();
+        services.AddDemoSeeder<CustomerNotesDemoSeeder>();
     }
 
     /// <inheritdoc />
@@ -112,5 +124,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapContactEndpoints();
         endpoints.MapProfileEndpoints();
         endpoints.MapDepositEndpoints();
+        endpoints.MapNoteEndpoints();
     }
 }

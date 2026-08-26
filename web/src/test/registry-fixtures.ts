@@ -3,6 +3,7 @@ import type {
   ContactMethod,
   Customer,
   CustomerContact,
+  CustomerNote,
   CustomerProfile,
   DepositEntry,
   DepositLedger,
@@ -70,6 +71,34 @@ export function customerContact(overrides: Partial<CustomerContact> = {}): Custo
     isAuthorisedToDiscuss: true,
     methods: [contactMethod()],
     recordedAt: '2026-03-02T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * One entry in a customer's note log (WP-2.13).
+ *
+ * Defaults to an ordinary inbound call about nothing in particular: unpinned, unlinked, no follow-up
+ * and not a correction. Every interesting shape — pinned, linked, corrected — is an override, which
+ * is what keeps a test's setup to the one fact it is about.
+ */
+export function customerNote(overrides: Partial<CustomerNote> = {}): CustomerNote {
+  return {
+    id: '0192f000-0000-7000-8000-000000000701',
+    customerId: '0192f000-0000-7000-8000-000000000001',
+    serviceAccountId: null,
+    kind: 'InboundCall',
+    isInteraction: true,
+    body: 'Rang to ask when the meter would be read.',
+    followUpOn: null,
+    linkKind: null,
+    linkedEntityId: null,
+    linkedReference: null,
+    correctsNoteId: null,
+    isPinned: false,
+    actorId: 'demo:customer-service',
+    actorName: 'Ana Cruz (demo)',
+    recordedAt: '2026-08-20T00:30:00+00:00',
     ...overrides,
   };
 }

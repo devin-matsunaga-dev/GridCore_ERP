@@ -15,6 +15,7 @@ describe('customer360Tabs', () => {
     expect(tabs.map((tab) => tab.label)).toEqual([
       'Summary',
       'Contacts',
+      'Notes',
       'Bills',
       'Payments',
       'Deposit',

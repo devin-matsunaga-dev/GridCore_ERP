@@ -1,3 +1,4 @@
+using GridCore.Contracts.Directories;
 using GridCore.Contracts.Providers;
 using GridCore.Modules.Payments.Data;
 using GridCore.Modules.Payments.Features.Payments;
@@ -32,6 +33,13 @@ public sealed class PaymentsModule : IModule
         services.AddScoped<IPaymentNumberGenerator, SequentialPaymentNumberGenerator>();
         services.AddScoped<IPaymentService, PaymentService>();
 
+        // The payment register as the rest of GridCore reads it (WP-2.13). Registered against the
+        // Contracts interface rather than the concrete type: this is the one place that knows both
+        // halves, and a consumer never learns a payments schema exists. Customers is the first
+        // caller — a note filed against a payment has to name a real payment of that customer's —
+        // and the seam is deliberately narrow, existence and ownership rather than a balance.
+        services.AddScoped<IPaymentDirectory, PaymentDirectory>();
+
         // The simulation seam. Payments owns the payment sandbox (ARCHITECTURE.md's module table),
         // so it IS registered here — but only ever against the Contracts interface, which is what
         // lets a production deployment swap in a real gateway by changing this line and nothing
@@ -42,7 +50,8 @@ public sealed class PaymentsModule : IModule
         // Note what is NOT here: IBillDirectory and IServiceAccountDirectory. This module consumes
         // both and Billing and Customers register them, which is the whole point of putting the
         // interfaces in Contracts — a module never registers another module's implementation, and
-        // never references the assembly that holds one.
+        // never references the assembly that holds one. IPaymentDirectory above is the mirror of
+        // that rule: this module owns the payments, so this module answers for them.
 
         // Edge validation. Registered one by one rather than by scanning, so the composition stays
         // greppable — the same reason Program.cs lists the modules.

@@ -1,9 +1,10 @@
 import type { Bill } from '@/api/billing';
-import type { ServiceAccount, ServiceAccountHistoryEntry } from '@/api/customers';
+import type { CustomerNote, ServiceAccount, ServiceAccountHistoryEntry } from '@/api/customers';
 import type { Payment, PaymentStatus } from '@/api/payments';
 import { toneFor, type StatusTone } from '@/components/ui/status';
 import { formatDate, formatLabel, formatMoney, formatQuantity } from '@/lib/format';
 import { fromCents, toCents } from '@/lib/money';
+import { noteKindLabel, noteKindTone, noteLinkLabel } from './notes';
 
 /**
  * The 360° page's logic: what a customer owes, and everything that has happened to them as one
@@ -21,13 +22,19 @@ import { fromCents, toCents } from '@/lib/money';
 
 /**
  * The kinds of thing that reach the feed, in CAUSAL order: an account is opened before it is
- * billed, a bill is corrected before it is paid.
+ * billed, a bill is corrected before it is paid, and a note about any of it is written afterwards.
  *
  * The order is load-bearing. It breaks ties between entries that happened at the same instant, so
  * **reordering this list reorders every same-instant cluster on the page** — the same warning
  * `CustomerMatchKind` carries about search precedence, and for the same reason.
+ *
+ * `note` is WP-2.13's addition and it goes LAST, which is what puts it at the top of a same-instant
+ * cluster once the feed is reversed. That is the right way round: a rep logs the call after the
+ * payment they took during it, and the note is the entry that explains the rest of the cluster.
+ * WP-2.10 and WP-2.12 both deliberately left this fifth place empty rather than spend it on
+ * something else.
  */
-export const timelineKinds = ['account', 'bill', 'adjustment', 'payment'] as const;
+export const timelineKinds = ['account', 'bill', 'adjustment', 'payment', 'note'] as const;
 export type TimelineKind = (typeof timelineKinds)[number];
 
 /**
@@ -59,6 +66,8 @@ export type CustomerTimelineSources = {
   historyByAccountId: ReadonlyMap<string, readonly ServiceAccountHistoryEntry[]>;
   bills: readonly Bill[];
   payments: readonly Payment[];
+  /** The customer's note log (WP-2.13). Corrections are entries of their own — see `noteEntries`. */
+  notes: readonly CustomerNote[];
 };
 
 /**
@@ -74,6 +83,7 @@ export function buildCustomerTimeline(sources: CustomerTimelineSources): Custome
     ...billEntries(sources.bills),
     ...adjustmentEntries(sources.bills),
     ...paymentEntries(sources.payments),
+    ...noteEntries(sources.notes),
   ].toSorted(newestFirst);
 }
 
@@ -203,6 +213,33 @@ function paymentEntries(payments: readonly Payment[]): CustomerTimelineEntry[] {
     occurredAt: payment.settledAt ?? payment.requestedAt,
     precision: 'time' as const,
     tone: toneFor(payment.status),
+  }));
+}
+
+/**
+ * Every note and logged interaction (WP-2.13).
+ *
+ * **A correction is an entry of its own, and the note it corrects keeps its place.** That is not
+ * duplication: both were written, the customer may have been told the first one, and a feed that
+ * quietly replaced the earlier entry would be an edit — the exact thing the register refuses to do.
+ * The correction says so in its title, which is how a reader scanning the feed tells the two apart.
+ *
+ * Pinning has no effect here. A pin decides where a note sits in its own log; the timeline is a
+ * record of what happened when, and hoisting an old note to the top of it would put an event out of
+ * chronological order on the one panel whose entire job is chronology.
+ */
+function noteEntries(notes: readonly CustomerNote[]): CustomerTimelineEntry[] {
+  return notes.map((note) => ({
+    id: `note:${note.id}`,
+    kind: 'note' as const,
+    title: note.correctsNoteId === null
+      ? `${noteKindLabel(note.kind)} logged`
+      : `${noteKindLabel(note.kind)} corrected`,
+    detail: [note.body, noteLinkLabel(note)].filter((part): part is string => Boolean(part)).join(' · '),
+    actor: note.actorName ?? note.actorId,
+    occurredAt: note.recordedAt,
+    precision: 'time' as const,
+    tone: noteKindTone(note.kind),
   }));
 }
 

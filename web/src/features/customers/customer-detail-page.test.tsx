@@ -8,6 +8,7 @@ import { stubFetch, type FetchStub, type StubbedResponse } from '@/test/api-stub
 import {
   customer,
   customerContact,
+  customerNote,
   customerProfile,
   meter,
   serviceAccount,
@@ -48,6 +49,26 @@ const settled = payment();
 const spouse = customerContact();
 const profile = customerProfile();
 
+/** WP-2.13's log: one pinned standing instruction and one call about the bill that was settled. */
+const standing = customerNote({
+  id: '0192f000-0000-7000-8000-000000000701',
+  kind: 'Note',
+  isInteraction: false,
+  body: 'Dog on the property — sound the horn at the gate.',
+  isPinned: true,
+  recordedAt: '2026-02-01T00:30:00+00:00',
+});
+
+const rang = customerNote({
+  id: '0192f000-0000-7000-8000-000000000702',
+  kind: 'BillingDispute',
+  body: 'Queried the consumption on the August bill.',
+  linkKind: 'Bill',
+  linkedEntityId: bill().id,
+  linkedReference: bill().billNumber,
+  recordedAt: '2026-08-22T00:30:00+00:00',
+});
+
 let stub: FetchStub;
 
 afterEach(() => stub?.restore());
@@ -78,6 +99,7 @@ function fullWorld(url: URL): StubbedResponse | undefined {
   if (url.pathname === '/api/payments') return { body: [settled] };
   if (url.pathname === `/api/customers/${record.id}/contacts`) return { body: [spouse] };
   if (url.pathname === `/api/customers/${record.id}/profile`) return { body: profile };
+  if (url.pathname === `/api/customers/${record.id}/notes`) return { body: [standing, rang] };
 
   if (url.pathname === '/api/meters') {
     return { body: url.searchParams.get('serviceLocationId') === premise.id ? [fitted] : [] };
@@ -93,6 +115,7 @@ function bareWorld(url: URL): StubbedResponse | undefined {
   if (url.pathname === '/api/bills') return { body: [] };
   if (url.pathname === '/api/payments') return { body: [] };
   if (url.pathname === `/api/customers/${record.id}/contacts`) return { body: [] };
+  if (url.pathname === `/api/customers/${record.id}/notes`) return { body: [] };
 
   // A prospect nobody has connected: the defaults, and no premise to post to.
   if (url.pathname === `/api/customers/${record.id}/profile`) {
@@ -436,6 +459,9 @@ describe('CustomerDetailPage', () => {
     await openTab('Contacts');
     expect(await screen.findByText('No contacts yet')).toBeInTheDocument();
     expect(screen.getByText('No service address to fall back to')).toBeInTheDocument();
+
+    await openTab('Notes');
+    expect(await screen.findByText('Nothing logged yet')).toBeInTheDocument();
 
     await openTab('Bills');
     expect(await screen.findByText('No bills yet')).toBeInTheDocument();

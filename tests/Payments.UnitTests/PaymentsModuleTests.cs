@@ -61,6 +61,22 @@ public class PaymentsModuleTests
         Assert.DoesNotContain(services, service => service.ServiceType == typeof(SimulatedPaymentProvider));
     }
 
+    [Fact]
+    public void The_register_THIS_module_owns_is_published_through_Contracts()
+    {
+        // WP-2.13's seam, and the mirror of the rule below: Payments owns the payments, so Payments
+        // is the one place that knows both halves of IPaymentDirectory and the only place that may
+        // register it. Always against the Contracts interface, never the concrete type, or a consumer
+        // could hold this module's EF context by another name.
+        var services = Composed();
+
+        Assert.Equal(
+            typeof(PaymentDirectory),
+            Assert.Single(services, service => service.ServiceType == typeof(IPaymentDirectory)).ImplementationType);
+
+        Assert.DoesNotContain(services, service => service.ServiceType == typeof(PaymentDirectory));
+    }
+
     [Theory]
     [InlineData(typeof(IBillDirectory))]
     [InlineData(typeof(IServiceAccountDirectory))]

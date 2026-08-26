@@ -71,6 +71,26 @@ public static class AuditActions
     /// <summary>A customer's mailing address or communication preferences were saved.</summary>
     public const string CustomerProfileUpdated = "customer_profile.update";
 
+    /// <summary>A note or an interaction was logged against a customer (WP-2.13).</summary>
+    public const string CustomerNoteLogged = "customer_note.create";
+
+    /// <summary>
+    /// A new note was written correcting an earlier one (WP-2.13). Its own action rather than a
+    /// second <c>customer_note.create</c>, because the note log is append-only and "what has been
+    /// corrected on this account" is therefore a question asked by filtering the trail rather than by
+    /// reading a diff — there are no diffs, only newer rows. The entry is recorded against the
+    /// correction with the note it supersedes as its <c>before</c>.
+    /// </summary>
+    public const string CustomerNoteCorrected = "customer_note.correct";
+
+    /// <summary>
+    /// A note was put at the top of a customer's log, or taken back down (WP-2.13). The one thing
+    /// about a note that moves, so it is the one thing about a note with a before/after worth
+    /// reading — and it is audited because every write endpoint is (invariant 1), not because
+    /// pinning is sensitive.
+    /// </summary>
+    public const string CustomerNotePinned = "customer_note.pin";
+
     /// <summary>A service location was registered.</summary>
     public const string ServiceLocationCreated = "service_location.create";
 
@@ -217,6 +237,13 @@ public static class AuditEntityTypes
     /// also its primary key, so there is no second id to quote.
     /// </summary>
     public const string CustomerProfile = "customers.customer_profile";
+
+    /// <summary>
+    /// A row of <c>customers.customer_notes</c>. A correction is audited against the <b>new</b> row
+    /// with the row it supersedes as the <c>before</c> — the register is append-only, so there is no
+    /// entity that changed and claiming otherwise would make the trail disagree with the table.
+    /// </summary>
+    public const string CustomerNote = "customers.customer_note";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

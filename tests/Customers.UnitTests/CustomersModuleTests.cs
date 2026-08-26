@@ -2,6 +2,7 @@ using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -79,6 +80,23 @@ public class CustomersModuleTests
     }
 
     [Fact]
+    public void The_note_log_is_registered_and_reads_both_link_registers_through_Contracts()
+    {
+        // WP-2.13. The note log consumes TWO seams — IBillDirectory and the new IPaymentDirectory —
+        // to confirm that a note filed against a bill or a payment names a real one of this
+        // customer's. Both belong to the modules that own those registers; a Customers registration
+        // of either would mean this module referencing the assembly that holds the implementation.
+        var services = ComposedModule();
+
+        Assert.Equal(
+            typeof(CustomerNoteService),
+            Assert.Single(services, service => service.ServiceType == typeof(ICustomerNoteService)).ImplementationType);
+
+        Assert.False(Registers<Contracts.Directories.IBillDirectory>(services));
+        Assert.False(Registers<Contracts.Directories.IPaymentDirectory>(services));
+    }
+
+    [Fact]
     public void The_search_box_is_registered_and_reads_the_meter_register_through_Contracts()
     {
         // WP-2.9. This is the first service in Customers that consumes another module's seam, so the
@@ -137,11 +155,15 @@ public class CustomersModuleTests
         Assert.True(Registers<IValidator<ServiceLocationRequest>>(services));
         Assert.True(Registers<IValidator<OpenServiceAccountRequest>>(services));
         Assert.True(Registers<IValidator<ServiceAccountTransitionRequest>>(services));
+        Assert.True(Registers<IValidator<LogNoteRequest>>(services));
+        Assert.True(Registers<IValidator<CorrectNoteRequest>>(services));
+        Assert.True(Registers<IValidator<PinNoteRequest>>(services));
     }
 
     [Theory]
     [InlineData(typeof(CustomersDemoSeeder))]
     [InlineData(typeof(ServiceAccountsDemoSeeder))]
+    [InlineData(typeof(CustomerNotesDemoSeeder))]
     public void The_demo_seeders_are_registered_unconditionally(Type seeder)
     {
         // Registering one does not run it: DemoSeedRunner is only registered where DemoSeedGuard

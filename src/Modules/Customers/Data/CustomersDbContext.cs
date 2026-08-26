@@ -1,6 +1,7 @@
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -40,6 +41,12 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// never a figure a form set.
     /// </summary>
     public DbSet<DepositEntry> DepositEntries => Set<DepositEntry>();
+
+    /// <summary>
+    /// Every note and logged interaction on every customer — WP-2.13. Append-only: a correction is a
+    /// new row pointing at the one it supersedes, and the only column that ever moves is the pin.
+    /// </summary>
+    public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

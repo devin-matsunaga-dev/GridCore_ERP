@@ -11,7 +11,7 @@ import {
   type CustomerTimelineSources,
 } from './customer-360';
 import { bill, payment } from '@/test/revenue-cycle-fixtures';
-import { serviceAccount } from '@/test/registry-fixtures';
+import { customerNote, serviceAccount } from '@/test/registry-fixtures';
 
 /**
  * The 360° page's two disputable claims, tested without a DOM: what a customer owes, and what order
@@ -29,6 +29,7 @@ function sources(overrides: Partial<CustomerTimelineSources> = {}): CustomerTime
     historyByAccountId: new Map([[account.id, history]]),
     bills: [bill()],
     payments: [payment()],
+    notes: [],
     ...overrides,
   };
 }
@@ -109,7 +110,9 @@ describe('buildCustomerTimeline', () => {
 
   it('reordering the kinds is what would reorder those clusters', () => {
     // The comment on `timelineKinds` claims the order is load-bearing; this is that claim, asserted.
-    expect([...timelineKinds]).toEqual(['account', 'bill', 'adjustment', 'payment']);
+    // `note` is WP-2.13's fifth member and it goes LAST, which is what puts it at the top of a
+    // same-instant cluster once the feed is reversed.
+    expect([...timelineKinds]).toEqual(['account', 'bill', 'adjustment', 'payment', 'note']);
   });
 
   /** A draft is owed by nobody and was never sent, so nothing happened to the customer. */
@@ -231,15 +234,159 @@ describe('buildCustomerTimeline', () => {
   });
 
   /** Failure path: a customer nothing has happened to is a real state, not an error. */
-  it('is empty for a customer with no accounts, bills or payments', () => {
+  it('is empty for a customer with no accounts, bills, payments or notes', () => {
     expect(
       buildCustomerTimeline({
         accounts: [],
         historyByAccountId: new Map(),
         bills: [],
         payments: [],
+        notes: [],
       }),
     ).toEqual([]);
+  });
+
+  describe('notes (WP-2.13)', () => {
+    it('puts a logged note on the feed with its words and its author', () => {
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [],
+          notes: [customerNote({ body: 'Rang about the reading.', actorName: 'Ana Cruz' })],
+        }),
+      );
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        kind: 'note',
+        title: 'Inbound call logged',
+        detail: 'Rang about the reading.',
+        actor: 'Ana Cruz',
+        precision: 'time',
+      });
+    });
+
+    it('carries the link into the detail line, so the feed says which bill it was about', () => {
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [],
+          notes: [
+            customerNote({
+              kind: 'BillingDispute',
+              body: 'Disputes the consumption.',
+              linkKind: 'Bill',
+              linkedEntityId: '0192f000-0000-7000-8000-0000000009a1',
+              linkedReference: 'BIL-000042',
+            }),
+          ],
+        }),
+      );
+
+      expect(entries[0].detail).toBe('Disputes the consumption. · Bill BIL-000042');
+    });
+
+    it('names a work-order link WITHOUT a reference, because the host does not verify one yet', () => {
+      // WP-2.13's accepted gap reaching the screen. It reads as a plain fact rather than as a
+      // missing value; WP-3.1 is what fills the number in.
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [],
+          notes: [
+            customerNote({
+              body: 'Crew attended.',
+              linkKind: 'WorkOrder',
+              linkedEntityId: '0192f000-0000-7000-8000-0000000009b1',
+              linkedReference: null,
+            }),
+          ],
+        }),
+      );
+
+      expect(entries[0].detail).toBe('Crew attended. · Work order');
+    });
+
+    it('gives a correction its OWN entry and keeps the note it corrects on the feed', () => {
+      // Not duplication: both were written, and the customer may have been told the first one. A
+      // feed that quietly replaced the earlier entry would be an edit — the exact thing the register
+      // refuses to do.
+      const original = customerNote({ id: '0192f000-0000-7000-8000-000000000701', body: 'No answer.' });
+      const correction = customerNote({
+        id: '0192f000-0000-7000-8000-000000000702',
+        body: 'Answered.',
+        correctsNoteId: original.id,
+        recordedAt: '2026-08-21T00:30:00+00:00',
+      });
+
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [],
+          notes: [original, correction],
+        }),
+      );
+
+      expect(entries.map((entry) => entry.title)).toEqual([
+        'Inbound call corrected',
+        'Inbound call logged',
+      ]);
+    });
+
+    it('leaves a pinned note in its chronological place', () => {
+      // A pin decides where a note sits in its own log. The timeline is a record of what happened
+      // when, and hoisting an old note to the top of it would put an event out of order on the one
+      // panel whose entire job is chronology.
+      const older = customerNote({
+        id: '0192f000-0000-7000-8000-000000000701',
+        body: 'Older, pinned.',
+        isPinned: true,
+        recordedAt: '2026-08-01T00:30:00+00:00',
+      });
+      const newer = customerNote({
+        id: '0192f000-0000-7000-8000-000000000702',
+        body: 'Newer.',
+        recordedAt: '2026-08-20T00:30:00+00:00',
+      });
+
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [],
+          notes: [older, newer],
+        }),
+      );
+
+      expect(entries.map((entry) => entry.detail)).toEqual(['Newer.', 'Older, pinned.']);
+    });
+
+    it('sits ABOVE a payment taken at the same instant', () => {
+      // The causal order made visible: a rep logs the call after the payment they took during it, so
+      // the note is the entry that explains the cluster and belongs on top of it.
+      const sameInstant = '2026-08-20T00:30:00+00:00';
+
+      const entries = buildCustomerTimeline(
+        sources({
+          accounts: [],
+          historyByAccountId: new Map(),
+          bills: [],
+          payments: [payment({ settledAt: sameInstant })],
+          notes: [customerNote({ recordedAt: sameInstant })],
+        }),
+      );
+
+      expect(entries.map((entry) => entry.kind)).toEqual(['note', 'payment']);
+    });
   });
 });
 

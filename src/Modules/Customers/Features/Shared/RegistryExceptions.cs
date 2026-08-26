@@ -23,6 +23,14 @@ public sealed class CustomerContactNotFoundException(Guid id)
     public Guid CustomerContactId { get; } = id;
 }
 
+/// <summary>No note with that id. Surfaces as 404.</summary>
+public sealed class CustomerNoteNotFoundException(Guid id)
+    : RegistryException($"Customer note '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid CustomerNoteId { get; } = id;
+}
+
 /// <summary>No service location with that id. Surfaces as 404.</summary>
 public sealed class ServiceLocationNotFoundException(Guid id)
     : RegistryException($"Service location '{id}' was not found.")

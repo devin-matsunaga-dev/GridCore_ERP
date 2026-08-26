@@ -61,6 +61,11 @@ public sealed class PaymentsTestHost : IDisposable
         services.AddScoped<IPaymentNumberGenerator, SequentialPaymentNumberGenerator>();
         services.AddScoped<IPaymentService, PaymentService>();
 
+        // The register as the rest of GridCore reads it (WP-2.13). Resolved through the Contracts
+        // interface here exactly as a consuming module resolves it, so a test cannot accidentally
+        // assert against a shape only this assembly can see.
+        services.AddScoped<IPaymentDirectory, PaymentDirectory>();
+
         _provider = services.BuildServiceProvider();
 
         CreateTables();
@@ -94,6 +99,18 @@ public sealed class PaymentsTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IPaymentService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the payment register <i>as another module sees it</i> —
+    /// the seam Customers (WP-2.13) confirms a note's payment link through, resolved from the
+    /// container exactly as Customers resolves it.
+    /// </summary>
+    public Task<TResult> WithDirectoryAsync<TResult>(Func<IPaymentDirectory, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IPaymentDirectory>()));
     }
 
     /// <summary>

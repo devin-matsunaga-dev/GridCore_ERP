@@ -268,3 +268,95 @@ public sealed class FakeBillDirectory : IBillDirectory
         return Task.FromResult(found);
     }
 }
+
+/// <summary>
+/// The Payments module's register, as Customers is allowed to see it — a dictionary rather than a
+/// database.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The seam WP-2.13 added to <c>Contracts</c>, and the third this module consumes a double for
+/// (<see cref="FakeMeterDirectory"/> was the first, <see cref="FakeBillDirectory"/> the second). A
+/// note filed against a payment has to name a real payment of that customer's, and a Customers test
+/// may not resolve the real <see cref="IPaymentDirectory"/> — a <c>payments</c> schema is exactly
+/// what this module must never know about — so a test supplies one in a line.
+/// </para>
+/// <para>
+/// Shaped like <see cref="FakeBillDirectory"/> on purpose, down to the ordinal-numbered references:
+/// the two seams answer the same shape of question, and a double that behaved differently in one of
+/// them would let a rule pass here and fail against the real directory. <c>PaymentDirectoryTests</c>
+/// in the Payments fast tier pins the real one to the same answers.
+/// </para>
+/// </remarks>
+public sealed class FakePaymentDirectory : IPaymentDirectory
+{
+    private readonly Dictionary<Guid, PaymentSummary> _payments = [];
+    private int _ordinal;
+
+    /// <summary>Every payment a note asked about, so a test can assert it went through the seam.</summary>
+    public List<Guid> Lookups { get; } = [];
+
+    /// <summary>Adds a payment and hands it back.</summary>
+    /// <param name="customerId">Who paid.</param>
+    /// <param name="serviceAccountId">The account credited.</param>
+    /// <param name="billId">The bill it was taken against.</param>
+    /// <param name="amount">How much was asked for.</param>
+    /// <param name="status">Where the attempt stands, by name.</param>
+    /// <param name="currency">What the amount is expressed in.</param>
+    public PaymentSummary Add(
+        Guid customerId,
+        Guid? serviceAccountId = null,
+        Guid? billId = null,
+        decimal amount = 120.00m,
+        string status = "Approved",
+        string currency = "USD")
+    {
+        var id = Guid.CreateVersion7();
+        _ordinal++;
+
+        var payment = new PaymentSummary(
+            id,
+            $"PAY-{_ordinal:000000}",
+            customerId,
+            serviceAccountId ?? Guid.CreateVersion7(),
+            billId ?? Guid.CreateVersion7(),
+            amount,
+            currency,
+            status,
+
+            // The rule Payments owns, mirrored: approved is the only status that is money the utility
+            // holds. A declined attempt is still a payment a note can be filed against.
+            IsSettled: status is "Approved",
+            RequestedAt: new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero));
+
+        _payments[id] = payment;
+
+        return payment;
+    }
+
+    /// <inheritdoc />
+    public Task<PaymentSummary?> FindAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        Lookups.Add(id);
+
+        return Task.FromResult(_payments.GetValueOrDefault(id));
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyDictionary<Guid, PaymentSummary>> FindManyAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        Lookups.AddRange(ids);
+
+        IReadOnlyDictionary<Guid, PaymentSummary> found = ids
+            .Distinct()
+            .Select(_payments.GetValueOrDefault)
+            .OfType<PaymentSummary>()
+            .ToDictionary(payment => payment.Id);
+
+        return Task.FromResult(found);
+    }
+}

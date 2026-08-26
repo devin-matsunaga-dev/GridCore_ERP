@@ -105,4 +105,5 @@ const sourceLabels: Record<CustomerTimelineEntry['kind'], string> = {
   bill: 'Billing',
   adjustment: 'Adjustment',
   payment: 'Payment',
+  note: 'Note',
 };

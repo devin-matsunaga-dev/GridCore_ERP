@@ -3,6 +3,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
@@ -57,6 +58,11 @@ public sealed class CustomersTestHost : IDisposable
         // any of a deposit is applied, so the fast tier stands a double in front of it too.
         services.AddSingleton<IBillDirectory>(Bills);
 
+        // Payments registers the real IPaymentDirectory; a Customers test may not resolve it, for the
+        // same reason again. WP-2.13's note log asks it whether a payment a note is filed against is
+        // a real payment of that customer's, so the fast tier stands a double in front of it too.
+        services.AddSingleton<IPaymentDirectory>(Payments);
+
         // ownsConnection: false — the in-memory database lives only as long as this connection, and
         // each scope disposing it would delete the database mid-test.
         services.AddGridCoreDataAccess(_ => new GridCoreDbConnection(_connection, ownsConnection: false));
@@ -74,6 +80,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerContactService, CustomerContactService>();
         services.AddScoped<ICustomerProfileService, CustomerProfileService>();
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
+        services.AddScoped<ICustomerNoteService, CustomerNoteService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -90,6 +97,9 @@ public sealed class CustomersTestHost : IDisposable
 
     /// <summary>The billing register the deposit ledger asks what a bill still has outstanding.</summary>
     public FakeBillDirectory Bills { get; } = new();
+
+    /// <summary>The payment register the note log asks whether a linked payment is this customer's.</summary>
+    public FakePaymentDirectory Payments { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -189,6 +199,38 @@ public sealed class CustomersTestHost : IDisposable
             services.GetRequiredService<IUnitOfWork>(),
             services.GetRequiredService<IAuditLog>(),
             Events,
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the customer's note log, in its own scope.</summary>
+    public Task<TResult> WithNotesAsync<TResult>(Func<ICustomerNoteService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerNoteService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the note log as <paramref name="caller"/>, over this
+    /// host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape <see cref="AsAsync{TResult}(ICurrentUser, Func{ICustomerDepositService, Task{TResult}})"/>
+    /// takes, and needed for the same reason: proving that a note records <i>who</i> logged it means
+    /// two identities writing against one dataset. Composed by hand rather than through the
+    /// container, because the caller is the single dependency being swapped.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<ICustomerNoteService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new CustomerNoteService(
+            services.GetRequiredService<CustomersDbContext>(),
+            Bills,
+            Payments,
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
             caller,
             services.GetRequiredService<TimeProvider>())));
     }

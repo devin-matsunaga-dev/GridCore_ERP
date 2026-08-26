@@ -27,6 +27,10 @@ public static class RegistryProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Customer contact not found");
         }
+        catch (CustomerNoteNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Customer note not found");
+        }
         catch (ServiceLocationNotFoundException exception)
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service location not found");
@@ -56,6 +60,28 @@ public static class RegistryProblems
     /// <summary>A 404 for a contact id that matched nothing on a read path, where nothing was thrown.</summary>
     public static IResult CustomerContactNotFound(Guid id) =>
         Problem(new CustomerContactNotFoundException(id), StatusCodes.Status404NotFound, "Customer contact not found");
+
+    /// <summary>A 404 for a note id that matched nothing on a read path, where nothing was thrown.</summary>
+    public static IResult CustomerNoteNotFound(Guid id) =>
+        Problem(new CustomerNoteNotFoundException(id), StatusCodes.Status404NotFound, "Customer note not found");
+
+    /// <summary>
+    /// The 409 an attempt to edit a note earns.
+    /// </summary>
+    /// <remarks>
+    /// A workflow conflict, not a validation failure: the request was perfectly well formed and the
+    /// register is simply not one that works that way — the same distinction
+    /// <c>CustomerDepositService</c> draws between a mistyped bill id and a bill that cannot take the
+    /// money. The detail names the sub-resource that does what the caller wanted, because this is the
+    /// rule of WP-2.13 a client is most likely to meet by trying it.
+    /// </remarks>
+    public static IResult NoteLogIsAppendOnly(Guid id) =>
+        Problem(
+            new RegistryWorkflowException(
+                $"Note '{id}' cannot be edited: the customer note log is append-only, so what was written stays as it was written. "
+                + $"POST /api/customer-notes/{id}/corrections to record a correction, which is a new note referencing this one."),
+            StatusCodes.Status409Conflict,
+            "The registry is not in that state");
 
     /// <summary>A 404 for a location id that matched nothing.</summary>
     public static IResult ServiceLocationNotFound(Guid id) =>

@@ -356,6 +356,88 @@ export type RefundDepositInput = {
   reason?: string | null;
 };
 
+/** Mirrors `CustomerNoteKind`. The order is the enum's; `Note` is the one that is not a contact. */
+export const noteKinds = [
+  'Note',
+  'InboundCall',
+  'OutboundCall',
+  'CounterVisit',
+  'FieldVisit',
+  'Complaint',
+  'BillingDispute',
+] as const;
+export type CustomerNoteKind = (typeof noteKinds)[number];
+
+/**
+ * Mirrors `CustomerNoteLinkKind`.
+ *
+ * `WorkOrder` is stored but **not verified** by the host until WP-3.1 builds that register — a
+ * work-order link therefore comes back with a `linkedReference` of `null`, because there is nobody
+ * to ask what the number is. Bills and payments arrive with theirs.
+ */
+export const noteLinkKinds = ['Bill', 'Payment', 'WorkOrder'] as const;
+export type CustomerNoteLinkKind = (typeof noteLinkKinds)[number];
+
+/** Mirrors `CustomerNoteResponse` — one entry in a customer's note log. */
+export type CustomerNote = {
+  id: string;
+  customerId: string;
+  /** The account it is about, or `null` when it is about the person rather than one of their supplies. */
+  serviceAccountId: string | null;
+  kind: CustomerNoteKind;
+  /** Whether it records a contact that took place rather than something a rep wrote down. */
+  isInteraction: boolean;
+  body: string;
+  /** A day, never an instant: "ring them back on Thursday" is a day's work. */
+  followUpOn: string | null;
+  linkKind: CustomerNoteLinkKind | null;
+  linkedEntityId: string | null;
+  /** The bill or payment number, as printed. `null` on a work-order link — see `noteLinkKinds`. */
+  linkedReference: string | null;
+  /** The note this one corrects. The corrected note carries no pointer back — see `notes.ts`. */
+  correctsNoteId: string | null;
+  isPinned: boolean;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/** Mirrors `NoteLinkRequest`. */
+export type NoteLinkInput = {
+  kind: CustomerNoteLinkKind;
+  entityId: string;
+};
+
+/** Mirrors `LogNoteRequest`. */
+export type LogNoteInput = {
+  kind: CustomerNoteKind;
+  body: string;
+  serviceAccountId?: string | null;
+  followUpOn?: string | null;
+  link?: NoteLinkInput | null;
+};
+
+/**
+ * Mirrors `CorrectNoteRequest`.
+ *
+ * No customer and no account: a correction is filed where the note it corrects was filed, so those
+ * come from the host rather than from here.
+ */
+export type CorrectNoteInput = {
+  kind: CustomerNoteKind;
+  body: string;
+  followUpOn?: string | null;
+  link?: NoteLinkInput | null;
+};
+
+/** How the note log is narrowed. Every field is optional; the host clamps the limit. */
+export type CustomerNoteFilters = {
+  kind?: CustomerNoteKind;
+  serviceAccountId?: string;
+  pinnedOnly?: boolean;
+  limit?: number;
+};
+
 /** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
 export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
 export type CustomerMatchKind = (typeof customerMatchKinds)[number];
@@ -502,6 +584,42 @@ export const customersApi = {
   saveProfile: (customerId: string, input: UpdateCustomerProfileInput) =>
     api.put<CustomerProfile>(`/api/customers/${customerId}/profile`, { json: input }),
 
+  /**
+   * One customer's note log (WP-2.13), pinned first and newest first within each group.
+   *
+   * `limit` is left to the host's default when the caller does not say — it clamps whatever arrives,
+   * so a screen never has to guess a ceiling.
+   */
+  notes: (customerId: string, filters: CustomerNoteFilters = {}, signal?: AbortSignal) =>
+    api.get<CustomerNote[]>(`/api/customers/${customerId}/notes`, {
+      query: params({
+        kind: filters.kind,
+        serviceAccountId: filters.serviceAccountId,
+        pinnedOnly: filters.pinnedOnly,
+        limit: filters.limit === undefined ? undefined : String(filters.limit),
+      }),
+      signal,
+    }),
+
+  logNote: (customerId: string, input: LogNoteInput) =>
+    api.post<CustomerNote>(`/api/customers/${customerId}/notes`, { json: input }),
+
+  /**
+   * Corrects a note by writing a new one that references it.
+   *
+   * A POST sub-resource rather than a PUT of the note, because the note is never edited — the host
+   * answers a PUT with a 409 saying exactly that. The correction is a new row and comes back as one.
+   */
+  correctNote: (noteId: string, input: CorrectNoteInput) =>
+    api.post<CustomerNote>(`/api/customer-notes/${noteId}/corrections`, { json: input }),
+
+  /**
+   * Pins a note or takes it back down. A PUT, because it sets one field to a value the caller states
+   * and is idempotent — pinning a pinned note is not a conflict on the host either.
+   */
+  pinNote: (noteId: string, isPinned: boolean) =>
+    api.put<CustomerNote>(`/api/customer-notes/${noteId}/pin`, { json: { isPinned } }),
+
   /** One customer's deposit: the balance, the schedule it is measured against, and every movement. */
   deposits: (customerId: string, signal?: AbortSignal) =>
     api.get<DepositLedger>(`/api/customers/${customerId}/deposits`, { signal }),
@@ -546,6 +664,15 @@ export const customerKeys = {
   contacts: (customerId: string) => ['customers', 'contacts', customerId] as const,
   profile: (customerId: string) => ['customers', 'profile', customerId] as const,
   deposits: (customerId: string) => ['customers', 'deposits', customerId] as const,
+  /**
+   * Every note query for one customer, whatever it was narrowed by — what a write invalidates.
+   *
+   * A prefix of `notes` below, so invalidating this reaches the tab's unfiltered fetch and any
+   * narrowed one at once. A write changes what belongs in every window, not just the open one.
+   */
+  notesFor: (customerId: string) => ['customers', 'notes', customerId] as const,
+  notes: (customerId: string, filters: CustomerNoteFilters = {}) =>
+    ['customers', 'notes', customerId, filters] as const,
 };
 
 /**
@@ -698,6 +825,25 @@ export function useCustomerDeposits(customerId: string | undefined) {
   return useQuery({
     queryKey: customerKeys.deposits(customerId ?? ''),
     queryFn: ({ signal }) => customersApi.deposits(customerId!, signal),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * One customer's note log.
+ *
+ * Lives at the 360 page beside every other query rather than inside the notes tab, which is the call
+ * WP-2.10 made for all of them: switching to a tab issues no request, and each query still owns its
+ * own loading and error state. The summary's pinned strip and the timeline's fifth source read the
+ * same fetch, so the tab is not the only consumer either way.
+ *
+ * A customer who has never been rung reads back as an empty list, which is an ordinary position
+ * rather than a missing record — the host's 404 is for a customer who does not exist.
+ */
+export function useCustomerNotes(customerId: string | undefined, filters: CustomerNoteFilters = {}) {
+  return useQuery({
+    queryKey: customerKeys.notes(customerId ?? '', filters),
+    queryFn: ({ signal }) => customersApi.notes(customerId!, filters, signal),
     enabled: Boolean(customerId),
   });
 }
