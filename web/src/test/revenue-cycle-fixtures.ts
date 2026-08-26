@@ -1,4 +1,4 @@
-import type { Bill, BillingRun } from '@/api/billing';
+import type { Bill, BillDocument, BillingRun } from '@/api/billing';
 import type { Receivables, TrialBalance, JournalEntry } from '@/api/finance';
 import type { MeterReading, ReadingCycle } from '@/api/metering';
 import type { Payment, TakePaymentResult } from '@/api/payments';
@@ -129,6 +129,62 @@ export function paidBill(overrides: Partial<Bill> = {}): Bill {
     paidAt: '2026-08-25T01:00:00+00:00',
     ...overrides,
   });
+}
+
+/**
+ * A bill reproduced as the document it was issued as (WP-2.14).
+ *
+ * Deliberately an ADJUSTED bill: `printedTotal` is what the customer holds a copy of, the credit
+ * sits in `corrections` as its own dated row, and `amountDue` is the two together. A fixture with no
+ * corrections would let the screen's whole reason for existing go untested.
+ */
+export function billDocument(overrides: Partial<BillDocument> = {}): BillDocument {
+  const issued = bill();
+
+  return {
+    billId: issued.id,
+    billNumber: issued.billNumber,
+    serviceAccountId: issued.serviceAccountId,
+    accountNumber: issued.accountNumber,
+    customerId: issued.customerId,
+    customerName: issued.customerName,
+    serviceLocationId: issued.serviceLocationId,
+    ratePlanCode: issued.ratePlanCode,
+    ratePlanName: issued.ratePlanName,
+    ratePlanEffectiveFrom: issued.ratePlanEffectiveFrom,
+    currency: issued.currency,
+    unitOfMeasure: issued.unitOfMeasure,
+    periodStart: issued.periodStart,
+    periodEnd: issued.periodEnd,
+    meterNumber: issued.meterNumber,
+    previousReading: issued.previousReading,
+    currentReading: issued.currentReading,
+    consumption: issued.consumption,
+    lines: issued.lines,
+    printedTotal: issued.totalAmount,
+    corrections: [
+      {
+        sequence: 1,
+        kind: 'Credit',
+        amount: -10,
+        amountDueAfter: issued.totalAmount - 10,
+        reason: 'Meter misread',
+        actorName: 'Ana Cruz (demo)',
+        recordedAt: '2026-08-26T09:00:00+00:00',
+      },
+    ],
+    correctionTotal: -10,
+    amountDue: issued.totalAmount - 10,
+    amountPaid: 0,
+    balance: issued.totalAmount - 10,
+    status: 'Issued',
+    issuedOn: '2026-08-25',
+    dueDate: '2026-09-15',
+    producedAt: '2026-08-26T10:00:00+00:00',
+    producedById: 'demo:customer-service',
+    producedByName: 'Ana Cruz (demo)',
+    ...overrides,
+  };
 }
 
 export function billingRun(overrides: Partial<BillingRun> = {}): BillingRun {

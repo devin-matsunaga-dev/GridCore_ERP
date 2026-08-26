@@ -1,5 +1,6 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
 import type {
+  AccountStatement,
   ContactMethod,
   Customer,
   CustomerContact,
@@ -9,6 +10,7 @@ import type {
   DepositLedger,
   ServiceAccount,
   ServiceLocation,
+  StatementEntry,
 } from '@/api/customers';
 import type { StockItem, StockMovement, Warehouse } from '@/api/inventory';
 import type { Meter } from '@/api/metering';
@@ -181,6 +183,59 @@ export function depositLedger(overrides: Partial<DepositLedger> = {}): DepositLe
     ruleId: '0192f000-0000-7000-8000-0000000007f1',
     isInterestBearing: false,
     entries: [depositEntry()],
+    ...overrides,
+  };
+}
+
+/** One line of an account statement (WP-2.14). */
+export function statementEntry(overrides: Partial<StatementEntry> = {}): StatementEntry {
+  return {
+    date: '2026-07-05',
+    occurredAt: '2026-07-05T00:00:00+00:00',
+    kind: 'BillIssued',
+    description: 'Bill BIL-000001 for 1 Jun 2026 to 30 Jun 2026',
+    reference: 'BIL-000001',
+    amount: 120,
+    depositAmount: 0,
+    balanceAfter: 120,
+    depositHeldAfter: 0,
+    billId: '0192f000-0000-7000-8000-000000000a01',
+    paymentId: null,
+    depositEntryId: null,
+    serviceAccountId: '0192f000-0000-7000-8000-000000000201',
+    accountNumber: 'A-000001',
+    ...overrides,
+  };
+}
+
+/**
+ * An account statement (WP-2.14).
+ *
+ * The default is a real one and it PROVES OUT: opening 0, one bill of 120, closing 120. A fixture
+ * that did not add up would let a test pass against a document the screen is supposed to refuse.
+ */
+export function accountStatement(overrides: Partial<AccountStatement> = {}): AccountStatement {
+  return {
+    customerId: '0192f000-0000-7000-8000-000000000001',
+    accountNumber: 'C-000001',
+    customerName: 'Sablan Family Residence',
+    mailingAddress: '12 Beach Road, Songsong, Rota',
+    from: '2026-07-01',
+    to: '2026-07-31',
+    currency: 'USD',
+    openingBalance: 0,
+    closingBalance: 120,
+    openingDepositHeld: 0,
+    closingDepositHeld: 0,
+    entries: [statementEntry()],
+    billed: 120,
+    corrected: 0,
+    paid: 0,
+    depositApplied: 0,
+    isTruncated: false,
+    producedAt: '2026-08-26T10:00:00+00:00',
+    producedById: 'demo:customer-service',
+    producedByName: 'Ana Cruz (demo)',
     ...overrides,
   };
 }

@@ -15,8 +15,15 @@ namespace GridCore.Contracts.Directories;
 /// <b>Deliberately narrower than <see cref="IBillDirectory"/>.</b> That seam exists so a caller can
 /// work out how much may be taken, which is a computation with a rule behind it. This one exists so
 /// a caller can ask <i>does this payment exist, and is it this customer's</i> — the question a note
-/// linking to a payment asks (WP-2.13). Nothing here is a balance and nothing here decides anything;
-/// widening it is a work package, not a field.
+/// linking to a payment asks (WP-2.13). Nothing here is a balance and nothing here decides anything.
+/// </para>
+/// <para>
+/// <b>WP-2.14 is the work package that widened it</b>, exactly as the note left standing here said
+/// one would have to: <see cref="Method"/> and <see cref="AnsweredAt"/> arrived together with
+/// <c>ForCustomerAsync</c>, because a payment-history export has to say how somebody paid and an
+/// account statement has to credit the money on the day it landed. It is still not a balance —
+/// what a payment did to a bill is <c>IBillDirectory</c>'s answer, and this one only ever says what
+/// was tendered and what became of it.
 /// </para>
 /// </remarks>
 /// <param name="Id">Identifier of the payment, in the Payments schema.</param>
@@ -34,7 +41,22 @@ namespace GridCore.Contracts.Directories;
 /// the lifecycle that module owns — a declined attempt is still a payment worth linking a note to,
 /// and it is emphatically not money received.
 /// </param>
+/// <param name="Method">
+/// How it was tendered — <c>card</c>, <c>bank-transfer</c>, <c>cash</c>. The method, never the
+/// instrument: "Card" is what a receipt and an export may say, and the masked card itself stays
+/// inside Payments with the provider reference.
+/// </param>
 /// <param name="RequestedAt">When it was taken.</param>
+/// <param name="AnsweredAt">
+/// When the provider answered — <b>whatever it answered</b> — or <see langword="null"/> while it has
+/// not. Read with <see cref="IsSettled"/> it is the day the money landed, which is the day a
+/// statement credits a payment on: one attempted on the last day of a period and approved on the
+/// first day of the next belongs to the period it was approved in, because that is when what the
+/// customer owed changed. On a refusal it is the day the refusal came back, which is what dates that
+/// row on an export. Deliberately not called <c>SettledAt</c> at this seam, though that is the
+/// column behind it: a name that says "settled" on a declined payment is a name a caller will read
+/// as money.
+/// </param>
 public sealed record PaymentSummary(
     Guid Id,
     string PaymentNumber,
@@ -45,7 +67,9 @@ public sealed record PaymentSummary(
     string Currency,
     string Status,
     bool IsSettled,
-    DateTimeOffset RequestedAt);
+    string Method,
+    DateTimeOffset RequestedAt,
+    DateTimeOffset? AnsweredAt);
 
 /// <summary>
 /// Read access to the payment register for modules that are not Payments.
@@ -80,5 +104,30 @@ public interface IPaymentDirectory
     /// </summary>
     Task<IReadOnlyDictionary<Guid, PaymentSummary>> FindManyAsync(
         IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every payment of <paramref name="customerId"/>'s, oldest first — attempts included (WP-2.14).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The whole history, not a window</b>, for the reason <c>IBillDirectory</c>'s equivalent
+    /// gives: a statement's opening balance is what every earlier movement adds up to, and a call
+    /// that quietly returned the recent ones would produce a document that proves out and is wrong.
+    /// A caller handed exactly <paramref name="limit"/> rows has to assume the history did not fit.
+    /// </para>
+    /// <para>
+    /// <b>Refusals come back too, and the caller decides what to do with them.</b> A statement
+    /// credits only what settled — a declined card moved no money — while a payment-history export
+    /// shows the attempt, because "why does this customer still owe money" is answered by the run of
+    /// declines and not by the silence where they would be. <c>IsSettled</c> is how the two tell
+    /// them apart, which is why this seam has never flattened it.
+    /// </para>
+    /// </remarks>
+    /// <param name="customerId">Whose payments.</param>
+    /// <param name="limit">Most payments to return.</param>
+    Task<IReadOnlyList<PaymentSummary>> ForCustomerAsync(
+        Guid customerId,
+        int limit,
         CancellationToken cancellationToken = default);
 }

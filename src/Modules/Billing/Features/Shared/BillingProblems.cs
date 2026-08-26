@@ -30,6 +30,10 @@ public static class BillingProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service account not found");
         }
+        catch (BillingPermissionException exception)
+        {
+            return Problem(exception, StatusCodes.Status403Forbidden, "Not permitted");
+        }
         catch (BillingWorkflowException exception)
         {
             return Problem(exception, StatusCodes.Status409Conflict, "The billing register is not in that state");

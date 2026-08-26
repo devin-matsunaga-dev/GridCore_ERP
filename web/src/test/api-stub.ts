@@ -12,6 +12,13 @@ export type StubbedResponse = {
   /** Defaults to 200. */
   status?: number;
   body?: unknown;
+  /**
+   * Answered verbatim as `text/csv`, for a route that serves a file rather than JSON (WP-2.14's
+   * payment-history export). Takes precedence over `body`, which is JSON-encoded — encoding a CSV
+   * as JSON would hand the client a quoted string and the escaping under test would be the
+   * encoder's rather than the host's.
+   */
+  text?: string;
 };
 
 export type FetchStub = {
@@ -38,6 +45,15 @@ export function stubFetch(respond: (url: URL) => StubbedResponse | undefined): F
     calls.push(url);
 
     const answer = respond(url) ?? notFound;
+
+    if (answer.text !== undefined) {
+      return Promise.resolve(
+        new Response(answer.text, {
+          status: answer.status ?? 200,
+          headers: { 'Content-Type': 'text/csv' },
+        }),
+      );
+    }
 
     return Promise.resolve(
       new Response(JSON.stringify(answer.body ?? null), {

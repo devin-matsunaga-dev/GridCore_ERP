@@ -150,4 +150,71 @@ public sealed class PaymentDirectoryTests : IDisposable
     [Fact]
     public async Task An_empty_batch_asks_the_database_nothing() =>
         Assert.Empty(await _host.WithDirectoryAsync(directory => directory.FindManyAsync([])));
+
+    [Fact]
+    public async Task A_summary_carries_the_METHOD_and_the_day_the_money_LANDED()
+    {
+        // What WP-2.14 widened the seam for. The method, never the instrument: "Card" is what a
+        // receipt and an export may say, while the masked card stays in this schema with the
+        // provider's reference.
+        var (_, bill) = _host.AnOutstandingBill(amountDue: 120.00m);
+        var taken = await TakeAsync(bill, 50.00m);
+
+        var summary = Assert.IsType<PaymentSummary>(await _host.WithDirectoryAsync(directory => directory.FindAsync(taken.Id)));
+
+        Assert.Equal(PaymentMethods.Card, summary.Method);
+        Assert.Equal(taken.SettledAt, summary.AnsweredAt);
+        Assert.NotNull(summary.AnsweredAt);
+        Assert.True(summary.IsSettled);
+    }
+
+    [Fact]
+    public async Task A_REFUSED_attempt_is_ANSWERED_and_not_settled()
+    {
+        // The distinction the seam's name is about: a refusal has an answer date — the day the card
+        // came back — and is emphatically not money. A caller reading the date alone would credit
+        // it; IsSettled beside it is what stops them.
+        var (_, bill) = _host.AnOutstandingBill(amountDue: 120.00m);
+        var declined = await TakeAsync(bill, 50.00m, PaymentOutcome.Declined);
+
+        var summary = Assert.IsType<PaymentSummary>(await _host.WithDirectoryAsync(directory => directory.FindAsync(declined.Id)));
+
+        Assert.False(summary.IsSettled);
+        Assert.NotNull(summary.AnsweredAt);
+        Assert.NotEqual(default, summary.RequestedAt);
+    }
+
+    [Fact]
+    public async Task A_customers_whole_payment_history_comes_back_OLDEST_first_and_includes_refusals()
+    {
+        // The opposite order from every other list in this module, and deliberately: the caller reads
+        // a statement downwards from an opening balance. Refusals are in it because the caller — not
+        // this seam — decides what they mean; a statement drops them, an export prints them.
+        var (account, bill) = _host.AnOutstandingBill(amountDue: 300.00m);
+
+        var first = await TakeAsync(bill, 50.00m);
+        var refused = await TakeAsync(bill, 60.00m, PaymentOutcome.Declined);
+
+        _host.Provider.WillAnswer(PaymentOutcome.Approved);
+
+        var last = await TakeAsync(bill, 70.00m);
+
+        var history = await _host.WithDirectoryAsync(directory => directory.ForCustomerAsync(account.CustomerId, 100));
+
+        Assert.Equal([first.Id, refused.Id, last.Id], history.Select(payment => payment.Id));
+        Assert.Equal([true, false, true], history.Select(payment => payment.IsSettled));
+    }
+
+    [Fact]
+    public async Task A_history_belongs_to_one_customer()
+    {
+        var (account, bill) = _host.AnOutstandingBill(amountDue: 120.00m);
+
+        await TakeAsync(bill, 50.00m);
+
+        var history = await _host.WithDirectoryAsync(directory => directory.ForCustomerAsync(Guid.CreateVersion7(), 100));
+
+        Assert.Empty(history);
+        Assert.NotEqual(Guid.Empty, account.CustomerId);
+    }
 }

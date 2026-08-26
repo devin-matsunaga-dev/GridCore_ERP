@@ -438,6 +438,78 @@ export type CustomerNoteFilters = {
   limit?: number;
 };
 
+/** Mirrors `StatementEntryKind`. The order is the order lines of one day sort in. */
+export const statementEntryKinds = [
+  'BillIssued',
+  'BillCorrected',
+  'BillWithdrawn',
+  'PaymentReceived',
+  'DepositApplied',
+  'DepositCollected',
+  'DepositRefunded',
+] as const;
+export type StatementEntryKind = (typeof statementEntryKinds)[number];
+
+/**
+ * Mirrors `StatementEntryResponse` — one line of an account statement.
+ *
+ * **Two signed columns, because a statement tracks two balances.** `amount` is the effect on what
+ * the customer owes; `depositAmount` is the effect on what the utility holds for them. A deposit
+ * collection moves only the second — it is a liability taken on, not a payment — and an application
+ * moves both.
+ */
+export type StatementEntry = {
+  date: string;
+  occurredAt: string;
+  kind: StatementEntryKind;
+  description: string;
+  reference: string | null;
+  amount: number;
+  depositAmount: number;
+  balanceAfter: number;
+  depositHeldAfter: number;
+  /** What a reprint link is built from, on the lines that concern a bill. */
+  billId: string | null;
+  paymentId: string | null;
+  depositEntryId: string | null;
+  serviceAccountId: string | null;
+  accountNumber: string | null;
+};
+
+/**
+ * Mirrors `AccountStatementResponse` — a statement over a date range (WP-2.14).
+ *
+ * Composed by the host across bills, payments and the deposit ledger, and it proves out:
+ * `openingBalance` plus every entry's `amount` is `closingBalance`. Nothing is stored — the host
+ * builds it from records that already exist, which is why there is no id here to fetch it back by.
+ */
+export type AccountStatement = {
+  customerId: string;
+  accountNumber: string;
+  customerName: string;
+  mailingAddress: string | null;
+  from: string;
+  to: string;
+  currency: string;
+  openingBalance: number;
+  closingBalance: number;
+  openingDepositHeld: number;
+  closingDepositHeld: number;
+  entries: StatementEntry[];
+  billed: number;
+  corrected: number;
+  paid: number;
+  depositApplied: number;
+  /** A register's history did not fit, so the opening balance may be short. Say so on screen. */
+  isTruncated: boolean;
+  producedAt: string;
+  producedById: string;
+  producedByName: string | null;
+};
+
+/** The range a statement is asked for. Both days are included; the host defaults to the last quarter. */
+export type StatementRange = { from: string; to: string };
+
 /** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
 export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
 export type CustomerMatchKind = (typeof customerMatchKinds)[number];
@@ -638,6 +710,29 @@ export const customersApi = {
   refundDeposit: (customerId: string, input: RefundDepositInput) =>
     api.post<DepositEntry>(`/api/customers/${customerId}/deposits/refunds`, { json: input }),
 
+  /**
+   * An account statement over a range (WP-2.14).
+   *
+   * A GET the host AUDITS, so it is fetched when a rep asks for a statement and not as part of
+   * loading the page — the call every other query on the 360 makes in the opposite direction. Needs
+   * `customers.documents`, which is narrower than the `customers.read` that opened the page.
+   */
+  statement: (customerId: string, range: StatementRange, signal?: AbortSignal) =>
+    api.get<AccountStatement>(`/api/customers/${customerId}/documents/statement`, {
+      query: { from: range.from, to: range.to },
+      signal,
+    }),
+
+  /**
+   * The payment history as a CSV file.
+   *
+   * Comes back as text rather than JSON — it is a file, and `Content-Disposition` is what names it.
+   * The name is not on this answer, so the caller builds one; `paymentHistoryFileName` is the same
+   * rule the host uses, kept in step by a test on both sides.
+   */
+  paymentHistoryCsv: (customerId: string, signal?: AbortSignal) =>
+    api.getText(`/api/customers/${customerId}/documents/payment-history`, { signal }),
+
   /** The deposit schedule. Reference data on the host, so it is safe to cache for a session. */
   depositRules: (signal?: AbortSignal) => api.get<DepositRule[]>('/api/deposit-rules', { signal }),
 
@@ -673,6 +768,8 @@ export const customerKeys = {
   notesFor: (customerId: string) => ['customers', 'notes', customerId] as const,
   notes: (customerId: string, filters: CustomerNoteFilters = {}) =>
     ['customers', 'notes', customerId, filters] as const,
+  statement: (customerId: string, range: StatementRange) =>
+    ['customers', 'statement', customerId, range] as const,
 };
 
 /**
@@ -845,6 +942,29 @@ export function useCustomerNotes(customerId: string | undefined, filters: Custom
     queryKey: customerKeys.notes(customerId ?? '', filters),
     queryFn: ({ signal }) => customersApi.notes(customerId!, filters, signal),
     enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * A customer's account statement over a range (WP-2.14).
+ *
+ * **Unlike every other query on the 360, this one does NOT live at the page.** Fetching it writes an
+ * audit entry saying a statement was produced, so it runs when a rep asks for one — `enabled` is
+ * what holds it — and never as a side effect of opening a tab. It is held for the session for the
+ * same reason: a refetch on window focus would put a second "a statement went out" entry in the
+ * trail because somebody switched tabs.
+ */
+export function useCustomerStatement(
+  customerId: string | undefined,
+  range: StatementRange,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: customerKeys.statement(customerId ?? '', range),
+    queryFn: ({ signal }) => customersApi.statement(customerId!, range, signal),
+    enabled: enabled && Boolean(customerId),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 }
 

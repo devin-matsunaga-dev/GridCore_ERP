@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Documents;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
@@ -68,6 +69,10 @@ public sealed class BillingTestHost : IDisposable
         services.AddScoped<IBillNumberGenerator, SequentialBillNumberGenerator>();
         services.AddScoped<IRatePlanService, RatePlanService>();
         services.AddScoped<IBillService, BillService>();
+
+        // The reprint (WP-2.14). Registered like every other slice, so a test resolves it the way
+        // the host does; the ones that prove a refusal build it by hand with another caller.
+        services.AddScoped<IBillDocumentService, BillDocumentService>();
         services.AddScoped<BillsDemoSeeder>();
 
         _provider = services.BuildServiceProvider();
@@ -100,6 +105,34 @@ public sealed class BillingTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<IBillService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the bill reprint, in its own scope.</summary>
+    public Task<TResult> WithDocumentsAsync<TResult>(Func<IBillDocumentService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IBillDocumentService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the reprint as <paramref name="caller"/>, over this
+    /// host's database.
+    /// </summary>
+    /// <remarks>
+    /// The one place a Billing test needs two identities against one dataset: proving a reprint is
+    /// refused means somebody who <i>may</i> raise a bill has to have raised one first. Composed by
+    /// hand rather than through the container, because the caller is the single dependency swapped.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<IBillDocumentService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new BillDocumentService(
+            services.GetRequiredService<BillingDbContext>(),
+            services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
     }
 
     /// <summary>Runs <paramref name="work"/> against the tariff catalogue, in its own scope.</summary>

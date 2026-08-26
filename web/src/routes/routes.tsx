@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { navigationItems } from '@/components/shell/navigation';
 import { AssetsPage } from '@/features/assets/assets-page';
+import { BillDocumentPage } from '@/features/customers/bill-document-page';
 import { CustomerDetailPage } from '@/features/customers/customer-detail-page';
 import { CustomersPage } from '@/features/customers/customers-page';
 import { CustomerRegistrationPage } from '@/features/customers/registration/customer-registration-page';
@@ -56,6 +57,10 @@ const childRoutes: ModuleRoute[] = [
   // segment above a dynamic one, so `/customers/new` never reaches `:customerId` whatever the order.
   { path: '/customers/new', element: <CustomerRegistrationPage /> },
   { path: '/customers/:customerId', element: <CustomerDetailPage /> },
+  // The bill reprint (WP-2.14). A page of its own rather than a drawer on the 360: the document has
+  // its own URL a rep can send on, and printing needs a page the shell can be stripped from. Ranked
+  // above `:tab` by React Router's static-segment rule, so `/bills/{id}` never lands on the tab.
+  { path: '/customers/:customerId/bills/:billId', element: <BillDocumentPage /> },
   // The 360's tabs are routes, so a rep can send somebody the link to the tab they are looking at
   // and the back button walks them. One page reads `:tab`; an unrecognised segment redirects to the
   // customer rather than rendering the summary under a URL that says something else.

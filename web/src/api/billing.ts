@@ -124,6 +124,73 @@ export type BillFilters = {
   includeAdjustments?: boolean;
 };
 
+/** Mirrors `BillDocumentLineResponse` — one line of the bill, exactly as it was printed. */
+export type BillDocumentLine = {
+  sequence: number;
+  kind: string;
+  description: string;
+  tierSequence: number | null;
+  units: number | null;
+  ratePerUnit: number | null;
+  amount: number;
+};
+
+/** Mirrors `BillDocumentCorrectionResponse` — a correction shown BENEATH the document, never in it. */
+export type BillDocumentCorrection = {
+  sequence: number;
+  kind: 'Credit' | 'Charge';
+  amount: number;
+  amountDueAfter: number;
+  reason: string;
+  actorName: string | null;
+  recordedAt: string;
+};
+
+/**
+ * Mirrors `BillDocumentResponse` — an issued bill reproduced as the document the customer was sent
+ * (WP-2.14).
+ *
+ * Not a `Bill`. The overlap is large and the difference is the point: every figure here came off a
+ * stored column rather than being recalculated, `printedTotal` is what the paper in the customer's
+ * hand says whatever has happened since, and the corrections are a separate list rather than a
+ * number folded into the lines.
+ */
+export type BillDocument = {
+  billId: string;
+  billNumber: string;
+  serviceAccountId: string;
+  accountNumber: string;
+  customerId: string;
+  /** The name the bill was RAISED in, which is not necessarily the customer's name today. */
+  customerName: string;
+  serviceLocationId: string;
+  ratePlanCode: string;
+  ratePlanName: string;
+  ratePlanEffectiveFrom: string;
+  currency: string;
+  unitOfMeasure: string;
+  periodStart: string;
+  periodEnd: string;
+  meterNumber: string;
+  previousReading: number | null;
+  currentReading: number | null;
+  consumption: number;
+  lines: BillDocumentLine[];
+  /** What the document said. The lines add up to exactly this. */
+  printedTotal: number;
+  corrections: BillDocumentCorrection[];
+  correctionTotal: number;
+  amountDue: number;
+  amountPaid: number;
+  balance: number;
+  status: BillStatus;
+  issuedOn: string;
+  dueDate: string | null;
+  producedAt: string;
+  producedById: string;
+  producedByName: string | null;
+};
+
 export const billingApi = {
   get: (id: string, signal?: AbortSignal) => api.get<Bill>(`/api/bills/${id}`, { signal }),
 
@@ -140,12 +207,25 @@ export const billingApi = {
 
   /** Issues a draft. This is what publishes `BillIssued`, and so what reaches Finance. */
   issue: (id: string) => api.post<Bill>(`/api/bills/${id}/issue`, { json: {} }),
+
+  /**
+   * The bill as the document it was issued as (WP-2.14).
+   *
+   * A GET that the host AUDITS: a copy of a bill leaves the building, and "who sent this out, for
+   * whom, and when" is the question asked of it afterwards. So this is not something to call
+   * speculatively — it is fetched when a rep asks to see the document, and never as part of loading
+   * a page. Needs `customers.documents` on the host, which is narrower than the `billing.read` that
+   * lists bills.
+   */
+  document: (id: string, signal?: AbortSignal) =>
+    api.get<BillDocument>(`/api/bills/${id}/document`, { signal }),
 };
 
 export const billKeys = {
   all: ['bills'] as const,
   list: (filters: BillFilters) => ['bills', 'list', filters] as const,
   detail: (id: string) => ['bills', 'detail', id] as const,
+  document: (id: string) => ['bills', 'document', id] as const,
 };
 
 /**
@@ -157,5 +237,26 @@ export function useBills(filters: BillFilters, enabled = true) {
     queryKey: billKeys.list(filters),
     queryFn: ({ signal }) => billingApi.list(filters, signal),
     enabled,
+  });
+}
+
+/**
+ * One bill's document.
+ *
+ * **`enabled` is load-bearing here in a way it is nowhere else.** Fetching this writes an audit
+ * entry saying a copy of the bill was produced, so it must run when a rep asks for the document and
+ * at no other time — never on mount, never for a row the page merely listed. The reprint route
+ * passes the id it was opened with.
+ */
+export function useBillDocument(billId: string | undefined) {
+  return useQuery({
+    queryKey: billKeys.document(billId ?? ''),
+    queryFn: ({ signal }) => billingApi.document(billId!, signal),
+    enabled: Boolean(billId),
+
+    // Never silently re-produced. A refetch on window focus would put a second "a copy went out"
+    // entry in the audit trail because somebody switched tabs.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 }

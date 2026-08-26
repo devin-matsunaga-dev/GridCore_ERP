@@ -29,6 +29,7 @@ import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
 import { CustomerDepositCard } from './components/customer-deposit-card';
+import { CustomerDocumentsCard } from './components/customer-documents-card';
 import { CustomerNotesCard } from './components/customer-notes-card';
 import { CustomerPinnedNotes } from './components/customer-pinned-notes';
 import { CustomerProfileCard } from './components/customer-profile-card';
@@ -328,6 +329,26 @@ export function CustomerDetailPage() {
           isLoading={deposits.isPending}
           error={deposits.isError ? deposits.error : undefined}
           onRetry={() => void deposits.refetch()}
+        />
+      )}
+
+      {/*
+        The documents tab (WP-2.14) — the one tab whose queries do NOT live here. The 360's rule is
+        that switching tabs issues no request, which is right for reads and wrong for these: the host
+        AUDITS a statement and an export, because both leave the building. A tab that produced a
+        statement by being opened would put an entry in the trail saying a document went to a
+        customer who never asked for one. So the card holds its own query and fires it on a button.
+      */}
+      {active === 'documents' && customerId && (
+        <CustomerDocumentsCard
+          customerId={customerId}
+          accountNumber={record.accountNumber}
+          // The bills a rep can reprint come from the window this page already fetched, so listing
+          // them issues no request — the call the deposit and notes tabs both made.
+          bills={bills.data ?? []}
+          isBillsLoading={bills.isPending}
+          billsError={bills.isError ? bills.error : undefined}
+          onRetryBills={() => void bills.refetch()}
         />
       )}
 

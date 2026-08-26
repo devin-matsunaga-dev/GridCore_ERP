@@ -50,6 +50,17 @@ public sealed class ServiceAccountNotFoundException(Guid id)
 public sealed class BillingWorkflowException(string message) : BillingRegistryException(message);
 
 /// <summary>
+/// The caller may not do this, though they were allowed through the door. Surfaces as 403.
+/// </summary>
+/// <remarks>
+/// The first of these in this module (WP-2.14). Every other permission Billing enforces sits on the
+/// route and nowhere else; the reprint demands its own as well, because CONVENTIONS.md's rule is
+/// that a service enforces its permissions rather than trusting the endpoint that called it, and a
+/// document that leaves the building is not the place to keep making the older exception.
+/// </remarks>
+public sealed class BillingPermissionException(string message) : BillingRegistryException(message);
+
+/// <summary>
 /// The bill or tariff as described could not be produced. Surfaces as 400. Edge validation catches
 /// most of these first; this is the aggregate's own guard, which also protects a seeder or a later
 /// module calling the service directly.

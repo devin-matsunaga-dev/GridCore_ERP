@@ -29,6 +29,12 @@ public static class RolePermissionMap
                 // disclosure off moves one line here rather than editing every call site.
                 Permissions.Customers.Authorise,
 
+                // The front desk is where a customer asks for a copy of their bill or a statement of
+                // their account (WP-2.14), so this role holds it — and holds it separately from
+                // customers.read, which is what a utility takes away first when it decides that
+                // producing documents needs supervising.
+                Permissions.Customers.Documents,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
@@ -39,6 +45,12 @@ public static class RolePermissionMap
 
             [GridCoreRoles.Billing] = Set(
                 Permissions.Customers.Read,
+
+                // A billing officer reprints bills all day — a disputed one, a lost one, one a
+                // customer's accountant has asked for. Held without customers.write, as every other
+                // grant in this role is.
+                Permissions.Customers.Documents,
+
                 Permissions.Metering.Read,
                 Permissions.Metering.Write,
                 Permissions.Billing.Read,
@@ -53,6 +65,9 @@ public static class RolePermissionMap
                 // Finance holds it without customers.write: a deposit is money, and the refunds and
                 // applications WP-2.12 builds are Finance's work, not an edit to a customer record.
                 Permissions.Customers.Deposit,
+
+                // Collections work is done off statements, so Finance produces them too.
+                Permissions.Customers.Documents,
 
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
@@ -94,6 +109,11 @@ public static class RolePermissionMap
 
             [GridCoreRoles.Manager] = Set(
                 Permissions.Customers.Read,
+
+                // A manager who may credit a disputed bill has to be able to read the document that
+                // was disputed.
+                Permissions.Customers.Documents,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Billing.Adjust,

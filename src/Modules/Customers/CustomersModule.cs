@@ -3,6 +3,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Documents;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
@@ -60,6 +61,14 @@ public sealed class CustomersModule : IModule
         // real one of this customer's. A work-order link is stored unverified until WP-3.1 builds
         // that register; see CustomerNoteLinkKinds.IsVerifiable, which is the one method that changes.
         services.AddScoped<ICustomerNoteService, CustomerNoteService>();
+
+        // Customer documents (WP-2.14): the account statement and the payment-history export, both
+        // read-side and both audited because they leave the building. It is the heaviest cross-module
+        // read in the phase — IBillDirectory and IPaymentDirectory were both widened for it, each
+        // having said in as many words that widening was a work package rather than a field — and it
+        // still reads nobody's tables but this module's. The bill reprint is Billing's, because
+        // Billing owns the figures a bill was issued with.
+        services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
 
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
@@ -125,5 +134,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapProfileEndpoints();
         endpoints.MapDepositEndpoints();
         endpoints.MapNoteEndpoints();
+        endpoints.MapDocumentEndpoints();
     }
 }

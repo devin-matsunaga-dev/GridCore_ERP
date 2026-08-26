@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Billing.Data;
 using GridCore.Modules.Billing.Features.Bills;
+using GridCore.Modules.Billing.Features.Documents;
 using GridCore.Modules.Billing.Features.RatePlans;
 using GridCore.Modules.Billing.Features.Shared;
 using GridCore.Modules.Billing.Seeding;
@@ -35,6 +36,12 @@ public sealed class BillingModule : IModule
         services.AddScoped<IBillNumberGenerator, SequentialBillNumberGenerator>();
         services.AddScoped<IRatePlanService, RatePlanService>();
         services.AddScoped<IBillService, BillService>();
+
+        // The bill reprint (WP-2.14). Its own service rather than another method on IBillService:
+        // that interface is where a bill is raised, issued, corrected and paid, and a read that
+        // produces a document for a customer has different rules — it refuses a draft, it is gated on
+        // customers.documents, and it audits a read.
+        services.AddScoped<IBillDocumentService, BillDocumentService>();
 
         // The billing register as the rest of GridCore reads it (WP-2.5). Payments takes money
         // against bills and may not touch this schema, so it takes IBillDirectory from Contracts
@@ -76,5 +83,6 @@ public sealed class BillingModule : IModule
 
         endpoints.MapRatePlanEndpoints();
         endpoints.MapBillEndpoints();
+        endpoints.MapBillDocumentEndpoints();
     }
 }

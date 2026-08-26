@@ -16,8 +16,16 @@ public sealed class FakeClock(DateTimeOffset now) : TimeProvider
     public void Advance(TimeSpan by) => _now = _now.Add(by);
 }
 
-/// <summary>A caller with an explicit identity, so tests never build a token.</summary>
-public sealed class FakeCurrentUser(string userId, string? userName = null) : ICurrentUser
+/// <summary>
+/// A caller with an explicit identity, so tests never build a token.
+/// </summary>
+/// <remarks>
+/// Holds every permission unless a test names the ones it holds. That default is what every billing
+/// test was written against — they are about the register, not about authorization — while WP-2.14's
+/// reprint, the one act in this module a service gates for itself, hands over a narrowed set. The
+/// shape the Customers fast tier already uses.
+/// </remarks>
+public sealed class FakeCurrentUser(string userId, string? userName = null, IReadOnlySet<string>? permissions = null) : ICurrentUser
 {
     /// <inheritdoc />
     public string UserId { get; } = userId;
@@ -26,7 +34,11 @@ public sealed class FakeCurrentUser(string userId, string? userName = null) : IC
     public string? UserName { get; } = userName ?? userId;
 
     /// <inheritdoc />
-    public bool HasPermission(string permission) => true;
+    public bool HasPermission(string permission) => permissions?.Contains(permission) ?? true;
+
+    /// <summary>A caller holding exactly <paramref name="permissions"/> and nothing else.</summary>
+    public static FakeCurrentUser Holding(params string[] permissions) =>
+        new("auth0|officer", "Bea Santos", permissions.ToHashSet(StringComparer.Ordinal));
 }
 
 /// <summary>

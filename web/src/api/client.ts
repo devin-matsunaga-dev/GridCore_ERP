@@ -160,8 +160,52 @@ function buildQuery(query: RequestOptions['query']): string {
   return serialised.length === 0 ? '' : `?${serialised}`;
 }
 
+/**
+ * A GET whose answer is a file rather than JSON — WP-2.14's payment-history export, and so far the
+ * only one.
+ *
+ * Shares every other rule of {@link request}: the bearer token, the timeout, and a non-2xx turning
+ * into an {@link ApiError} carrying whatever ProblemDetails the host sent. That last part is why
+ * this lives here rather than in the module client — a 403 on an export is the same 403 as
+ * everywhere else, and a second `fetch` in the codebase would be a second place to get it wrong.
+ *
+ * The host serves the file with a UTF-8 byte-order mark, which `Response.text()` strips as it
+ * decodes. A caller writing the text back out to a file has to put one back; `downloadCsv` is what
+ * does that.
+ */
+async function requestText(path: string, { query, headers, signal, timeoutMs = requestTimeoutMs, ...init }: RequestOptions = {}): Promise<string> {
+  const token = accessTokenProvider();
+  const url = `${env.apiBaseUrl}${path}${buildQuery(query)}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      method: 'GET',
+      signal: abortSignalFor(signal, timeoutMs),
+      headers: {
+        Accept: 'text/csv, text/plain',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+    });
+  } catch (error) {
+    if (isTimeout(error)) {
+      throw new ApiError(0, null, `GET ${path} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readProblem(response), `GET ${path} failed (${response.status})`);
+  }
+
+  return await response.text();
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, options),
+  getText: (path: string, options?: RequestOptions) => requestText(path, options),
   post: <T>(path: string, options?: RequestOptions) => request<T>('POST', path, options),
   put: <T>(path: string, options?: RequestOptions) => request<T>('PUT', path, options),
   patch: <T>(path: string, options?: RequestOptions) => request<T>('PATCH', path, options),

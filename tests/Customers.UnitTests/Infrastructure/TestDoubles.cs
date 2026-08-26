@@ -180,10 +180,14 @@ public sealed class FakeMeterDirectory : IMeterDirectory
 public sealed class FakeBillDirectory : IBillDirectory
 {
     private readonly Dictionary<Guid, BillSummary> _bills = [];
+    private readonly Dictionary<Guid, List<BillActivity>> _history = [];
     private int _ordinal;
 
     /// <summary>Every bill the ledger asked about, so a test can assert it went through the seam.</summary>
     public List<Guid> Lookups { get; } = [];
+
+    /// <summary>How many bills the last history call was asked for — how a truncation test proves the cap reached the seam.</summary>
+    public int LastHistoryLimit { get; private set; }
 
     /// <summary>Adds a bill and hands it back.</summary>
     /// <param name="customerId">Who owes it.</param>
@@ -267,6 +271,142 @@ public sealed class FakeBillDirectory : IBillDirectory
 
         return Task.FromResult(found);
     }
+
+    /// <summary>
+    /// Adds a bill that was <b>issued</b> on <paramref name="issuedOn"/> — what WP-2.14's statement
+    /// reads, as opposed to the summary the deposit ledger asks for.
+    /// </summary>
+    /// <remarks>
+    /// Kept in a second collection rather than derived from the first, because the two answer
+    /// different questions: <see cref="Add"/> supplies a bill with a balance to be checked against,
+    /// and this supplies a bill with a date, a printed total and a correction history. A test that
+    /// needs both adds both — which is honest, since in the real system they are one row read two
+    /// ways and a test asserting they agree is asserting something about the fake.
+    /// </remarks>
+    /// <param name="customerId">Whose bill.</param>
+    /// <param name="issuedOn">The day it went out.</param>
+    /// <param name="totalAmount">What it printed.</param>
+    /// <param name="amountPaid">How much has been paid against it since.</param>
+    /// <param name="status">Where it stands, by name.</param>
+    /// <param name="currency">What its amounts are expressed in.</param>
+    /// <param name="serviceAccountId">The account billed.</param>
+    public BillActivity Issued(
+        Guid customerId,
+        DateOnly issuedOn,
+        decimal totalAmount = 120.00m,
+        decimal amountPaid = 0m,
+        string status = "Issued",
+        string currency = "USD",
+        Guid? serviceAccountId = null)
+    {
+        _ordinal++;
+
+        var activity = new BillActivity(
+            Guid.CreateVersion7(),
+            $"BIL-{_ordinal:000000}",
+            serviceAccountId ?? Guid.CreateVersion7(),
+            $"A-{_ordinal:000000}",
+            currency,
+            issuedOn,
+            issuedOn.AddDays(21),
+            issuedOn.AddDays(-30),
+            issuedOn.AddDays(-1),
+            totalAmount,
+            AdjustmentTotal: 0m,
+            amountPaid,
+            status,
+            WithdrawnAt: null,
+            Corrections: []);
+
+        History(customerId).Add(activity);
+
+        return activity;
+    }
+
+    /// <summary>Appends a correction to a bill this double already holds, and hands back the new state.</summary>
+    /// <param name="customerId">Whose bill.</param>
+    /// <param name="bill">The bill to correct.</param>
+    /// <param name="amount">The signed change to what is owed — negative on a credit.</param>
+    /// <param name="recordedAt">When it was made.</param>
+    /// <param name="reason">Why.</param>
+    public BillActivity Correct(Guid customerId, BillActivity bill, decimal amount, DateTimeOffset recordedAt, string reason = "Meter misread")
+    {
+        ArgumentNullException.ThrowIfNull(bill);
+
+        var correction = new BillCorrection(
+            Guid.CreateVersion7(),
+            bill.Corrections.Count + 1,
+            amount < 0m ? "Credit" : "Charge",
+            amount,
+            bill.TotalAmount + bill.AdjustmentTotal + amount,
+            reason,
+            recordedAt);
+
+        return Replace(
+            customerId,
+            bill,
+            bill with
+            {
+                AdjustmentTotal = bill.AdjustmentTotal + amount,
+                Corrections = [.. bill.Corrections, correction],
+            });
+    }
+
+    /// <summary>Withdraws a bill this double already holds, and hands back the new state.</summary>
+    public BillActivity Withdraw(Guid customerId, BillActivity bill, DateTimeOffset withdrawnAt)
+    {
+        ArgumentNullException.ThrowIfNull(bill);
+
+        return Replace(customerId, bill, bill with { Status = "Cancelled", WithdrawnAt = withdrawnAt });
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Filters and caps exactly as <c>BillDirectory</c> does — oldest first, nothing issued after the
+    /// day asked for, no more rows than the limit. The cap is the part that matters: a statement
+    /// reports itself truncated when a register answers with as many rows as it was asked for, and a
+    /// double that ignored the limit could never produce that.
+    /// </remarks>
+    public Task<IReadOnlyList<BillActivity>> ActivityForCustomerAsync(
+        Guid customerId,
+        DateOnly issuedOnOrBefore,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        LastHistoryLimit = limit;
+
+        IReadOnlyList<BillActivity> found = History(customerId)
+            .Where(bill => bill.IssuedOn <= issuedOnOrBefore)
+            .OrderBy(bill => bill.IssuedOn)
+            .ThenBy(bill => bill.BillNumber, StringComparer.Ordinal)
+            .Take(limit)
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
+    private List<BillActivity> History(Guid customerId)
+    {
+        if (!_history.TryGetValue(customerId, out var bills))
+        {
+            bills = [];
+            _history[customerId] = bills;
+        }
+
+        return bills;
+    }
+
+    private BillActivity Replace(Guid customerId, BillActivity bill, BillActivity replacement)
+    {
+        var bills = History(customerId);
+        var index = bills.FindIndex(candidate => candidate.Id == bill.Id);
+
+        Assert.True(index >= 0, "The bill being corrected is not one this double holds.");
+
+        bills[index] = replacement;
+
+        return replacement;
+    }
 }
 
 /// <summary>
@@ -296,6 +436,9 @@ public sealed class FakePaymentDirectory : IPaymentDirectory
     /// <summary>Every payment a note asked about, so a test can assert it went through the seam.</summary>
     public List<Guid> Lookups { get; } = [];
 
+    /// <summary>How many payments the last history call was asked for.</summary>
+    public int LastHistoryLimit { get; private set; }
+
     /// <summary>Adds a payment and hands it back.</summary>
     /// <param name="customerId">Who paid.</param>
     /// <param name="serviceAccountId">The account credited.</param>
@@ -303,13 +446,17 @@ public sealed class FakePaymentDirectory : IPaymentDirectory
     /// <param name="amount">How much was asked for.</param>
     /// <param name="status">Where the attempt stands, by name.</param>
     /// <param name="currency">What the amount is expressed in.</param>
+    /// <param name="method">How it was tendered.</param>
+    /// <param name="requestedAt">When it was taken. A statement dates a settled payment by it.</param>
     public PaymentSummary Add(
         Guid customerId,
         Guid? serviceAccountId = null,
         Guid? billId = null,
         decimal amount = 120.00m,
         string status = "Approved",
-        string currency = "USD")
+        string currency = "USD",
+        string method = "card",
+        DateTimeOffset? requestedAt = null)
     {
         var id = Guid.CreateVersion7();
         _ordinal++;
@@ -327,7 +474,13 @@ public sealed class FakePaymentDirectory : IPaymentDirectory
             // The rule Payments owns, mirrored: approved is the only status that is money the utility
             // holds. A declined attempt is still a payment a note can be filed against.
             IsSettled: status is "Approved",
-            RequestedAt: new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero));
+            method,
+            RequestedAt: requestedAt ?? new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero),
+
+            // Answered when the provider answered, whatever it answered — as the real register has
+            // it. A refusal is an answer, which is what lets an export date every row while a
+            // statement, reading IsSettled beside it, credits none of them.
+            AnsweredAt: status is "Pending" ? null : requestedAt ?? new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero));
 
         _payments[id] = payment;
 
@@ -356,6 +509,27 @@ public sealed class FakePaymentDirectory : IPaymentDirectory
             .Select(_payments.GetValueOrDefault)
             .OfType<PaymentSummary>()
             .ToDictionary(payment => payment.Id);
+
+        return Task.FromResult(found);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Oldest first and capped at the limit, exactly as <c>PaymentDirectory</c> answers — for the
+    /// reason <see cref="FakeBillDirectory.ActivityForCustomerAsync"/> gives about its own cap.
+    /// </remarks>
+    public Task<IReadOnlyList<PaymentSummary>> ForCustomerAsync(
+        Guid customerId,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        LastHistoryLimit = limit;
+
+        IReadOnlyList<PaymentSummary> found = _payments.Values
+            .Where(payment => payment.CustomerId == customerId)
+            .OrderBy(payment => payment.Id)
+            .Take(limit)
+            .ToList();
 
         return Task.FromResult(found);
     }

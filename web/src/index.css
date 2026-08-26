@@ -214,3 +214,58 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * PRINT (WP-2.14). A bill reprint and an account statement are documents somebody hands or posts to
+ * a customer, so ⌘P from those screens has to produce the document rather than a screenshot of an
+ * application. The shell — sidebar, topbar, toasts — is dropped; the cards lose their shadows and
+ * their rounding, because a border that reads as a card on screen reads as a stray box on paper;
+ * and the canvas goes white so a printer is not asked to lay ink over the whole page.
+ *
+ * The sidebar is an <aside>, the topbar a <header> and both the sidebar's nav and the 360's tab
+ * strip are <nav> — so the frame goes by element rather than by a class somebody has to remember to
+ * add. `print:hidden` on the individual controls (the Print button itself, the date pickers, the
+ * panels that are not the document) is what keeps the page itself honest.
+ */
+@media print {
+  :root {
+    --canvas: #ffffff;
+    --card: #ffffff;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  aside,
+  header,
+  nav,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  /* Cards become plain sections: no shadow, no radius, no page-splitting mid-table. */
+  [data-slot='card'] {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+}

@@ -194,6 +194,21 @@ public sealed class FakeBillDirectory : IBillDirectory
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Payments never asks this — the statement WP-2.14 widened the seam for is composed in
+    /// Customers, and this module has no document to write. Answering with nothing rather than
+    /// throwing keeps the double a faithful <see cref="IBillDirectory"/> rather than a partial one:
+    /// a test that started calling it would get an empty history, which is what a customer with no
+    /// bills has.
+    /// </remarks>
+    public Task<IReadOnlyList<BillActivity>> ActivityForCustomerAsync(
+        Guid customerId,
+        DateOnly issuedOnOrBefore,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<BillActivity>>([]);
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<BillSummary>> OutstandingForAccountAsync(
         Guid serviceAccountId,
         int limit,

@@ -166,4 +166,98 @@ public sealed class BillDirectoryTests : IDisposable
 
         Assert.All(worklist, bill => Assert.Equal(mine.ServiceAccountId, bill.ServiceAccountId));
     }
+
+    [Fact]
+    public async Task A_customers_billing_history_carries_the_dates_and_the_corrections_a_statement_needs()
+    {
+        // The seam WP-2.14 widened. What Customers needs of Billing is facts — when a bill went out,
+        // for how much, and what has been corrected since — never statement lines: a statement spans
+        // this register, the payment register and a deposit ledger Billing has never heard of.
+        var bill = await AnIssuedBillAsync();
+
+        await _host.WithBillsAsync(register =>
+            register.AdjustAsync(bill.Id, new AdjustBillInput(BillAdjustmentKind.Credit, 20.00m, "Meter misread")));
+
+        var history = await WithDirectoryAsync(directory =>
+            directory.ActivityForCustomerAsync(bill.CustomerId, new DateOnly(2026, 12, 31), 100));
+
+        var activity = Assert.Single(history);
+
+        Assert.Equal(bill.BillNumber, activity.BillNumber);
+        Assert.Equal(bill.IssuedOn, activity.IssuedOn);
+        Assert.Equal(bill.TotalAmount, activity.TotalAmount);
+        Assert.Equal(-20.00m, activity.AdjustmentTotal);
+        Assert.Null(activity.WithdrawnAt);
+
+        var correction = Assert.Single(activity.Corrections);
+
+        Assert.Equal(1, correction.Sequence);
+        Assert.Equal("Credit", correction.Kind);
+        Assert.Equal(-20.00m, correction.Amount);
+        Assert.Equal("Meter misread", correction.Reason);
+    }
+
+    [Fact]
+    public async Task A_DRAFT_is_absent_from_a_billing_history()
+    {
+        // A draft is owed by nobody and has never moved a balance, so it has no business on a
+        // statement — which is why IssuedOn is not nullable on the record this answers with.
+        var draft = await ADraftAsync("2026-09");
+
+        var history = await WithDirectoryAsync(directory =>
+            directory.ActivityForCustomerAsync(draft.CustomerId, new DateOnly(2026, 12, 31), 100));
+
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task A_bill_issued_AFTER_the_last_day_is_absent()
+    {
+        var bill = await AnIssuedBillAsync();
+
+        var history = await WithDirectoryAsync(directory =>
+            directory.ActivityForCustomerAsync(bill.CustomerId, bill.IssuedOn!.Value.AddDays(-1), 100));
+
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task A_WITHDRAWN_bill_is_reported_with_the_day_it_was_withdrawn()
+    {
+        // Reported rather than omitted: cancelling an issued bill takes back money the customer was
+        // told they owed, and a statement that simply dropped it would show a charge in one period
+        // that nothing ever reverses.
+        var bill = await AnIssuedBillAsync();
+
+        await _host.WithBillsAsync(register =>
+            register.CancelAsync(bill.Id, new CancelBillInput("Billed to the wrong premise")));
+
+        var history = await WithDirectoryAsync(directory =>
+            directory.ActivityForCustomerAsync(bill.CustomerId, new DateOnly(2026, 12, 31), 100));
+
+        var activity = Assert.Single(history);
+
+        Assert.Equal(nameof(BillStatus.Cancelled), activity.Status);
+        Assert.NotNull(activity.WithdrawnAt);
+    }
+
+    [Fact]
+    public async Task An_OVERDUE_bill_is_not_reported_as_withdrawn()
+    {
+        // The trap the projection exists to avoid. StatusChangedAt is a column whose meaning depends
+        // on the status: on an overdue bill it is the day the review ran, which is not a date any
+        // statement should print as a withdrawal.
+        var bill = await AnIssuedBillAsync();
+
+        await _host.WithBillsAsync(register =>
+            register.ReviewOverdueAsync(new OverdueReviewInput(bill.DueDate!.Value.AddDays(1))));
+
+        var history = await WithDirectoryAsync(directory =>
+            directory.ActivityForCustomerAsync(bill.CustomerId, new DateOnly(2026, 12, 31), 100));
+
+        var activity = Assert.Single(history);
+
+        Assert.Equal(nameof(BillStatus.Overdue), activity.Status);
+        Assert.Null(activity.WithdrawnAt);
+    }
 }

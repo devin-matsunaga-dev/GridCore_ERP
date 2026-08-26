@@ -91,6 +91,35 @@ public static class AuditActions
     /// </summary>
     public const string CustomerNotePinned = "customer_note.pin";
 
+    /// <summary>
+    /// A copy of an issued bill was produced for a customer (WP-2.14).
+    /// </summary>
+    /// <remarks>
+    /// <b>A read that is audited, which is the exception and not the rule.</b> Invariant 1 is about
+    /// writes, and WP-2.9 turned a search log down for exactly that reason — a record of every screen
+    /// somebody opened is surveillance rather than an audit trail. A reprint is different in kind: a
+    /// document with a customer's consumption and address on it leaves the building, and "who sent
+    /// this out, for whom, and when" is the question asked of it afterwards. Recorded against the
+    /// bill, with no <c>before</c> and no <c>after</c> — nothing about the bill changed, which is the
+    /// whole point of a reprint.
+    /// </remarks>
+    public const string BillReprinted = "bill.reprint";
+
+    /// <summary>
+    /// An account statement was produced over a date range (WP-2.14). Audited for the reason a
+    /// reprint is: it leaves the building. Its own action rather than a second <c>bill.reprint</c>,
+    /// because a statement is about an account over a period rather than about one document, and
+    /// "what statements has this customer been sent" is a question asked by filtering.
+    /// </summary>
+    public const string CustomerStatementProduced = "customer_statement.produce";
+
+    /// <summary>
+    /// A customer's payment history was exported as a file (WP-2.14). Its own action again, and the
+    /// one of the three that produces something a recipient can keep, forward and open in a
+    /// spreadsheet — which is precisely why the trail names it separately.
+    /// </summary>
+    public const string CustomerPaymentHistoryExported = "customer_payment_history.export";
+
     /// <summary>A service location was registered.</summary>
     public const string ServiceLocationCreated = "service_location.create";
 
@@ -244,6 +273,20 @@ public static class AuditEntityTypes
     /// entity that changed and claiming otherwise would make the trail disagree with the table.
     /// </summary>
     public const string CustomerNote = "customers.customer_note";
+
+    /// <summary>
+    /// A document produced for a customer and identified by that <b>customer</b> (WP-2.14) — a
+    /// statement, a payment-history export.
+    /// </summary>
+    /// <remarks>
+    /// Not a table, and deliberately not one: nothing is stored, because a statement is a view of
+    /// records that already exist and storing a second copy of them would create a document that can
+    /// disagree with the ledgers it was drawn from. What is stored is the entry saying it was
+    /// produced, whose snapshot carries the range and the figures — enough to reproduce it exactly,
+    /// which is what makes storing the file unnecessary. A bill reprint is audited against
+    /// <see cref="Bill"/> instead, because there a row genuinely is the document.
+    /// </remarks>
+    public const string CustomerDocument = "customers.customer_document";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

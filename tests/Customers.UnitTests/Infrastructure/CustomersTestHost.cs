@@ -3,6 +3,7 @@ using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Deposits;
+using GridCore.Modules.Customers.Features.Documents;
 using GridCore.Modules.Customers.Features.Notes;
 using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
@@ -81,6 +82,7 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<ICustomerProfileService, CustomerProfileService>();
         services.AddScoped<ICustomerDepositService, CustomerDepositService>();
         services.AddScoped<ICustomerNoteService, CustomerNoteService>();
+        services.AddScoped<ICustomerDocumentService, CustomerDocumentService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -230,6 +232,38 @@ public sealed class CustomersTestHost : IDisposable
             Bills,
             Payments,
             services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the customer's documents, in its own scope.</summary>
+    public Task<TResult> WithDocumentsAsync<TResult>(Func<ICustomerDocumentService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerDocumentService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the customer's documents as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape the deposit ledger and the note log take, and needed for the same reason: a
+    /// document that leaves the building is gated on <c>customers.documents</c> (WP-2.14), and
+    /// proving the refusal means a caller who does not hold it reading an account somebody who does
+    /// has already put activity on.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<ICustomerDocumentService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new CustomerDocumentService(
+            services.GetRequiredService<CustomersDbContext>(),
+            services.GetRequiredService<ICustomerProfileService>(),
+            Bills,
+            Payments,
             services.GetRequiredService<IAuditLog>(),
             caller,
             services.GetRequiredService<TimeProvider>())));

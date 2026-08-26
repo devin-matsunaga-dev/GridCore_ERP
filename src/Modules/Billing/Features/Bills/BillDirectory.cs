@@ -32,6 +32,18 @@ public sealed class BillDirectory(BillingDbContext database) : IBillDirectory
     /// <summary>The largest page a lookup will answer, whatever the caller asks for.</summary>
     public const int MaxPageSize = BillService.MaxPageSize;
 
+    /// <summary>
+    /// The most bills one customer's whole billing history will answer with (WP-2.14).
+    /// </summary>
+    /// <remarks>
+    /// Far larger than <see cref="MaxPageSize"/> and deliberately so: this is not a page of a
+    /// register but everything one customer has ever been billed, and a statement built from a
+    /// truncated history would prove out against itself and still be wrong. A thousand monthly bills
+    /// is eighty years of supply, and the query is indexed by customer — the cap exists so a
+    /// runaway read is bounded, not because anybody is expected to reach it.
+    /// </remarks>
+    public const int MaxHistorySize = 1_000;
+
     /// <inheritdoc />
     public async Task<BillSummary?> FindAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -90,12 +102,81 @@ public sealed class BillDirectory(BillingDbContext database) : IBillDirectory
         return found.ConvertAll(Summarise);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<BillActivity>> ActivityForCustomerAsync(
+        Guid customerId,
+        DateOnly issuedOnOrBefore,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await database.Bills
+            .AsNoTracking()
+
+            // The one query in this file that loads adjustments. A statement shows a credit on the
+            // day it was granted rather than netted into the charge it corrects, so the corrections
+            // are the subject here — not the overhead the summary lookups rightly refuse to carry.
+            .Include(bill => bill.Adjustments.OrderBy(adjustment => adjustment.Sequence))
+            .Where(bill => bill.CustomerId == customerId)
+
+            // Issued, by the one column that says so. A draft has no issue date and is owed by
+            // nobody; every other status has been through Issue and therefore has one.
+            .Where(bill => bill.IssuedOn != null && bill.IssuedOn <= issuedOnOrBefore)
+
+            // OLDEST first, which is the opposite of every other list in this module and is the
+            // whole point: a statement is read downwards from an opening balance, and reversing it
+            // in the caller would mean fetching the newest N of a history the caller needs all of.
+            .OrderBy(bill => bill.Id)
+            .Take(Math.Clamp(limit, 1, MaxHistorySize))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return found.ConvertAll(Activity);
+    }
+
     /// <summary>
     /// The register as this seam reads it. Untracked, and without lines or adjustments: a caller
     /// outside Billing has no business with either, and loading a decade of corrections to answer
     /// "how much is owed" would be loading them to compute a column that is already stored.
     /// </summary>
     private IQueryable<Bill> Bills() => database.Bills.AsNoTracking();
+
+    /// <summary>
+    /// Projects a bill and its corrections for a document being written outside this module.
+    /// </summary>
+    /// <remarks>
+    /// <b>Whether a bill was withdrawn is decided here, not by the caller.</b> Cancelled is a status
+    /// this module owns and <c>StatusChangedAt</c> is a column whose meaning depends on it — on an
+    /// overdue bill it is the day the review ran, which is not a date any statement should print.
+    /// Answering with a null on every other status is what stops a caller reading it as one.
+    /// </remarks>
+    private static BillActivity Activity(Bill bill) =>
+        new(
+            bill.Id,
+            bill.BillNumber,
+            bill.ServiceAccountId,
+            bill.AccountNumber,
+            bill.Currency,
+
+            // Non-null by the query above, which is the difference between this record and a bill.
+            bill.IssuedOn!.Value,
+            bill.DueDate,
+            bill.PeriodStart,
+            bill.PeriodEnd,
+            bill.TotalAmount,
+            bill.AdjustmentTotal,
+            bill.AmountPaid,
+            bill.Status.ToString(),
+            bill.Status is BillStatus.Cancelled ? bill.StatusChangedAt : null,
+            [.. bill.Adjustments
+                .OrderBy(adjustment => adjustment.Sequence)
+                .Select(adjustment => new BillCorrection(
+                    adjustment.Id,
+                    adjustment.Sequence,
+                    adjustment.Kind.ToString(),
+                    adjustment.Amount,
+                    adjustment.AmountDueAfter,
+                    adjustment.Reason,
+                    adjustment.RecordedAt))]);
 
     /// <summary>
     /// Projects the entity after the query has run, never inside it.

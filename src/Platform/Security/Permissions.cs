@@ -35,6 +35,29 @@ public static class Permissions
         /// route, because whether a request moves the flag depends on what is in the body.
         /// </summary>
         public const string Authorise = "customers.authorise";
+
+        /// <summary>
+        /// Produce a document for a customer — reprint a bill, run an account statement, export a
+        /// payment history (WP-2.14).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Named for the capability, not for the schema.</b> The bill reprint lives in Billing,
+        /// because Billing owns the figures a bill was issued with and nobody else may read them;
+        /// but from the desk it is the same act as the statement beside it — a document leaves the
+        /// building with a customer's affairs on it — so it is gated on the same permission. A
+        /// <c>billing.reprint</c> that had to be granted alongside this one would be two grants for
+        /// one job, and the first utility to cut a role would get them out of step.
+        /// </para>
+        /// <para>
+        /// <b>Narrower than <see cref="Read"/>, deliberately.</b> Reading a balance on screen and
+        /// handing somebody a statement of it are different acts with different consequences: the
+        /// second is a record that outlives the call, travels, and is produced under the utility's
+        /// name. That is the line WP-2.13 put notes on the other side of — logging a call is
+        /// clerical work and earned no permission — and the reason these three did earn one.
+        /// </para>
+        /// </remarks>
+        public const string Documents = "customers.documents";
     }
 
     /// <summary>Meters, readings and consumption.</summary>
