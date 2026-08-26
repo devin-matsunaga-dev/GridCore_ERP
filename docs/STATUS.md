@@ -3,10 +3,10 @@
 > Updated at the end of every session (Claude's final task, with DECISIONS.md).
 
 ## Current position
-- **Phase:** 2.5 — Customers Deepening (CSR experience)
-- **Current WP:** **WP-2.15 complete, awaiting owner verification and squash-merge.** It is the LAST package of Phase 2.5 — **the next act is the `v0.3.5-customers` gate**, not another WP. **Phase 2.6 — CUC Process Realism (WP-2.16 … WP-2.24) now follows the tag**, not Phase 3: the customer-service module was gap-analysed against CUC Saipan's published processes and nine packages were added ahead of the Ops cycle. Start at **WP-2.16 (fee schedule + account charges)** — it is the prerequisite for six of the others and for five Phase 3 packages. Phase 3 (Ops cycle, WP-3.1 work order core) follows `v0.3.6-cuc-process`
-- **Current branch:** `feat/wp-2.15-transitions` (off `8ab373d`) — WP-2.14 was squash-merged to main as `8ab373d`
-- **Last tag:** `v0.3-revenue` (on `e57e112`, 2026-08-25) — Phase 2 gate closed and verified by the owner; the tag is pushed, which also fired the GHCR release build
+- **Phase:** 2.6 — CUC Process Realism (real-utility processes)
+- **Current WP:** **WP-2.16 — fee schedule + account charges**, the FIRST package of Phase 2.6. Phase 2.5 is closed: WP-2.15 was squash-merged as `2a0bb1d`, the owner verified the gate, and **`v0.3.5-customers` is tagged and pushed**. **Phase 2.6 — CUC Process Realism (WP-2.16 … WP-2.24)** follows that tag rather than Phase 3: the customer-service module was gap-analysed against CUC Saipan's published processes and nine packages were added ahead of the Ops cycle. WP-2.16 is deliberately first — it is the prerequisite for six of the others and for five Phase 3 packages. Phase 3 (Ops cycle, WP-3.1 work order core) follows `v0.3.6-cuc-process`
+- **Current branch:** `feat/wp-2.16-fee-schedule` (off `d2f66b3`) — WP-2.15 was squash-merged to main as `2a0bb1d`
+- **Last tag:** `v0.3.5-customers` (on `d2f66b3`, 2026-08-26) — Phase 2.5 gate closed and verified by the owner; the tag is pushed, which also fired the GHCR release build. Previous: `v0.3-revenue` (on `e57e112`, 2026-08-25)
 
 ## Platform versions (law — see ARCHITECTURE.md)
 .NET 10 LTS · Aspire 13.x (`aspire update` at gates) · React 19 + latest Vite · Node 24 LTS · PostgreSQL latest · Ubuntu LTS · Tailwind + shadcn/ui + lucide · Vitest + xUnit
@@ -381,7 +381,7 @@ FAST loop = unit tests only, parallel, `--no-build`, NO `--maxcpucount:1`. Integ
 - [x] WP-2.12 Deposit lifecycle **[SENSITIVE]**
 - [x] WP-2.13 Account notes / interaction log
 - [x] WP-2.14 Customer documents
-- [x] WP-2.15 Account transitions **[SENSITIVE]** → **NEXT: gate `v0.3.5-customers`**
+- [x] WP-2.15 Account transitions **[SENSITIVE]** → gate `v0.3.5-customers` **passed, tagged** (owner-verified)
 
 ### Phase 2.6 — CUC Process Realism (real-utility processes)
 - [ ] WP-2.16 Fee schedule + account charges **[SENSITIVE]** ← *first: nothing else has anywhere to charge until this lands*
