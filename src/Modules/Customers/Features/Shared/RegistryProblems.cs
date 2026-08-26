@@ -23,6 +23,10 @@ public static class RegistryProblems
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Customer not found");
         }
+        catch (CustomerContactNotFoundException exception)
+        {
+            return Problem(exception, StatusCodes.Status404NotFound, "Customer contact not found");
+        }
         catch (ServiceLocationNotFoundException exception)
         {
             return Problem(exception, StatusCodes.Status404NotFound, "Service location not found");
@@ -48,6 +52,10 @@ public static class RegistryProblems
     /// <summary>A 404 for an id that matched nothing on a read path, where nothing was thrown.</summary>
     public static IResult CustomerNotFound(Guid id) =>
         Problem(new CustomerNotFoundException(id), StatusCodes.Status404NotFound, "Customer not found");
+
+    /// <summary>A 404 for a contact id that matched nothing on a read path, where nothing was thrown.</summary>
+    public static IResult CustomerContactNotFound(Guid id) =>
+        Problem(new CustomerContactNotFoundException(id), StatusCodes.Status404NotFound, "Customer contact not found");
 
     /// <summary>A 404 for a location id that matched nothing.</summary>
     public static IResult ServiceLocationNotFound(Guid id) =>

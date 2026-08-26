@@ -1,5 +1,12 @@
 import type { Asset, AssetHistoryEntry } from '@/api/assets';
-import type { Customer, ServiceAccount, ServiceLocation } from '@/api/customers';
+import type {
+  ContactMethod,
+  Customer,
+  CustomerContact,
+  CustomerProfile,
+  ServiceAccount,
+  ServiceLocation,
+} from '@/api/customers';
 import type { StockItem, StockMovement, Warehouse } from '@/api/inventory';
 import type { Meter } from '@/api/metering';
 
@@ -44,6 +51,58 @@ export function serviceLocation(overrides: Partial<ServiceLocation> = {}): Servi
     isActive: true,
     statusReason: null,
     registeredAt: '2026-02-11T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * A contact as the register returns it, with its methods on it — the list endpoint includes them,
+ * unlike `GET /api/service-accounts`, whose rows carry no history.
+ */
+export function customerContact(overrides: Partial<CustomerContact> = {}): CustomerContact {
+  return {
+    id: '0192f000-0000-7000-8000-000000000501',
+    customerId: '0192f000-0000-7000-8000-000000000001',
+    name: 'Rosa Taimanao',
+    relationship: 'Spouse',
+    isAuthorisedToDiscuss: true,
+    methods: [contactMethod()],
+    recordedAt: '2026-03-02T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+export function contactMethod(overrides: Partial<ContactMethod> = {}): ContactMethod {
+  return {
+    id: '0192f000-0000-7000-8000-000000000601',
+    kind: 'Mobile',
+    value: '+1 670 555 0188',
+    isPrimary: true,
+    recordedAt: '2026-03-02T00:30:00+00:00',
+    ...overrides,
+  };
+}
+
+/**
+ * A profile as the host answers one. The mailing address is the RESOLVED address — the override
+ * when there is one, the service address otherwise — which is why `source` rides beside it, and why
+ * a fixture that only set `mailingAddress` would be testing a response the host never sends.
+ */
+export function customerProfile(overrides: Partial<CustomerProfile> = {}): CustomerProfile {
+  const premise = serviceLocation();
+
+  return {
+    customerId: '0192f000-0000-7000-8000-000000000001',
+    mailingAddress: premise.address,
+    formattedMailingAddress: premise.formattedAddress,
+    source: 'ServiceAddress',
+    serviceAddress: premise.address,
+    serviceLocationId: premise.id,
+    billDeliveryChannel: 'Post',
+    outageNotices: true,
+    dunningNotices: true,
+    preferredLanguage: 'English',
+    updatedAt: null,
     ...overrides,
   };
 }

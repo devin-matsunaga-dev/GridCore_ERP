@@ -1,6 +1,8 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
+using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -44,6 +46,12 @@ public sealed class CustomersModule : IModule
         services.AddScoped<IDepositRuleService, DepositRuleService>();
         services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
 
+        // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
+        // rep may speak to and where the utility posts a bill are different registers with different
+        // rules, and only one of them has a permission gate inside it.
+        services.AddScoped<ICustomerContactService, CustomerContactService>();
+        services.AddScoped<ICustomerProfileService, CustomerProfileService>();
+
         // CSR search (WP-2.9). Read-only, and the one service in this module that consumes another
         // module's seam: IMeterDirectory is registered by Metering, so a meter number can be
         // resolved to a premise without this module knowing a metering schema exists.
@@ -69,6 +77,11 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<OpenServiceAccountRequest, OpenServiceAccountRequestValidator>();
         services.AddGridCoreValidator<ServiceAccountTransitionRequest, ServiceAccountTransitionRequestValidator>();
         services.AddGridCoreValidator<RegisterCustomerIntakeRequest, RegisterCustomerIntakeRequestValidator>();
+        services.AddGridCoreValidator<CreateContactRequest, CreateContactRequestValidator>();
+        services.AddGridCoreValidator<UpdateContactRequest, UpdateContactRequestValidator>();
+        services.AddGridCoreValidator<ContactMethodRequest, ContactMethodRequestValidator>();
+        services.AddGridCoreValidator<UpdateContactMethodRequest, UpdateContactMethodRequestValidator>();
+        services.AddGridCoreValidator<UpdateCustomerProfileRequest, UpdateCustomerProfileRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -86,5 +99,7 @@ public sealed class CustomersModule : IModule
         endpoints.MapServiceAccountEndpoints();
         endpoints.MapRegistrationEndpoints();
         endpoints.MapCustomerSearchEndpoints();
+        endpoints.MapContactEndpoints();
+        endpoints.MapProfileEndpoints();
     }
 }

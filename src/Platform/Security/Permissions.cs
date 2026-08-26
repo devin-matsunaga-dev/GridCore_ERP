@@ -26,6 +26,15 @@ public static class Permissions
         /// deposit off them. WP-2.12's lifecycle — hold, apply, refund — gates on this too.
         /// </summary>
         public const string Deposit = "customers.deposit";
+
+        /// <summary>
+        /// Mark a contact authorised to discuss a customer's account, or withdraw that (WP-2.11).
+        /// Narrower than <see cref="Write"/> on purpose: maintaining a contact's name and numbers is
+        /// clerical work, and deciding that the utility will disclose a customer's balance to a
+        /// third party is not. The gate is in <c>CustomerContactService</c> rather than on the
+        /// route, because whether a request moves the flag depends on what is in the body.
+        /// </summary>
+        public const string Authorise = "customers.authorise";
     }
 
     /// <summary>Meters, readings and consumption.</summary>

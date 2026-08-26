@@ -34,6 +34,26 @@ public static class AuditActions
     /// <summary>A security deposit was assessed and collected from a customer.</summary>
     public const string CustomerDepositCollected = "customer.deposit";
 
+    /// <summary>A contact was added to a customer.</summary>
+    public const string CustomerContactCreated = "customer_contact.create";
+
+    /// <summary>A contact's details or contact methods were changed.</summary>
+    public const string CustomerContactUpdated = "customer_contact.update";
+
+    /// <summary>A contact was removed from a customer.</summary>
+    public const string CustomerContactRemoved = "customer_contact.remove";
+
+    /// <summary>
+    /// A contact was granted or refused the right to discuss the account. Sensitive: it decides who
+    /// the utility will disclose a customer's affairs to, so it is permission-gated and gets an
+    /// entry of its own beside the contact's — "who authorised this person" is a question asked of
+    /// the trail by filtering an action, not by reading every update.
+    /// </summary>
+    public const string CustomerContactAuthorised = "customer_contact.authorise";
+
+    /// <summary>A customer's mailing address or communication preferences were saved.</summary>
+    public const string CustomerProfileUpdated = "customer_profile.update";
+
     /// <summary>A service location was registered.</summary>
     public const string ServiceLocationCreated = "service_location.create";
 
@@ -157,6 +177,20 @@ public static class AuditEntityTypes
 
     /// <summary>A row of <c>customers.customers</c>.</summary>
     public const string Customer = "customers.customer";
+
+    /// <summary>
+    /// A row of <c>customers.customer_contacts</c>. Contact methods are audited against the contact
+    /// they belong to rather than as entities of their own — the same call the meter's history lines
+    /// and the bill's adjustments make. "What happened to this contact" is the question, and a
+    /// snapshot carrying the whole method set answers it in one entry, primary flags included.
+    /// </summary>
+    public const string CustomerContact = "customers.customer_contact";
+
+    /// <summary>
+    /// A row of <c>customers.customer_profiles</c>, identified by the <b>customer</b> — which is
+    /// also its primary key, so there is no second id to quote.
+    /// </summary>
+    public const string CustomerProfile = "customers.customer_profile";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

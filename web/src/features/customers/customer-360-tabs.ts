@@ -13,7 +13,7 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
  */
 
 /** The tabs, in the order they read. `summary` is the one a fresh page opens on. */
-export const customer360TabIds = ['summary', 'bills', 'payments', 'timeline', 'work-orders'] as const;
+export const customer360TabIds = ['summary', 'contacts', 'bills', 'payments', 'timeline', 'work-orders'] as const;
 export type Customer360TabId = (typeof customer360TabIds)[number];
 
 /** The tab a bare `/customers/{id}` shows. */
@@ -21,6 +21,7 @@ export const defaultCustomer360Tab: Customer360TabId = 'summary';
 
 const tabLabels: Record<Customer360TabId, string> = {
   summary: 'Summary',
+  contacts: 'Contacts',
   bills: 'Bills',
   payments: 'Payments',
   timeline: 'Timeline',

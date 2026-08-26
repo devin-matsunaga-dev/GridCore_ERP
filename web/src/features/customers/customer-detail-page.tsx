@@ -4,6 +4,8 @@ import { Link, Navigate, useParams } from 'react-router';
 import { useBills } from '@/api/billing';
 import {
   useCustomer,
+  useCustomerContacts,
+  useCustomerProfile,
   useServiceAccountHistories,
   useServiceAccounts,
   useServiceLocationsByIds,
@@ -23,6 +25,8 @@ import { formatDate, formatLabel, formatMoney } from '@/lib/format';
 import { buildCustomerTimeline, customerBalance } from './customer-360';
 import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
+import { CustomerContactsCard } from './components/customer-contacts-card';
+import { CustomerProfileCard } from './components/customer-profile-card';
 import { CustomerBillsCard } from './components/customer-bills-card';
 import { CustomerPaymentsCard } from './components/customer-payments-card';
 import { CustomerSummaryRow } from './components/customer-summary-row';
@@ -74,6 +78,11 @@ export function CustomerDetailPage() {
     enabled,
   );
   const payments = usePayments({ customerId, limit: registryWindow }, enabled);
+
+  // The contacts tab's two queries, here at the page with every other one: switching to a tab
+  // issues no request (WP-2.10's call), and each still owns its own loading and error state.
+  const contacts = useCustomerContacts(customerId);
+  const profile = useCustomerProfile(customerId);
 
   const balance = useMemo(() => customerBalance(bills.data ?? []), [bills.data]);
 
@@ -229,6 +238,26 @@ export function CustomerDetailPage() {
               onRetry={() => void accounts.refetch()}
             />
           </section>
+        </div>
+      )}
+
+      {active === 'contacts' && customerId && (
+        <div className="space-y-6">
+          <CustomerProfileCard
+            customer={record}
+            profile={profile.data}
+            isLoading={profile.isPending}
+            error={profile.isError ? profile.error : undefined}
+            onRetry={() => void profile.refetch()}
+          />
+
+          <CustomerContactsCard
+            customerId={customerId}
+            contacts={contacts.data ?? []}
+            isLoading={contacts.isPending}
+            error={contacts.isError ? contacts.error : undefined}
+            onRetry={() => void contacts.refetch()}
+          />
         </div>
       )}
 

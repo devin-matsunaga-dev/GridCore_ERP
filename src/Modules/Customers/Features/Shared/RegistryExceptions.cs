@@ -15,6 +15,14 @@ public sealed class CustomerNotFoundException(Guid id)
     public Guid CustomerId { get; } = id;
 }
 
+/// <summary>No contact with that id. Surfaces as 404.</summary>
+public sealed class CustomerContactNotFoundException(Guid id)
+    : RegistryException($"Customer contact '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid CustomerContactId { get; } = id;
+}
+
 /// <summary>No service location with that id. Surfaces as 404.</summary>
 public sealed class ServiceLocationNotFoundException(Guid id)
     : RegistryException($"Service location '{id}' was not found.")

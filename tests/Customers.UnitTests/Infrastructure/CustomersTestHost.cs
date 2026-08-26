@@ -1,6 +1,8 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
+using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.Search;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
@@ -63,6 +65,8 @@ public sealed class CustomersTestHost : IDisposable
         services.AddScoped<IDepositRuleService, DepositRuleService>();
         services.AddScoped<ICustomerRegistrationService, CustomerRegistrationService>();
         services.AddScoped<ICustomerSearchService, CustomerSearchService>();
+        services.AddScoped<ICustomerContactService, CustomerContactService>();
+        services.AddScoped<ICustomerProfileService, CustomerProfileService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -129,6 +133,22 @@ public sealed class CustomersTestHost : IDisposable
         ArgumentNullException.ThrowIfNull(work);
 
         return InScopeAsync(services => work(services.GetRequiredService<ICustomerSearchService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the contact register, in its own scope.</summary>
+    public Task<TResult> WithContactsAsync<TResult>(Func<ICustomerContactService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerContactService>()));
+    }
+
+    /// <summary>Runs <paramref name="work"/> against the customer profile, in its own scope.</summary>
+    public Task<TResult> WithProfileAsync<TResult>(Func<ICustomerProfileService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<ICustomerProfileService>()));
     }
 
     /// <summary>Runs <paramref name="work"/> against the deposit schedule, in its own scope.</summary>

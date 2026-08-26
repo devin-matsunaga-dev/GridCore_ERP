@@ -194,6 +194,103 @@ export type DepositOutcome = {
   ruleId: string;
 };
 
+/** Mirrors `ContactMethodKind`. Phone and mobile are two kinds, not one with a flag. */
+export const contactMethodKinds = ['Phone', 'Mobile', 'Email'] as const;
+export type ContactMethodKind = (typeof contactMethodKinds)[number];
+
+/** Mirrors `ContactMethodResponse`. */
+export type ContactMethod = {
+  id: string;
+  kind: ContactMethodKind;
+  value: string;
+  /** The one to try first for its kind. Exactly one per kind the contact has. */
+  isPrimary: boolean;
+  recordedAt: string;
+};
+
+/** Mirrors `ContactResponse`. */
+export type CustomerContact = {
+  id: string;
+  customerId: string;
+  name: string;
+  relationship: string | null;
+  /**
+   * Whether a rep may discuss the account with them. Moving this needs `customers.authorise` on
+   * the host — a narrower grant than the `customers.write` that opened the screen.
+   */
+  isAuthorisedToDiscuss: boolean;
+  methods: ContactMethod[];
+  recordedAt: string;
+};
+
+/** Mirrors `BillDeliveryChannel`. */
+export const billDeliveryChannels = ['Post', 'Email', 'Both'] as const;
+export type BillDeliveryChannel = (typeof billDeliveryChannels)[number];
+
+/** Mirrors `CommunicationLanguage`. */
+export const communicationLanguages = ['English', 'Chamorro', 'Carolinian'] as const;
+export type CommunicationLanguage = (typeof communicationLanguages)[number];
+
+/** Mirrors `MailingAddressSource` — where the address on screen came from. */
+export const mailingAddressSources = ['None', 'ServiceAddress', 'Override'] as const;
+export type MailingAddressSource = (typeof mailingAddressSources)[number];
+
+/**
+ * Mirrors `CustomerProfileResponse`.
+ *
+ * `mailingAddress` is **resolved**: it is the override when there is one and the service address
+ * otherwise, which is why `source` rides beside it. `serviceAddress` is the default reported
+ * separately, so a screen can say what clearing the override would fall back to without guessing.
+ */
+export type CustomerProfile = {
+  customerId: string;
+  mailingAddress: Address | null;
+  formattedMailingAddress: string | null;
+  source: MailingAddressSource;
+  serviceAddress: Address | null;
+  serviceLocationId: string | null;
+  billDeliveryChannel: BillDeliveryChannel;
+  outageNotices: boolean;
+  dunningNotices: boolean;
+  preferredLanguage: CommunicationLanguage;
+  /** Null while these are still the defaults — nobody has saved a profile for this customer. */
+  updatedAt: string | null;
+};
+
+/** Mirrors `ContactMethodRequest`. */
+export type ContactMethodInput = {
+  kind: ContactMethodKind;
+  value: string;
+  isPrimary?: boolean;
+};
+
+/** Mirrors `CreateContactRequest`. */
+export type CreateContactInput = {
+  name: string;
+  relationship?: string | null;
+  isAuthorisedToDiscuss?: boolean;
+  methods?: ContactMethodInput[];
+};
+
+/** Mirrors `UpdateContactRequest`. */
+export type UpdateContactInput = {
+  name: string;
+  relationship?: string | null;
+  isAuthorisedToDiscuss: boolean;
+};
+
+/**
+ * Mirrors `UpdateCustomerProfileRequest`. The whole profile, never a patch: an omitted mailing
+ * address and a cleared one have to stay tellable apart, and that is the distinction this carries.
+ */
+export type UpdateCustomerProfileInput = {
+  billDeliveryChannel: BillDeliveryChannel;
+  outageNotices: boolean;
+  dunningNotices: boolean;
+  preferredLanguage: CommunicationLanguage;
+  mailingAddress?: AddressInput | null;
+};
+
 /** Mirrors `CustomerMatchKind`. The order is match precedence, not the alphabet's. */
 export const customerMatchKinds = ['AccountNumber', 'MeterNumber', 'Phone', 'Name', 'Address'] as const;
 export type CustomerMatchKind = (typeof customerMatchKinds)[number];
@@ -307,6 +404,39 @@ export const customersApi = {
   startService: (id: string, reason?: string) =>
     api.post<ServiceAccount>(`/api/service-accounts/${id}/start`, { json: { reason } }),
 
+  contacts: (customerId: string, signal?: AbortSignal) =>
+    api.get<CustomerContact[]>(`/api/customers/${customerId}/contacts`, { signal }),
+
+  profile: (customerId: string, signal?: AbortSignal) =>
+    api.get<CustomerProfile>(`/api/customers/${customerId}/profile`, { signal }),
+
+  addContact: (customerId: string, input: CreateContactInput) =>
+    api.post<CustomerContact>(`/api/customers/${customerId}/contacts`, { json: input }),
+
+  updateContact: (contactId: string, input: UpdateContactInput) =>
+    api.put<CustomerContact>(`/api/customer-contacts/${contactId}`, { json: input }),
+
+  removeContact: (contactId: string) => api.delete<void>(`/api/customer-contacts/${contactId}`),
+
+  addContactMethod: (contactId: string, input: ContactMethodInput) =>
+    api.post<CustomerContact>(`/api/customer-contacts/${contactId}/methods`, { json: input }),
+
+  correctContactMethod: (contactId: string, methodId: string, value: string) =>
+    api.put<CustomerContact>(`/api/customer-contacts/${contactId}/methods/${methodId}`, { json: { value } }),
+
+  /**
+   * Promotes a method. A POST sub-resource rather than a PUT of a boolean, because it changes a row
+   * the caller did not name: whichever method held the primary place is demoted in the same act.
+   */
+  makeContactMethodPrimary: (contactId: string, methodId: string) =>
+    api.post<CustomerContact>(`/api/customer-contacts/${contactId}/methods/${methodId}/primary`, {}),
+
+  removeContactMethod: (contactId: string, methodId: string) =>
+    api.delete<CustomerContact>(`/api/customer-contacts/${contactId}/methods/${methodId}`),
+
+  saveProfile: (customerId: string, input: UpdateCustomerProfileInput) =>
+    api.put<CustomerProfile>(`/api/customers/${customerId}/profile`, { json: input }),
+
   /** The deposit schedule. Reference data on the host, so it is safe to cache for a session. */
   depositRules: (signal?: AbortSignal) => api.get<DepositRule[]>('/api/deposit-rules', { signal }),
 
@@ -330,6 +460,8 @@ export const customerKeys = {
   accounts: (filters: ServiceAccountFilters) => ['service-accounts', 'list', filters] as const,
   account: (id: string) => ['service-accounts', 'detail', id] as const,
   accountHistory: (id: string) => ['service-accounts', 'history', id] as const,
+  contacts: (customerId: string) => ['customers', 'contacts', customerId] as const,
+  profile: (customerId: string) => ['customers', 'profile', customerId] as const,
 };
 
 /**
@@ -450,5 +582,34 @@ export function useServiceLocationsByIds(ids: readonly string[]) {
           .map((location) => [location.id, location]),
       ),
     }),
+  });
+}
+
+/**
+ * The contacts on one customer.
+ *
+ * Lives at the 360 page beside every other query rather than inside the contacts tab, which is the
+ * call WP-2.10 made for all of them: switching to a tab issues no request, and each query still owns
+ * its own loading and error state.
+ */
+export function useCustomerContacts(customerId: string | undefined) {
+  return useQuery({
+    queryKey: customerKeys.contacts(customerId ?? ''),
+    queryFn: ({ signal }) => customersApi.contacts(customerId!, signal),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * One customer's mailing address and communication preferences.
+ *
+ * Always answers: a customer nobody has saved a profile for reads back as the defaults with a null
+ * `updatedAt`, so there is no "not found" case for a screen to handle.
+ */
+export function useCustomerProfile(customerId: string | undefined) {
+  return useQuery({
+    queryKey: customerKeys.profile(customerId ?? ''),
+    queryFn: ({ signal }) => customersApi.profile(customerId!, signal),
+    enabled: Boolean(customerId),
   });
 }

@@ -1,4 +1,6 @@
+using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
+using GridCore.Modules.Customers.Features.Profile;
 using GridCore.Modules.Customers.Features.Registration;
 using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
@@ -17,6 +19,19 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
 
     /// <summary>The people and organisations the utility serves.</summary>
     public DbSet<Customer> Customers => Set<Customer>();
+
+    /// <summary>
+    /// The people a customer's account may be discussed with — WP-2.11. Separate from the customer's
+    /// own contact details, which stay on the customer row.
+    /// </summary>
+    public DbSet<CustomerContact> CustomerContacts => Set<CustomerContact>();
+
+    /// <summary>
+    /// Where post goes and how a customer wants to be written to — WP-2.11. A customer with no row
+    /// here is a customer on the defaults, which is why this is a table rather than ten columns on
+    /// <see cref="Customers"/>.
+    /// </summary>
+    public DbSet<CustomerProfile> CustomerProfiles => Set<CustomerProfile>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ServiceAccount } from '@/api/customers';
 import { CustomerDetailPage } from './customer-detail-page';
 import { stubFetch, type FetchStub, type StubbedResponse } from '@/test/api-stub';
-import { customer, meter, serviceAccount, serviceLocation } from '@/test/registry-fixtures';
+import {
+  customer,
+  customerContact,
+  customerProfile,
+  meter,
+  serviceAccount,
+  serviceLocation,
+} from '@/test/registry-fixtures';
 import { bill, payment } from '@/test/revenue-cycle-fixtures';
 import { renderWithProviders } from '@/test/render';
 
@@ -37,6 +44,10 @@ const fitted = meter();
 const issued = bill();
 const settled = payment();
 
+/** The customer's contacts and their communication profile — WP-2.11's tab. */
+const spouse = customerContact();
+const profile = customerProfile();
+
 let stub: FetchStub;
 
 afterEach(() => stub?.restore());
@@ -65,6 +76,8 @@ function fullWorld(url: URL): StubbedResponse | undefined {
   if (url.pathname === `/api/service-locations/${otherPremise.id}`) return { body: otherPremise };
   if (url.pathname === '/api/bills') return { body: [issued] };
   if (url.pathname === '/api/payments') return { body: [settled] };
+  if (url.pathname === `/api/customers/${record.id}/contacts`) return { body: [spouse] };
+  if (url.pathname === `/api/customers/${record.id}/profile`) return { body: profile };
 
   if (url.pathname === '/api/meters') {
     return { body: url.searchParams.get('serviceLocationId') === premise.id ? [fitted] : [] };
@@ -79,6 +92,20 @@ function bareWorld(url: URL): StubbedResponse | undefined {
   if (url.pathname === '/api/service-accounts') return { body: [] };
   if (url.pathname === '/api/bills') return { body: [] };
   if (url.pathname === '/api/payments') return { body: [] };
+  if (url.pathname === `/api/customers/${record.id}/contacts`) return { body: [] };
+
+  // A prospect nobody has connected: the defaults, and no premise to post to.
+  if (url.pathname === `/api/customers/${record.id}/profile`) {
+    return {
+      body: customerProfile({
+        source: 'None',
+        mailingAddress: null,
+        formattedMailingAddress: null,
+        serviceAddress: null,
+        serviceLocationId: null,
+      }),
+    };
+  }
 
   return undefined;
 }
@@ -405,6 +432,10 @@ describe('CustomerDetailPage', () => {
     // The summary row is five honest zeros, not a blank strip.
     expect(screen.getByText('Nothing owed')).toBeInTheDocument();
     expect(screen.getByText('None settled yet')).toBeInTheDocument();
+
+    await openTab('Contacts');
+    expect(await screen.findByText('No contacts yet')).toBeInTheDocument();
+    expect(screen.getByText('No service address to fall back to')).toBeInTheDocument();
 
     await openTab('Bills');
     expect(await screen.findByText('No bills yet')).toBeInTheDocument();

@@ -5,6 +5,10 @@ namespace GridCore.Modules.Customers.Features.ServiceLocations;
 /// <summary>
 /// A physical address. A value object owned by the thing that is at it — it has no identity of its
 /// own, and two premises at the same address are still two premises.
+///
+/// Owned by a service location and, since WP-2.11, by a customer profile's mailing address. One
+/// shape for both: an address that post goes to and an address a crew navigates to are the same
+/// kind of thing, and a second copy is how the two drift into validating differently.
 /// </summary>
 public sealed class Address
 {
@@ -81,7 +85,7 @@ public sealed class Address
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            throw new RegistryValidationException($"'{field}' is required for a service location's address.");
+            throw new RegistryValidationException($"'{field}' is required for an address.");
         }
     }
 

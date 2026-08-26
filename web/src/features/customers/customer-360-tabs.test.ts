@@ -14,6 +14,7 @@ describe('customer360Tabs', () => {
 
     expect(tabs.map((tab) => tab.label)).toEqual([
       'Summary',
+      'Contacts',
       'Bills',
       'Payments',
       'Timeline',
@@ -30,14 +31,14 @@ describe('customer360Tabs', () => {
    * so Summary is the customer's own URL rather than `/summary`.
    */
   it('points Summary at the customer itself, and matches it exactly', () => {
-    const [summary, bills] = customer360Tabs(customerId);
+    const [summary, contacts] = customer360Tabs(customerId);
 
     expect(summary?.to).toBe(`/customers/${customerId}`);
     expect(summary?.end).toBe(true);
 
     // Without `end` on the first tab, every child route would light it up as well as its own.
-    expect(bills?.to).toBe(`/customers/${customerId}/bills`);
-    expect(bills?.end).toBeFalsy();
+    expect(contacts?.to).toBe(`/customers/${customerId}/contacts`);
+    expect(contacts?.end).toBeFalsy();
   });
 
   /** The sidebar's Customers entry stays lit because every tab lives under `/customers`. */

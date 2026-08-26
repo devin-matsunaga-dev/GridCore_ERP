@@ -23,6 +23,12 @@ public static class RolePermissionMap
                 // for this role and for no other, which is the only way the distinction can be seen.
                 Permissions.Customers.Deposit,
 
+                // The desk that takes the request is the desk that records it: a caller asking for
+                // their spouse to be allowed to ring up is talking to this role. Held beside
+                // customers.write and separate from it, so a utility that wants a supervisor to sign
+                // disclosure off moves one line here rather than editing every call site.
+                Permissions.Customers.Authorise,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
                 Permissions.Payments.Read,
