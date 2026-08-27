@@ -63,6 +63,14 @@ public sealed class ApplicationDocumentNotFoundException(Guid id)
     public Guid ApplicationDocumentId { get; } = id;
 }
 
+/// <summary>No payment arrangement with that id. Surfaces as 404.</summary>
+public sealed class PaymentArrangementNotFoundException(Guid id)
+    : RegistryException($"Payment arrangement '{id}' was not found.")
+{
+    /// <summary>The id that was looked up.</summary>
+    public Guid PaymentArrangementId { get; } = id;
+}
+
 /// <summary>No service account with that id. Surfaces as 404.</summary>
 public sealed class ServiceAccountNotFoundException(Guid id)
     : RegistryException($"Service account '{id}' was not found.")

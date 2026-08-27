@@ -21,6 +21,9 @@ public interface IRegistryNumberGenerator
 
     /// <summary>The next unused service application number (WP-2.18).</summary>
     Task<string> NextServiceApplicationNumberAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The next unused payment arrangement number (WP-2.20).</summary>
+    Task<string> NextPaymentArrangementNumberAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -70,5 +73,15 @@ public sealed class SequentialRegistryNumberGenerator(CustomersDbContext databas
                 .Where(application => application.ApplicationNumber.StartsWith(CustomerNumbers.ServiceApplicationPrefix))
                 .OrderByDescending(application => application.ApplicationNumber)
                 .Select(application => application.ApplicationNumber),
+            cancellationToken);
+
+    /// <inheritdoc />
+    public Task<string> NextPaymentArrangementNumberAsync(CancellationToken cancellationToken = default) =>
+        RegistryNumberSeries.NextAsync(
+            CustomerNumbers.PaymentArrangementPrefix,
+            database.PaymentArrangements
+                .Where(arrangement => arrangement.ArrangementNumber.StartsWith(CustomerNumbers.PaymentArrangementPrefix))
+                .OrderByDescending(arrangement => arrangement.ArrangementNumber)
+                .Select(arrangement => arrangement.ArrangementNumber),
             cancellationToken);
 }

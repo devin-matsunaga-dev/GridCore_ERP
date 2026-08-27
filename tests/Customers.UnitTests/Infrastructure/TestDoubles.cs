@@ -4,9 +4,32 @@ using GridCore.Contracts.Providers;
 using GridCore.Contracts.Services;
 using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Platform.Messaging;
+using GridCore.Platform.Notifications;
 using GridCore.Platform.Security;
 
 namespace GridCore.Modules.Customers.UnitTests.Infrastructure;
+
+/// <summary>
+/// Captures what the approval queue told anybody instead of logging it (WP-2.20).
+/// </summary>
+/// <remarks>
+/// The queue is the real <c>ApprovalService</c> in this host, and it sends a notification on every
+/// decision. Nothing in Customers reads one, so this exists to keep the composition honest rather
+/// than to be asserted on — the module's own facts are in the audit trail.
+/// </remarks>
+public sealed class RecordingNotificationSender : INotificationSender
+{
+    /// <summary>Everything sent, in order.</summary>
+    public List<Notification> Sent { get; } = [];
+
+    /// <inheritdoc />
+    public Task SendAsync(Notification notification, CancellationToken cancellationToken = default)
+    {
+        Sent.Add(notification);
+
+        return Task.CompletedTask;
+    }
+}
 
 /// <summary>A clock the test moves by hand, so nothing waits on wall time.</summary>
 public sealed class FakeClock(DateTimeOffset now) : TimeProvider

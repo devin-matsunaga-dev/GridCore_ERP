@@ -111,6 +111,37 @@ public static class Permissions
         /// </para>
         /// </remarks>
         public const string Transition = "customers.transition";
+
+        /// <summary>
+        /// Make a payment arrangement against an account's arrears, bring one into force, or review
+        /// the register (WP-2.20).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Narrower than <see cref="Write"/>, because an arrangement suppresses a
+        /// disconnection.</b> While one stands, the utility has agreed not to cut the supply off
+        /// however far behind the account is — which is the point of the feature and also the reason
+        /// it cannot travel on the grant a clerk holds to correct a spelling. That is the same line
+        /// <see cref="Deposit"/>, <see cref="Authorise"/>, <see cref="Transition"/> and
+        /// <see cref="Approve"/> are all drawn on, and the opposite side of it from WP-2.13's notes,
+        /// which earned no permission because logging a call is clerical.
+        /// </para>
+        /// <para>
+        /// <b>It is also what a DECIDER must hold.</b> An arrangement beyond the published ceilings
+        /// goes to WP-0.4's approval queue naming this permission, so approving one takes it
+        /// <i>and</i> <see cref="Platform.Approve"/> — which the front desk does not hold and a
+        /// manager does. One grant covers making and deciding, because the utility that wants those
+        /// separated re-cuts <see cref="RolePermissionMap"/> rather than inventing a second
+        /// permission nobody has a name for.
+        /// </para>
+        /// <para>
+        /// <b>The gate is in <c>PaymentArrangementService</c> as well as on the routes</b>, for the
+        /// reason <see cref="Transition"/>'s and <see cref="Approve"/>'s are: the service is
+        /// reachable in process, and WP-2.21's disconnection process reads and moves arrangements
+        /// without passing a URL.
+        /// </para>
+        /// </remarks>
+        public const string Arrange = "customers.arrange";
     }
 
     /// <summary>Meters, readings and consumption.</summary>

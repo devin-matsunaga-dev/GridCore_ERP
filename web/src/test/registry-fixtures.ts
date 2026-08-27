@@ -6,6 +6,8 @@ import type {
   AccountTransition,
   ApplicationDocument,
   ApplicationReference,
+  ArrangementInstalment,
+  ArrangementLimit,
   ContactMethod,
   Customer,
   CustomerContact,
@@ -19,6 +21,7 @@ import type {
   DisconnectionEligibility,
   DunningNotice,
   DunningStep,
+  PaymentArrangement,
   ServiceAccount,
   ServiceApplication,
   ServiceLocation,
@@ -788,4 +791,95 @@ export function disconnectionEligibility(
     blockers: ['Disconnection notice served', 'Statutory waiting period elapsed'],
     ...overrides,
   };
+}
+
+/**
+ * One payment arrangement (WP-2.20): $300 arranged over three monthly instalments, proposed and not
+ * yet in force — the state the screen has the most to say about, because it is the one with a button.
+ */
+export function paymentArrangement(overrides: Partial<PaymentArrangement> = {}): PaymentArrangement {
+  const account = serviceAccount();
+
+  return {
+    id: '0192f000-0000-7000-8000-000000000a01',
+    arrangementNumber: 'PA-000001',
+    serviceAccountId: account.id,
+    accountNumber: account.accountNumber,
+    customerId: customer().id,
+    customerName: customer().name,
+    customerClass: 'Residential',
+    status: 'Proposed',
+    standing: 'Proposed',
+    suppressesDisconnection: false,
+    currency: 'USD',
+    arrearsBalance: 300,
+    downPayment: 0,
+    instalmentCount: 3,
+    intervalDays: 30,
+    scheduledAmount: 300,
+    paidAmount: 0,
+    outstandingAmount: 300,
+    arrangedOn: '2026-09-01',
+    activatedOn: null,
+    closedOn: null,
+    limitMaximumBalance: 1500,
+    limitMaximumInstalments: 6,
+    requiresApproval: false,
+    approvalRequestId: null,
+    notes: null,
+    actorId: 'auth0|cs-agent',
+    actorName: 'Ana Cruz',
+    recordedAt: '2026-09-01T09:00:00Z',
+    instalments: arrangementInstalments(),
+    ...overrides,
+  };
+}
+
+/**
+ * Three equal monthly instalments, none of them paid.
+ *
+ * `overrides` is positional — the nth entry patches the nth instalment — because what a test wants
+ * to say is usually "the first one was paid" or "the first one was missed", and those are the two
+ * states the whole feature turns on.
+ */
+export function arrangementInstalments(
+  overrides: Partial<ArrangementInstalment>[] = [],
+): ArrangementInstalment[] {
+  const dueDates = ['2026-10-01', '2026-10-31', '2026-11-30'];
+
+  return dueDates.map((dueDate, index) => {
+    const instalment: ArrangementInstalment = {
+      id: `0192f000-0000-7000-8000-000000000b0${index + 1}`,
+      sequence: index + 1,
+      dueDate,
+      amount: 100,
+      paidAmount: 0,
+      outstanding: 100,
+      isSettled: false,
+      isDownPayment: false,
+      settledAt: null,
+    };
+
+    return Object.assign(instalment, overrides[index]);
+  });
+}
+
+/** The shipped arrangement ceilings, as the host publishes them. */
+export function arrangementLimits(): ArrangementLimit[] {
+  return [
+    {
+      customerClass: 'Residential',
+      maximumBalance: 1500,
+      currency: 'USD',
+      maximumInstalments: 6,
+      notes: 'Demo figures; not an authoritative delegation.',
+    },
+    {
+      customerClass: 'Commercial',
+      maximumBalance: 5000,
+      currency: 'USD',
+      maximumInstalments: 12,
+      notes: 'Demo figures; not an authoritative delegation.',
+    },
+  ];
 }

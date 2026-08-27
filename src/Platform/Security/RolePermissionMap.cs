@@ -47,6 +47,14 @@ public static class RolePermissionMap
                 // supervisor moves this one line rather than editing every call site.
                 Permissions.Customers.Approve,
 
+                // The desk that takes the telephone call from somebody who cannot pay is the desk
+                // that arranges payment instead of disconnecting (WP-2.20) — which is what the
+                // reference describes Customer Service doing. Held beside customers.write and
+                // separate from it, and bounded by the published ceilings: beyond them this role can
+                // RAISE an arrangement but cannot decide it, because deciding also takes
+                // platform.approve, which this role does not hold.
+                Permissions.Customers.Arrange,
+
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,
 
@@ -143,6 +151,12 @@ public static class RolePermissionMap
                 // every other grant in this role is: a manager decides, and the clerical work of
                 // taking the form and scanning the lease stays with the desk.
                 Permissions.Customers.Approve,
+
+                // And the arrangements the front desk cannot sign alone (WP-2.20). Held WITHOUT
+                // customers.write, as every other grant in this role is — and together with
+                // platform.approve below, which is what makes this the role that DECIDES an
+                // over-limit arrangement rather than merely raising one.
+                Permissions.Customers.Arrange,
 
                 Permissions.Metering.Read,
                 Permissions.Billing.Read,

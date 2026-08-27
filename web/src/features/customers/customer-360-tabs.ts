@@ -27,6 +27,10 @@ import type { TabNavItem } from '@/components/registry/tab-nav';
  * bills, the fees and the deposit add up to when nobody has paid — so every register it draws on is
  * to its left, and the statement a rep sends about it is to its right.
  *
+ * `arrangements` (WP-2.20) sits immediately after `delinquency`, because it is what a rep does
+ * NEXT: they read what is past due and how close the account is to being cut off, and then they
+ * arrange payment instead. Reversing the two would put the remedy before the diagnosis.
+ *
  * `charges` (WP-2.16's screen, shipped with WP-2.18) sits with the money, after `deposit` and
  * before `documents`: a fee is the non-consumption half of what the customer is asked for, so it
  * reads beside the bills and the deposit rather than beside the person — and a statement composed
@@ -49,6 +53,7 @@ export const customer360TabIds = [
   'deposit',
   'charges',
   'delinquency',
+  'arrangements',
   'documents',
   'transitions',
   'timeline',
@@ -68,6 +73,7 @@ const tabLabels: Record<Customer360TabId, string> = {
   deposit: 'Deposit',
   charges: 'Charges',
   delinquency: 'Delinquency',
+  arrangements: 'Arrangements',
   documents: 'Documents',
   transitions: 'Transitions',
   timeline: 'Timeline',

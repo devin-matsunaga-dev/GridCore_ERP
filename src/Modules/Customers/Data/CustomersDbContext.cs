@@ -1,4 +1,5 @@
 using GridCore.Modules.Customers.Features.Applications;
+using GridCore.Modules.Customers.Features.Arrangements;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Delinquency;
@@ -85,6 +86,27 @@ public sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> opti
     /// asserted.
     /// </summary>
     public DbSet<DunningNotice> DunningNotices => Set<DunningNotice>();
+
+    /// <summary>
+    /// What a representative may arrange on their own authority, per customer class (WP-2.20).
+    /// Reference data shipped by migration (invariant 8), beside the deposit schedule and the
+    /// dunning sequence — not a seeder and not a constant in the domain.
+    /// </summary>
+    public DbSet<ArrangementLimit> ArrangementLimits => Set<ArrangementLimit>();
+
+    /// <summary>
+    /// Every payment arrangement made against every account (WP-2.20) — what Customer Service does
+    /// instead of disconnecting. It creates no money and mutates no bill: the customer still owes
+    /// what the bills say, and this records how and when it will arrive.
+    /// </summary>
+    public DbSet<PaymentArrangement> PaymentArrangements => Set<PaymentArrangement>();
+
+    /// <summary>
+    /// The dated lines those arrangements are made of (WP-2.20). Exposed as a set of its own so a
+    /// review run can read what falls due across the register without loading every promise behind
+    /// it.
+    /// </summary>
+    public DbSet<ArrangementInstalment> ArrangementInstalments => Set<ArrangementInstalment>();
 
     /// <summary>The premises service is delivered to. Independent of who is served there.</summary>
     public DbSet<ServiceLocation> ServiceLocations => Set<ServiceLocation>();

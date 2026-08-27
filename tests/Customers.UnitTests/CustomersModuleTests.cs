@@ -1,6 +1,7 @@
 using FluentValidation;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
+using GridCore.Modules.Customers.Features.Arrangements;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Delinquency;
 using GridCore.Modules.Customers.Features.Deposits;
@@ -12,6 +13,7 @@ using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Platform.Data;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Seeding;
 using Microsoft.Extensions.Configuration;
@@ -185,15 +187,16 @@ public class CustomersModuleTests
         Assert.True(Registers<IValidator<CorrectNoteRequest>>(services));
         Assert.True(Registers<IValidator<PinNoteRequest>>(services));
         Assert.True(Registers<IValidator<ServeNoticeRequest>>(services));
+        Assert.True(Registers<IValidator<ProposeArrangementRequest>>(services));
     }
 
     [Fact]
-    public void The_delinquency_register_is_composed_with_the_arrangement_seam_nobody_answers_yet()
+    public void The_delinquency_register_is_composed_with_the_arrangement_seam_WP_220_filled_in()
     {
-        // WP-2.19. The fourth disconnection test asks whether a payment arrangement protects the
-        // account, and WP-2.20 is what will answer it — so the seam is registered against the null
-        // implementation on purpose. This test is what makes replacing it a deliberate act rather
-        // than something a later package does without noticing the stub was load-bearing.
+        // WP-2.19 registered NoPaymentArrangements — "this utility has no arrangements" — and this
+        // test pinned it so that replacing the stub would have to be a deliberate act rather than
+        // something a later package did without noticing it was load-bearing. WP-2.20 is that act:
+        // the fourth disconnection test now reads a real register, and the assertion moves with it.
         var services = ComposedModule();
 
         Assert.Equal(
@@ -201,8 +204,28 @@ public class CustomersModuleTests
             Assert.Single(services, service => service.ServiceType == typeof(IDelinquencyService)).ImplementationType);
 
         Assert.Equal(
-            typeof(NoPaymentArrangements),
+            typeof(PaymentArrangementDirectory),
             Assert.Single(services, service => service.ServiceType == typeof(IPaymentArrangementDirectory)).ImplementationType);
+
+        Assert.Equal(
+            typeof(PaymentArrangementService),
+            Assert.Single(services, service => service.ServiceType == typeof(IPaymentArrangementService)).ImplementationType);
+    }
+
+    [Fact]
+    public void The_arrangement_register_consumes_approved_payments()
+    {
+        // Customers' first consumer (WP-2.20). It has published since WP-1.1 and never subscribed;
+        // an instalment settled by a real payment is the other direction, and the descriptor is what
+        // MassTransit is wired from.
+        var services = ComposedModule();
+
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ImplementationInstance is EventConsumerDescriptor
+            {
+                ConsumerType.Name: nameof(ArrangementPaymentApprovedConsumer),
+            });
     }
 
     [Theory]

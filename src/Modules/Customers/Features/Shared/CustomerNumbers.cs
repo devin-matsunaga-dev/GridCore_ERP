@@ -27,4 +27,14 @@ public static class CustomerNumbers
     /// which are different things with different numbers for the whole of the review.
     /// </remarks>
     public const string ServiceApplicationPrefix = "AP-";
+
+    /// <summary>
+    /// Prefix of a payment arrangement number, e.g. <c>PA-000001</c> (WP-2.20).
+    /// </summary>
+    /// <remarks>
+    /// Two letters, like the application's, and for the same reason: a customer ringing up about
+    /// "PA-000012" is asking about the promise they made, not about the account it was made against
+    /// — and those are different things a rep has to be able to tell apart down a telephone.
+    /// </remarks>
+    public const string PaymentArrangementPrefix = "PA-";
 }

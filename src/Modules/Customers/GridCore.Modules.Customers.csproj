@@ -16,6 +16,15 @@
     </PackageReference>
   </ItemGroup>
 
+  <!--
+    The fast tier proves an arrangement's allocation arithmetic (WP-2.20), which is deliberately not
+    public API: only the service inside this module may move money onto a schedule, so the aggregate
+    keeps `Apply` and `Settle` internal rather than opening them to every caller in the host.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="GridCore.Modules.Customers.UnitTests" />
+  </ItemGroup>
+
   <!-- Modules reference Platform and Contracts only. A module NEVER references another module. -->
   <ItemGroup>
     <ProjectReference Include="../../Platform/GridCore.Platform.csproj" />

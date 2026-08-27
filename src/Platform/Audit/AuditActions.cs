@@ -314,6 +314,52 @@ public static class AuditActions
     public const string DisconnectionEligibilityEvaluated = "disconnection.evaluate";
 
     /// <summary>
+    /// A payment arrangement was proposed against an account's arrears (WP-2.20).
+    /// </summary>
+    /// <remarks>
+    /// The snapshot carries the whole schedule, because "what did this customer actually agree to"
+    /// is the question somebody asks when it is disputed — and by then the instalment rows will have
+    /// been paid against, so the promise as made has to be readable from the trail.
+    /// </remarks>
+    public const string PaymentArrangementProposed = "payment_arrangement.propose";
+
+    /// <summary>
+    /// A payment arrangement was brought into force (WP-2.20). <b>This is the entry that says when
+    /// an account stopped being disconnectable</b>, and on whose authority.
+    /// </summary>
+    public const string PaymentArrangementActivated = "payment_arrangement.activate";
+
+    /// <summary>
+    /// A payment arrangement was kept — every instalment arrived (WP-2.20). Recorded against
+    /// <c>system</c> where the final payment closed it, because that happens in a consumer.
+    /// </summary>
+    public const string PaymentArrangementKept = "payment_arrangement.keep";
+
+    /// <summary>
+    /// A payment arrangement was broken — an instalment passed its due date unpaid (WP-2.20).
+    /// </summary>
+    /// <remarks>
+    /// Sensitive, and not because it moves money: breaking an arrangement <i>restores</i>
+    /// disconnection eligibility, so "when did this account stop being protected, and on what" has to
+    /// be answerable about that account rather than only from the run that touched four hundred
+    /// others.
+    /// </remarks>
+    public const string PaymentArrangementBroken = "payment_arrangement.break";
+
+    /// <summary>
+    /// An approved payment was applied to an arrangement's instalments (WP-2.20). Recorded against
+    /// <c>system</c>: this happens in a consumer rather than at somebody's keyboard, and the clerk
+    /// who took the money is named on the payment's own entry.
+    /// </summary>
+    public const string PaymentArrangementPaymentApplied = "payment_arrangement.payment";
+
+    /// <summary>
+    /// The arrangement register was reviewed (WP-2.20) — active arrangements judged against a day,
+    /// with those that have defaulted broken and those paid off recorded as kept.
+    /// </summary>
+    public const string PaymentArrangementReviewRun = "payment_arrangement.review";
+
+    /// <summary>
     /// An approved payment was applied to a bill, reducing what is owed. Recorded against
     /// <c>system</c>: this happens in a consumer rather than at somebody's keyboard, and the clerk
     /// who took the money is named on the payment's own entry.
@@ -460,6 +506,18 @@ public static class AuditEntityTypes
     /// lookup.
     /// </remarks>
     public const string DunningNotice = "customers.dunning_notice";
+
+    /// <summary>
+    /// A row of <c>customers.payment_arrangements</c> (WP-2.20) — one promise about one account's
+    /// arrears, with the schedule it was made on.
+    /// </summary>
+    /// <remarks>
+    /// Instalments are audited against the <b>arrangement</b> rather than as entities of their own,
+    /// the call <c>ServiceApplication</c> makes about its documents and <c>Bill</c> about its
+    /// adjustments: an instalment is only meaningful as part of a schedule, and the before/after an
+    /// auditor reads is the promise, not the line.
+    /// </remarks>
+    public const string PaymentArrangement = "customers.payment_arrangement";
 
     /// <summary>A row of <c>customers.service_locations</c>.</summary>
     public const string ServiceLocation = "customers.service_location";

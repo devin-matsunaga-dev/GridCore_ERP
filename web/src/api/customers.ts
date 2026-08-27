@@ -1718,3 +1718,180 @@ export function useDelinquency(serviceAccountId: string | undefined) {
     enabled: Boolean(serviceAccountId),
   });
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Payment arrangements (WP-2.20)
+ * ---------------------------------------------------------------------------
+ */
+
+/** Mirrors `PaymentArrangementStatus` — where an arrangement stands. */
+export const paymentArrangementStatuses = ['Proposed', 'Active', 'Kept', 'Broken'] as const;
+export type PaymentArrangementStatus = (typeof paymentArrangementStatuses)[number];
+
+/** Mirrors `ArrangementLimitResponse` — what a representative may arrange on their own authority. */
+export type ArrangementLimit = {
+  customerClass: CustomerClass;
+  maximumBalance: number;
+  currency: string;
+  maximumInstalments: number;
+  notes: string;
+};
+
+/** Mirrors `ArrangementInstalmentResponse` — one dated line of a schedule. */
+export type ArrangementInstalment = {
+  id: string;
+  sequence: number;
+  dueDate: string;
+  amount: number;
+  paidAmount: number;
+  outstanding: number;
+  isSettled: boolean;
+  isDownPayment: boolean;
+  settledAt: string | null;
+};
+
+/**
+ * Mirrors `PaymentArrangementResponse`.
+ *
+ * `status` is what the register recorded; `standing` is where it stands **today**, which differs on
+ * an arrangement that has missed an instalment since the last review run. Protection is read from
+ * the second, so the second is what a screen shows — `suppressesDisconnection` is the host's own
+ * answer and is never recomputed here.
+ */
+export type PaymentArrangement = {
+  id: string;
+  arrangementNumber: string;
+  serviceAccountId: string;
+  accountNumber: string;
+  customerId: string;
+  customerName: string;
+  customerClass: CustomerClass;
+  status: PaymentArrangementStatus;
+  standing: PaymentArrangementStatus;
+  suppressesDisconnection: boolean;
+  currency: string;
+  arrearsBalance: number;
+  downPayment: number;
+  instalmentCount: number;
+  intervalDays: number;
+  scheduledAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  arrangedOn: string;
+  activatedOn: string | null;
+  closedOn: string | null;
+  limitMaximumBalance: number;
+  limitMaximumInstalments: number;
+  requiresApproval: boolean;
+  approvalRequestId: string | null;
+  notes: string | null;
+  actorId: string;
+  actorName: string | null;
+  recordedAt: string;
+  instalments: ArrangementInstalment[];
+};
+
+/** Mirrors `ArrangementReviewChangeResponse` — one arrangement a review moved. */
+export type ArrangementReviewChange = {
+  arrangementNumber: string;
+  serviceAccountId: string;
+  accountNumber: string;
+  from: PaymentArrangementStatus;
+  to: PaymentArrangementStatus;
+};
+
+/** Mirrors `ArrangementReviewResponse` — what one review run did. */
+export type ArrangementReview = {
+  asOf: string;
+  reviewed: number;
+  brokenCount: number;
+  keptCount: number;
+  changes: ArrangementReviewChange[];
+};
+
+/** What a caller supplies to propose an arrangement. */
+export type ProposeArrangementInput = {
+  arrearsBalance: number;
+  downPayment?: number;
+  instalmentCount?: number;
+  firstInstalmentDue?: string | null;
+  intervalDays?: number;
+  arrangedOn?: string | null;
+  notes?: string | null;
+};
+
+export const arrangementApi = {
+  /** Every arrangement against one account, newest first. Needs `customers.read`. */
+  list: (serviceAccountId: string, signal?: AbortSignal) =>
+    api.get<PaymentArrangement[]>(
+      `/api/service-accounts/${serviceAccountId}/payment-arrangements`,
+      { signal },
+    ),
+
+  /** The published ceilings. Reference data — needs only `customers.read`. */
+  limits: (signal?: AbortSignal) =>
+    api.get<ArrangementLimit[]>('/api/payment-arrangements/limits', { signal }),
+
+  /**
+   * Proposes an arrangement.
+   *
+   * Needs `customers.arrange`, not `customers.write`: while an arrangement stands the utility has
+   * agreed not to cut the supply off however far behind the account is, and that does not travel on
+   * the grant a clerk holds to correct a spelling.
+   */
+  propose: (serviceAccountId: string, input: ProposeArrangementInput) =>
+    api.post<PaymentArrangement>(
+      `/api/service-accounts/${serviceAccountId}/payment-arrangements`,
+      { json: input },
+    ),
+
+  /** Brings a proposal into force. Refused while an approval it needs is undecided. */
+  activate: (serviceAccountId: string, arrangementId: string) =>
+    api.post<PaymentArrangement>(
+      `/api/service-accounts/${serviceAccountId}/payment-arrangements/${arrangementId}/activation`,
+      { json: {} },
+    ),
+
+  /** Writes down where every active arrangement now stands. Needs `customers.arrange`. */
+  review: (serviceAccountId?: string, asOf?: string) =>
+    api.post<ArrangementReview>('/api/payment-arrangements/reviews', {
+      json: { asOf: asOf ?? null, serviceAccountId: serviceAccountId ?? null },
+    }),
+};
+
+export const arrangementKeys = {
+  all: ['payment-arrangements'] as const,
+  forAccount: (serviceAccountId: string) =>
+    ['payment-arrangements', 'account', serviceAccountId] as const,
+  limits: ['payment-arrangements', 'limits'] as const,
+};
+
+/**
+ * One account's arrangements.
+ *
+ * Enabled only once a rep has chosen which supply they mean — the call `useDelinquency` made, and
+ * for the same reason: a customer taking electricity and water may be behind on one and current on
+ * the other.
+ */
+export function usePaymentArrangements(serviceAccountId: string | undefined) {
+  return useQuery({
+    queryKey: arrangementKeys.forAccount(serviceAccountId ?? ''),
+    queryFn: ({ signal }) => arrangementApi.list(serviceAccountId!, signal),
+    enabled: Boolean(serviceAccountId),
+  });
+}
+
+/**
+ * The published ceilings.
+ *
+ * Reference data that changes by migration, so it is cached for the session — the call
+ * `useFeeSchedule` and the deposit rules both made.
+ */
+export function useArrangementLimits() {
+  return useQuery({
+    queryKey: arrangementKeys.limits,
+    queryFn: ({ signal }) => arrangementApi.limits(signal),
+    staleTime: Infinity,
+  });
+}

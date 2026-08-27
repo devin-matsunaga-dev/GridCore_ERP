@@ -21,6 +21,7 @@ describe('customer360Tabs', () => {
       'Deposit',
       'Charges',
       'Delinquency',
+      'Arrangements',
       'Documents',
       'Transitions',
       'Timeline',

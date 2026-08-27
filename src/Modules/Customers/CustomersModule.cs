@@ -1,6 +1,7 @@
 using GridCore.Contracts.Directories;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
+using GridCore.Modules.Customers.Features.Arrangements;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Delinquency;
@@ -17,6 +18,7 @@ using GridCore.Modules.Customers.Features.Transitions;
 using GridCore.Modules.Customers.Seeding;
 using GridCore.Platform;
 using GridCore.Platform.Data;
+using GridCore.Platform.Messaging;
 using GridCore.Platform.Modules;
 using GridCore.Platform.Validation;
 using Microsoft.AspNetCore.Routing;
@@ -103,11 +105,26 @@ public sealed class CustomersModule : IModule
         // well as on the route, because it moves money whether or not there is any to move.
         services.AddScoped<IDelinquencyService, DelinquencyService>();
 
-        // The fourth disconnection test's seam, answered by nobody until WP-2.20 builds payment
-        // arrangements. Registered against the null implementation deliberately: writing the test
-        // around a hole would mean rewriting it next package, and half an arrangements feature here
-        // would be building WP-2.20 badly.
-        services.AddScoped<IPaymentArrangementDirectory, NoPaymentArrangements>();
+        // Payment arrangements (WP-2.20): what Customer Service does instead of disconnecting. It
+        // reads what is past due through IBillDirectory — an arrangement may never promise more than
+        // the arrears that already exist — and it is IApprovalService's first module consumer: an
+        // arrangement beyond the published ceilings goes to WP-0.4's queue rather than to a second
+        // bespoke workflow. It writes no bill and publishes no event, because a promise about
+        // existing receivables changes nothing anybody downstream is entitled to act on.
+        services.AddScoped<IPaymentArrangementService, PaymentArrangementService>();
+
+        // THE SEAM WP-2.19 LEFT, NOW ANSWERED. That package registered NoPaymentArrangements — "this
+        // utility has no arrangements" — and CustomersModuleTests pinned the composition so that
+        // replacing it would have to be a deliberate act. This is that act: the fourth disconnection
+        // test now reads a real register, and an account under a standing arrangement stops being
+        // disconnectable.
+        services.AddScoped<IPaymentArrangementDirectory, PaymentArrangementDirectory>();
+
+        // Customers' first consumer. It has published since WP-1.1 and never subscribed; WP-2.20
+        // needs the other direction, because WORK_PACKAGES.md asks that an instalment be settled by
+        // a REAL payment rather than by a figure a rep types into an arrangements screen. Billing
+        // and Finance claim the same event under their own consumer names.
+        services.AddEventConsumer<ArrangementPaymentApprovedConsumer>();
 
         // Contacts and the customer profile (WP-2.11). Two services rather than one: the contacts a
         // rep may speak to and where the utility posts a bill are different registers with different
@@ -159,6 +176,7 @@ public sealed class CustomersModule : IModule
         services.AddGridCoreValidator<CorrectNoteRequest, CorrectNoteRequestValidator>();
         services.AddGridCoreValidator<PinNoteRequest, PinNoteRequestValidator>();
         services.AddGridCoreValidator<ServeNoticeRequest, ServeNoticeRequestValidator>();
+        services.AddGridCoreValidator<ProposeArrangementRequest, ProposeArrangementRequestValidator>();
 
         // Registering a seeder does not make it run: DemoSeedRunner is only registered where the
         // environment allows it, so this line is unconditional and the guard stays in one place.
@@ -187,5 +205,6 @@ public sealed class CustomersModule : IModule
         endpoints.MapTransitionEndpoints();
         endpoints.MapApplicationEndpoints();
         endpoints.MapDelinquencyEndpoints();
+        endpoints.MapArrangementEndpoints();
     }
 }

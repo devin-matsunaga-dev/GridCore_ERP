@@ -30,6 +30,7 @@ import { buildCustomerTimeline, customerBalance } from './customer-360';
 import { customer360Tabs, resolveCustomer360Tab } from './customer-360-tabs';
 import { CustomerAccountsCard } from './components/customer-accounts-card';
 import { CustomerChargesCard } from './components/customer-charges-card';
+import { CustomerArrangementsCard } from './components/customer-arrangements-card';
 import { CustomerDelinquencyCard } from './components/customer-delinquency-card';
 import { CustomerContactsCard } from './components/customer-contacts-card';
 import { CustomerDepositCard } from './components/customer-deposit-card';
@@ -363,6 +364,16 @@ export function CustomerDetailPage() {
         calls never reach.
       */}
       {active === 'delinquency' && <CustomerDelinquencyCard accounts={accounts.data ?? []} />}
+
+      {/*
+        The arrangements tab (WP-2.20) — the fourth tab holding its own queries, for the delinquency
+        tab's reason: a promise is about one SUPPLY's arrears, so a page that fetched one on every
+        open would fetch one per supply. The customer's class comes from the record this page already
+        holds, because which ceiling a rep may sign within depends on it.
+      */}
+      {active === 'arrangements' && (
+        <CustomerArrangementsCard accounts={accounts.data ?? []} customerClass={record.class} />
+      )}
 
       {/*
         The documents tab (WP-2.14) — the one tab whose queries do NOT live here. The 360's rule is

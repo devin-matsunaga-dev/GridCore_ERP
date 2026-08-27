@@ -2,6 +2,7 @@ using GridCore.Contracts.Directories;
 using GridCore.Contracts.Providers;
 using GridCore.Modules.Customers.Data;
 using GridCore.Modules.Customers.Features.Applications;
+using GridCore.Modules.Customers.Features.Arrangements;
 using GridCore.Modules.Customers.Features.Contacts;
 using GridCore.Modules.Customers.Features.Customers;
 using GridCore.Modules.Customers.Features.Delinquency;
@@ -15,7 +16,9 @@ using GridCore.Modules.Customers.Features.ServiceAccounts;
 using GridCore.Modules.Customers.Features.ServiceLocations;
 using GridCore.Modules.Customers.Features.Shared;
 using GridCore.Modules.Customers.Features.Transitions;
+using GridCore.Platform.Approvals;
 using GridCore.Platform.Audit;
+using GridCore.Platform.Notifications;
 using GridCore.Platform.Data;
 using GridCore.Platform.Messaging;
 using GridCore.Platform.Security;
@@ -108,6 +111,14 @@ public sealed class CustomersTestHost : IDisposable
         // one. CustomersModuleTests is what pins the real composition to the null implementation.
         services.AddSingleton<IPaymentArrangementDirectory>(Arrangements);
         services.AddScoped<IDelinquencyService, DelinquencyService>();
+
+        // Payment arrangements (WP-2.20). The approval primitive is the REAL one over the platform
+        // schema on this same connection, not a double: WORK_PACKAGES.md asks that an over-limit
+        // arrangement use WP-0.4's queue rather than a second bespoke workflow, and a faked queue
+        // would let the test assert that a request was raised without proving one could be decided.
+        services.AddSingleton<INotificationSender>(Notifications);
+        services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddScoped<IPaymentArrangementService, PaymentArrangementService>();
         services.AddScoped<IServiceLocationDirectory, ServiceLocationDirectory>();
         services.AddScoped<IServiceAccountDirectory, ServiceAccountDirectory>();
 
@@ -134,8 +145,21 @@ public sealed class CustomersTestHost : IDisposable
     /// <summary>The object store an application's documents are filed in (WP-2.18).</summary>
     public FakeDocumentStore Documents { get; } = new();
 
-    /// <summary>The payment arrangements the fourth disconnection test asks about (WP-2.19).</summary>
+    /// <summary>
+    /// The payment arrangements the fourth disconnection test asks about, as WP-2.19's tests state
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Still a double here even though WP-2.20 built the real one.</b> The delinquency tests are
+    /// about the four disconnection tests, not about arrangements, and making them set up a real
+    /// schedule to say "an arrangement protects this account" would couple every one of them to a
+    /// feature they are not testing. <see cref="WithArrangementDirectoryAsync{TResult}"/> is where
+    /// the real implementation is exercised.
+    /// </remarks>
     public FakePaymentArrangementDirectory Arrangements { get; } = new();
+
+    /// <summary>What the approval queue told anybody while the test ran (WP-2.20).</summary>
+    public RecordingNotificationSender Notifications { get; } = new();
 
     /// <summary>Runs <paramref name="work"/> in its own DI scope, as a request would.</summary>
     public async Task<TResult> InScopeAsync<TResult>(Func<IServiceProvider, Task<TResult>> work)
@@ -412,6 +436,78 @@ public sealed class CustomersTestHost : IDisposable
             caller,
             services.GetRequiredService<TimeProvider>())));
     }
+
+    /// <summary>Runs <paramref name="work"/> against the arrangement register, in its own scope (WP-2.20).</summary>
+    public Task<TResult> WithArrangementsAsync<TResult>(Func<IPaymentArrangementService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(services.GetRequiredService<IPaymentArrangementService>()));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the arrangement register as <paramref name="caller"/>,
+    /// over this host's database.
+    /// </summary>
+    /// <remarks>
+    /// The same shape every other refusal in this module takes, and needed twice over: making an
+    /// arrangement is gated on <c>customers.arrange</c> inside the service, and DECIDING an
+    /// over-limit one takes <c>platform.approve</c> as well — which the rep who raised it does not
+    /// hold, and which is the whole point of the ceiling.
+    /// </remarks>
+    public Task<TResult> AsAsync<TResult>(ICurrentUser caller, Func<IPaymentArrangementService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new PaymentArrangementService(
+            services.GetRequiredService<CustomersDbContext>(),
+            Bills,
+            ApprovalsFor(services, caller),
+            services.GetRequiredService<IRegistryNumberGenerator>(),
+            services.GetRequiredService<IUnitOfWork>(),
+            services.GetRequiredService<IAuditLog>(),
+            caller,
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the approval queue as <paramref name="caller"/>, over
+    /// this host's database (WP-2.20).
+    /// </summary>
+    /// <remarks>
+    /// The real queue, so a test that says "the manager approved it" has actually made the decision
+    /// the activation then reads — including the primitive's own refusal to let a requester approve
+    /// their own request.
+    /// </remarks>
+    public Task<TResult> WithApprovalsAsAsync<TResult>(ICurrentUser caller, Func<IApprovalService, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(ApprovalsFor(services, caller)));
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> against the arrangement register <i>as the disconnection test
+    /// sees it</i> — the REAL seam WP-2.20 registered in place of <c>NoPaymentArrangements</c>.
+    /// </summary>
+    public Task<TResult> WithArrangementDirectoryAsync<TResult>(
+        Func<IPaymentArrangementDirectory, Task<TResult>> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        return InScopeAsync(services => work(new PaymentArrangementDirectory(
+            services.GetRequiredService<CustomersDbContext>(),
+            services.GetRequiredService<TimeProvider>())));
+    }
+
+    /// <summary>The approval queue on this host's connection, acting as <paramref name="caller"/>.</summary>
+    private IApprovalService ApprovalsFor(IServiceProvider services, ICurrentUser caller) =>
+        new ApprovalService(
+            services.GetRequiredService<PlatformDbContext>(),
+            new AuditLog(services.GetRequiredService<PlatformDbContext>(), caller, services.GetRequiredService<TimeProvider>()),
+            Notifications,
+            caller,
+            services.GetRequiredService<TimeProvider>());
 
     /// <summary>Runs <paramref name="work"/> against the deposit schedule, in its own scope.</summary>
     public Task<TResult> WithDepositRulesAsync<TResult>(Func<IDepositRuleService, Task<TResult>> work)
